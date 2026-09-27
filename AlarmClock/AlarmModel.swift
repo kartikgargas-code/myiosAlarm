@@ -1,15 +1,36 @@
 import Foundation
 
+struct Playlist: Identifiable, Codable, Hashable {
+    let id: UUID
+    var name: String
+    var soundIDs: [UUID]
+    var dateCreated: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        soundIDs: [UUID] = [],
+        dateCreated: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.soundIDs = soundIDs
+        self.dateCreated = dateCreated
+    }
+}
+
 enum AlarmSound: Codable, Equatable, Hashable {
     case systemDefault
     case builtIn(String)
     case imported(UUID)
+    case random(UUID) // References a Playlist ID
 
     var id: String {
         switch self {
         case .systemDefault: "systemDefault"
         case .builtIn(let name): "builtin_\(name)"
         case .imported(let id): "imported_\(id.uuidString)"
+        case .random(let playlistID): "random_\(playlistID.uuidString)"
         }
     }
 
@@ -18,15 +39,34 @@ enum AlarmSound: Codable, Equatable, Hashable {
         case .systemDefault: "Default"
         case .builtIn(let name): name
         case .imported(_): "Imported"
+        case .random(let playlistID): "Random — Playlist \(playlistID.uuidString.prefix(8))"
         }
     }
 
     var systemFileName: String? {
         switch self {
-        case .systemDefault, .imported: nil
+        case .systemDefault, .imported, .random: nil
         case .builtIn(let name): BuiltInSound.fileName(for: name)
         }
     }
+}
+
+enum AlarmLoudness: Int, Codable, CaseIterable, Equatable, Hashable {
+    case twentyFive = 25
+    case fifty = 50
+    case seventyFive = 75
+    case hundred = 100
+
+    var displayName: String {
+        "\(rawValue)%"
+    }
+
+    var gainFactor: Float {
+        // Linear amplitude scaling: 25% = 0.25, 50% = 0.50, 75% = 0.75, 100% = 1.0
+        Float(rawValue) / 100.0
+    }
+
+    static var defaultValue: AlarmLoudness = .hundred
 }
 
 enum AlarmRepeatRule: Codable, Equatable, Hashable {
@@ -75,8 +115,10 @@ struct AlarmOccurrenceOverride: Codable, Equatable {
     var offsetMinutes: Int?
     var customDate: Date?
     var isSkipped: Bool
+    // Random song selection for this occurrence
+    var randomSoundID: UUID?
 
-    static let none = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false)
+    static let none = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false, randomSoundID: nil)
 }
 
 struct AlarmRecord: Codable, Identifiable, Equatable {
@@ -89,6 +131,7 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
     var adjustmentStepMinutes: Int
     var overrides: [String: AlarmOccurrenceOverride]
     var sound: AlarmSound
+    var loudness: AlarmLoudness
 
     init(
         id: UUID = UUID(),
@@ -99,7 +142,8 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
         isEnabled: Bool = true,
         adjustmentStepMinutes: Int = 10,
         overrides: [String: AlarmOccurrenceOverride] = [:],
-        sound: AlarmSound = .systemDefault
+        sound: AlarmSound = .systemDefault,
+        loudness: AlarmLoudness = .defaultValue
     ) {
         self.id = id
         self.label = label
@@ -110,6 +154,7 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
         self.adjustmentStepMinutes = adjustmentStepMinutes
         self.overrides = overrides
         self.sound = sound
+        self.loudness = loudness
     }
 }
 

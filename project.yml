@@ -19,6 +19,7 @@ targets:
       - path: AlarmClock/BuiltInSounds
         type: folder
         buildPhase: resources
+      - path: AlarmClock/AudioProcessingService.swift
     info:
       path: AlarmClock/Info.plist
       properties:

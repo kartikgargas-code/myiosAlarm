@@ -61,9 +61,15 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingEditor) {
-                AlarmEditorView(existingAlarm: editorAlarm) { alarm in
-                    await coordinator.save(alarm)
-                }
+                AlarmEditorView(
+                    existingAlarm: editorAlarm,
+                    onSave: { alarm in
+                        await coordinator.save(alarm)
+                    },
+                    onTestAlarm: { alarm, delay in
+                        await coordinator.scheduleTestAlarm(alarm, delay: delay)
+                    }
+                )
             }
             .sheet(item: $controlsAlarm) { alarm in
                 NextOccurrenceControlsView(

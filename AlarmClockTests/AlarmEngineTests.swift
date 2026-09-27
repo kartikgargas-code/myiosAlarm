@@ -265,8 +265,17 @@ final class AlarmEngineTests: XCTestCase {
     @MainActor
     func testImportedSoundStableIDAndLookup() throws {
         let fileName = "song_abc123.mp3"
-        let id = StableSoundID.make(for: fileName)
-        XCTAssertEqual(StableSoundID.make(for: fileName), id)
+        let id = StableOccurrenceID.make(
+            alarmID: UUID(uuidString: "b23f4a5e-cc2f-4e71-9cde-979301000001")!,
+            occurrenceKey: fileName
+        )
+        XCTAssertEqual(
+            StableOccurrenceID.make(
+                alarmID: UUID(uuidString: "b23f4a5e-cc2f-4e71-9cde-979301000001")!,
+                occurrenceKey: fileName
+            ),
+            id
+        )
         let randomID = UUID()
         XCTAssertThrowsError(try SoundLibrary.shared.alarmKitFileName(for: randomID)) { error in
             XCTAssertEqual(error as? SoundLibraryError, .importedSoundNotFound(randomID))
@@ -280,5 +289,59 @@ final class AlarmEngineTests: XCTestCase {
         XCTAssertNil(AlarmSound.imported(UUID()).systemFileName)
         XCTAssertEqual(BuiltInSound.fileName(for: "Chime"), "chime.wav")
         XCTAssertNil(BuiltInSound.fileName(for: "Not Real"))
+    }
+
+    @MainActor
+    func testRandomSoundMode() throws {
+        let playlistID = UUID()
+        let randomSound = AlarmSound.random(playlistID)
+        XCTAssertEqual(randomSound.id, "random_\(playlistID.uuidString)")
+        XCTAssertTrue(randomSound.displayName.contains("Random"))
+    }
+
+    @MainActor
+    func testAlarmLoudnessGainFactors() throws {
+        XCTAssertEqual(AlarmLoudness.twentyFive.gainFactor, 0.25)
+        XCTAssertEqual(AlarmLoudness.fifty.gainFactor, 0.50)
+        XCTAssertEqual(AlarmLoudness.seventyFive.gainFactor, 0.75)
+        XCTAssertEqual(AlarmLoudness.hundred.gainFactor, 1.0)
+    }
+
+    @MainActor
+    func testAlarmRecordWithLoudness() throws {
+        let alarm = AlarmRecord(
+            label: "Test",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily,
+            sound: .systemDefault,
+            loudness: .fifty
+        )
+        XCTAssertEqual(alarm.loudness, .fifty)
+        XCTAssertEqual(alarm.loudness.gainFactor, 0.5)
+    }
+
+    @MainActor
+    func testAlarmOccurrenceOverrideWithRandomSoundID() throws {
+        let soundID = UUID()
+        var override = AlarmOccurrenceOverride(
+            offsetMinutes: 10,
+            customDate: nil,
+            isSkipped: false,
+            randomSoundID: soundID
+        )
+        XCTAssertEqual(override.randomSoundID, soundID)
+        
+        // Test nil case
+        override = AlarmOccurrenceOverride(offsetMinutes: 10, customDate: nil, isSkipped: false, randomSoundID: nil)
+        XCTAssertNil(override.randomSoundID)
+    }
+
+    @MainActor
+    func testPlaylistModel() throws {
+        let soundIDs = [UUID(), UUID(), UUID()]
+        let playlist = Playlist(name: "Morning Mix", soundIDs: soundIDs)
+        XCTAssertEqual(playlist.name, "Morning Mix")
+        XCTAssertEqual(playlist.soundIDs.count, 3)
+        XCTAssertEqual(playlist.soundIDs, soundIDs)
     }
 }

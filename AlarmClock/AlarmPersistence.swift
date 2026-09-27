@@ -2,9 +2,10 @@ import Foundation
 
 struct AlarmStoreSnapshot: Codable, Equatable {
     var alarms: [AlarmRecord]
+    var playlists: [Playlist]
     var managedSystemAlarmIDs: Set<UUID>
 
-    static let empty = AlarmStoreSnapshot(alarms: [], managedSystemAlarmIDs: [])
+    static let empty = AlarmStoreSnapshot(alarms: [], playlists: [], managedSystemAlarmIDs: [])
 }
 
 protocol AlarmPersisting {

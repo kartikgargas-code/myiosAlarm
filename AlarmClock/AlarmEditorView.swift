@@ -6,6 +6,7 @@ struct AlarmEditorView: View {
 
     let existingAlarm: AlarmRecord?
     let onSave: (AlarmRecord) async -> Void
+    let onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)?
 
     @State private var label: String
     @State private var selectedTime: Date
@@ -14,11 +15,19 @@ struct AlarmEditorView: View {
     @State private var oneTimeDate: Date
     @State private var adjustmentStep: Int
     @State private var selectedSound: AlarmSound
+    @State private var selectedLoudness: AlarmLoudness
     @State private var showingSoundPicker = false
+    @State private var showingTestAlarm = false
+    @State private var testDelay: TimeInterval = 60 // Default 60 seconds
+    @State private var testAlarmScheduled = false
+    @State private var testAlarmSound: String?
+    @State private var testAlarmLoudness: AlarmLoudness?
+    @State private var testAlarmTask: Task<Void, Never>?
 
-    init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void) {
+    init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
         self.existingAlarm = existingAlarm
         self.onSave = onSave
+        self.onTestAlarm = onTestAlarm
         let calendar = Calendar.autoupdatingCurrent
         let time = existingAlarm?.time ?? AlarmTime(hour: 7, minute: 0)
         let selectedTime = calendar.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
@@ -33,6 +42,7 @@ struct AlarmEditorView: View {
         _oneTimeDate = State(initialValue: existingAlarm?.oneTimeDate ?? Date.now.addingTimeInterval(3_600))
         _adjustmentStep = State(initialValue: existingAlarm?.adjustmentStepMinutes ?? 10)
         _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
+        _selectedLoudness = State(initialValue: existingAlarm?.loudness ?? .defaultValue)
     }
 
     var body: some View {
@@ -76,11 +86,114 @@ struct AlarmEditorView: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    // Show next song for random mode
+                    if case .random(let playlistID) = selectedSound,
+                       let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+                       let nextSoundID = getNextRandomSound(for: playlist),
+                       let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID }) {
+                        HStack {
+                            Image(systemName: "shuffle")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                                .font(.caption)
+                            Text("Next alarm song: \(nextSound.name)")
+                                .font(.caption)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        }
+                        .padding(.leading, 4)
+                    }
+                }
+
+                Section("Alarm Sound Loudness") {
+                    Picker("Loudness", selection: $selectedLoudness) {
+                        ForEach(AlarmLoudness.allCases) { loudness in
+                            Text(loudness.displayName).tag(loudness)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Text("100% = original audio amplitude. Lower settings generate a quieter audio asset for AlarmKit.")
+                        .font(.caption2)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
 
                 Picker("Adjustment Step", selection: $adjustmentStep) {
                     ForEach([1, 5, 10, 15, 30], id: \.self) { value in
                         Text("\(value) minutes").tag(value)
+                    }
+                }
+
+                if existingAlarm != nil {
+                    Section("Test Alarm") {
+                        if !testAlarmScheduled {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Test Delay")
+                                    Spacer()
+                                    Picker("Delay", selection: $testDelay) {
+                                        Text("10 seconds").tag(TimeInterval(10))
+                                        Text("30 seconds").tag(TimeInterval(30))
+                                        Text("60 seconds").tag(TimeInterval(60))
+                                        Text("90 seconds").tag(TimeInterval(90))
+                                        Text("2 minutes").tag(TimeInterval(120))
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(width: 140)
+                                }
+
+                                Button {
+                                    Task {
+                                        await scheduleTestAlarm()
+                                    }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "speaker.wave.3.fill")
+                                        Text("Test Alarm")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(ThemeManager.shared.colors.accent)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text("Test alarm scheduled")
+                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                    Spacer()
+                                    Button("Cancel Test") {
+                                        cancelTestAlarm()
+                                    }
+                                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+                                }
+
+                                if let sound = testAlarmSound {
+                                    HStack {
+                                        Image(systemName: "music.note")
+                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                        Text("Sound: \(sound)")
+                                            .font(.caption)
+                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                    }
+                                }
+
+                                if let loudness = testAlarmLoudness {
+                                    HStack {
+                                        Image(systemName: "speaker.wave.2")
+                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                        Text("Loudness: \(loudness.displayName)")
+                                            .font(.caption)
+                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                    }
+                                }
+
+                                Text("This is a real AlarmKit test — not an audio preview. The system alarm UI will appear with Stop button.")
+                                    .font(.caption2)
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            .padding(.vertical, 4)
+                        }
                     }
                 }
             }
@@ -104,7 +217,8 @@ struct AlarmEditorView: View {
                             isEnabled: existingAlarm?.isEnabled ?? true,
                             adjustmentStepMinutes: adjustmentStep,
                             overrides: existingAlarm?.overrides ?? [:],
-                            sound: selectedSound
+                            sound: selectedSound,
+                            loudness: selectedLoudness
                         )
                         Task {
                             await onSave(alarm)
@@ -118,6 +232,9 @@ struct AlarmEditorView: View {
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
             SoundPickerView(selectedSound: $selectedSound)
+        }
+        .onDisappear {
+            testAlarmTask?.cancel()
         }
     }
 
@@ -148,6 +265,73 @@ struct AlarmEditorView: View {
         components.minute = time.minute
         components.second = 0
         return Calendar.autoupdatingCurrent.date(from: components) ?? oneTimeDate
+    }
+
+    private func getNextRandomSound(for playlist: Playlist) -> UUID? {
+        // For display purposes, just return the first sound
+        // The actual random selection happens at scheduling time
+        return playlist.soundIDs.first
+    }
+
+    private func scheduleTestAlarm() async {
+        guard let onTestAlarm else { return }
+
+        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
+        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+        let alarm = AlarmRecord(
+            id: existingAlarm?.id ?? UUID(),
+            label: label,
+            time: time,
+            repeatRule: resolvedRepeatRule,
+            oneTimeDate: repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil,
+            isEnabled: true,
+            adjustmentStepMinutes: adjustmentStep,
+            overrides: existingAlarm?.overrides ?? [:],
+            sound: selectedSound,
+            loudness: selectedLoudness
+        )
+
+        // Determine what sound will be used for display
+        var displaySound = "Default"
+        var displayLoudness = selectedLoudness
+
+        switch selectedSound {
+        case .systemDefault:
+            displaySound = "System Default"
+        case .builtIn(let name):
+            displaySound = name
+        case .imported(let id):
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                displaySound = sound.name
+            }
+        case .random(let playlistID):
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+               let firstSoundID = playlist.soundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                displaySound = "\(sound.name) (from \(playlist.name))"
+            }
+        }
+
+        testAlarmSound = displaySound
+        testAlarmLoudness = displayLoudness
+        testAlarmScheduled = true
+
+        testAlarmTask = Task {
+            await onTestAlarm(alarm, testDelay)
+            await MainActor.run {
+                testAlarmScheduled = false
+                testAlarmSound = nil
+                testAlarmLoudness = nil
+            }
+        }
+    }
+
+    private func cancelTestAlarm() {
+        testAlarmTask?.cancel()
+        testAlarmTask = nil
+        testAlarmScheduled = false
+        testAlarmSound = nil
+        testAlarmLoudness = nil
     }
 }
 

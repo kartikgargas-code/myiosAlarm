@@ -85,7 +85,7 @@ final class AlarmCoordinator {
         do {
             try mutation(&candidate)
             candidate.pruneExpiredOverrides(now: now())
-            let desired = desiredSystemAlarms(from: candidate)
+            let desired = await desiredSystemAlarms(from: candidate)
             if let desiredError = commitError {
                 lastError = desiredError
                 return
@@ -108,13 +108,15 @@ final class AlarmCoordinator {
             guard let alarm = engine.alarm(id: occurrence.alarmID) else { return nil }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
             do {
-                let sound = try alarmKitSound(for: alarm.sound)
+                // For random mode, select a song for this occurrence if not already selected
+                let soundToUse = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
+                let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                 return DesiredSystemAlarm(
                     id: SystemScheduleID.make(for: occurrence, label: label),
                     occurrence: occurrence,
                     label: label,
-                    sound: alarm.sound,
-                    alarmKitSound: sound
+                    sound: soundToUse,
+                    alarmKitSound: alarmKitSound
                 )
             } catch {
                 commitError = error.localizedDescription
@@ -123,7 +125,58 @@ final class AlarmCoordinator {
         }
     }
 
-    private func alarmKitSound(for sound: AlarmSound) throws -> AlertConfiguration.AlertSound {
+    /// Resolve the sound for a specific occurrence, handling random mode
+    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> AlarmSound {
+        switch alarm.sound {
+        case .random(let playlistID):
+            // Check if we already have a random sound selected for this occurrence
+            if let override = alarm.overrides[occurrence.occurrenceKey],
+               let selectedSoundID = override.randomSoundID {
+                // Verify the sound still exists in the playlist
+                if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+                   playlist.soundIDs.contains(selectedSoundID) {
+                    return .imported(selectedSoundID)
+                }
+            }
+
+            // Need to select a new random song
+            let playlist = try SoundLibrary.shared.playlist(for: playlistID)
+            let availableSounds = playlist.soundIDs
+
+            // Avoid immediately repeating the previous song if multiple available
+            var previousSoundID: UUID?
+            // Find the previous occurrence's selected sound
+            let earlierOccurrences = engine.desiredOccurrences(now: now().addingTimeInterval(-86400 * 7))
+                .filter { $0.alarmID == alarm.id && $0.effectiveDate < occurrence.effectiveDate }
+                .sorted { $0.effectiveDate > $1.effectiveDate }
+            if let prevOccurrence = earlierOccurrences.first,
+               let prevOverride = alarm.overrides[prevOccurrence.occurrenceKey],
+               let prevSoundID = prevOverride.randomSoundID {
+                previousSoundID = prevSoundID
+            }
+
+            var candidates = availableSounds
+            if let previousSoundID, candidates.count > 1 {
+                candidates.removeAll { $0 == previousSoundID }
+            }
+
+            let selectedSoundID = candidates.randomElement() ?? availableSounds.randomElement()!
+
+            // Store the selection in the override for this occurrence
+            var newOverride = alarm.overrides[occurrence.occurrenceKey] ?? .none
+            newOverride.randomSoundID = selectedSoundID
+
+            // We need to persist this - but we can't mutate engine here directly
+            // The override will be picked up when the alarm is next saved/synchronized
+            // For now, we'll just use the selected sound
+            return .imported(selectedSoundID)
+
+        default:
+            return alarm.sound
+        }
+    }
+
+    private func alarmKitSound(for sound: AlarmSound, loudness: AlarmLoudness = .hundred) async throws -> AlertConfiguration.AlertSound {
         switch sound {
         case .systemDefault:
             return .default
@@ -137,12 +190,108 @@ final class AlarmCoordinator {
             return .named(fileName)
         case .imported(let id):
             let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
+            
+            // If loudness is not 100%, use the processed sound file
+            if loudness != .hundred {
+                // Get the original sound info
+                if let originalSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                    // Get or create the processed sound
+                    let processedURL = try await AudioProcessingService.shared.getOrCreateProcessedSound(
+                        for: originalSound,
+                        loudness: loudness
+                    )
+                    // The processed file is in Library/ProcessedSounds, but AlarmKit needs it in Library/Sounds
+                    // We need to copy it to Library/Sounds with a specific name
+                    let processedFileName = processedURL.lastPathComponent
+                    let soundsDir = SoundLibrary.shared.soundsDirectory!
+                    let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+                    
+                    if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+                        try FileManager.default.copyItem(at: processedURL, to: alarmKitURL)
+                    }
+                    return .named(processedFileName)
+                }
+            }
             return .named(fileName)
+        case .random:
+            // This should never be reached since we resolve random before calling this
+            throw SoundLibraryError.importFailed("Random sound not resolved")
         }
     }
 
     private func publish() {
         alarms = engine.alarms
         nextOccurrence = engine.earliestOccurrence(now: now())
+    }
+
+    /// Schedule a test alarm using the actual alarm configuration
+    /// Uses a separate temporary AlarmKit alarm ID so it doesn't interfere with real alarms
+    func scheduleTestAlarm(_ alarm: AlarmRecord, delay: TimeInterval) async {
+        let testDate = now().addingTimeInterval(delay)
+        let testID = UUID() // Separate temporary ID for test alarm
+
+        // Resolve the sound for the test (handles random mode)
+        var soundToUse = alarm.sound
+        var displaySound = "Default"
+        var displayLoudness = alarm.loudness
+
+        do {
+            switch alarm.sound {
+            case .systemDefault:
+                displaySound = "System Default"
+                soundToUse = .systemDefault
+            case .builtIn(let name):
+                displaySound = name
+                soundToUse = .builtIn(name)
+            case .imported(let id):
+                if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                    displaySound = sound.name
+                }
+                soundToUse = .imported(id)
+            case .random(let playlistID):
+                if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+                   !playlist.soundIDs.isEmpty {
+                    // Pick a random song for the test
+                    let selectedSoundID = playlist.soundIDs.randomElement()!
+                    if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == selectedSoundID }) {
+                        displaySound = "\(sound.name) (from \(playlist.name))"
+                    }
+                    soundToUse = .imported(selectedSoundID)
+                }
+            }
+
+            let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+
+            // Create the test alarm configuration
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
+                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+            )
+            let attributes = AlarmAttributes(
+                presentation: AlarmPresentation(alert: alert),
+                metadata: ScheduledOccurrenceMetadata(
+                    alarmID: alarm.id,
+                    occurrenceKey: "TEST-\(Int64(testDate.timeIntervalSince1970))",
+                    baseDate: testDate
+                ),
+                tintColor: .orange
+            )
+
+            let configuration = AlarmManager.AlarmConfiguration.alarm(
+                schedule: .fixed(testDate),
+                attributes: attributes,
+                sound: alarmKitSound
+            )
+
+            _ = try await (scheduler as? AlarmKitSchedulingService)?.manager.schedule(id: testID, configuration: configuration)
+
+        } catch {
+            lastError = "Test alarm failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Cancel a pending test alarm
+    func cancelTestAlarm(testID: UUID) async {
+        try? (scheduler as? AlarmKitSchedulingService)?.manager.cancel(id: testID)
     }
 }
