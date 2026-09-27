@@ -25,16 +25,27 @@ jobs:
         run: xcodegen generate
 
 
-      - name: Inspect Xcode 26 AlarmKit sound interfaces
+      - name: Verify Xcode 26 AlarmKit custom sound API
         run: |
-          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-          echo "SDK=$SDK"
-          find "$SDK/System/Library/Frameworks/AlarmKit.framework/Modules" \
-               "$SDK/System/Library/Frameworks/ActivityKit.framework/Modules" \
-               -type f \( -name '*.swiftinterface' -o -name '*.swiftmodule' \) -print
-          grep -R -n -E 'AlertSound|sound:|static func alarm|func alarm|struct AlarmConfiguration|enum AlarmConfiguration' \
-            "$SDK/System/Library/Frameworks/AlarmKit.framework/Modules" \
-            "$SDK/System/Library/Frameworks/ActivityKit.framework/Modules" || true
+          cat > "$RUNNER_TEMP/AlarmKitSoundProbe.swift" <<'SWIFT'
+          import ActivityKit
+          import AlarmKit
+          import SwiftUI
+
+          struct ProbeMetadata: AlarmMetadata {}
+
+          func makeConfiguration(
+              schedule: Alarm.Schedule,
+              attributes: AlarmAttributes<ProbeMetadata>
+          ) -> AlarmManager.AlarmConfiguration<ProbeMetadata> {
+              let sound: AlertConfiguration.AlertSound = .named("probe.mp3")
+              return .alarm(schedule: schedule, attributes: attributes, sound: sound)
+          }
+          SWIFT
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios26.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -typecheck "$RUNNER_TEMP/AlarmKitSoundProbe.swift"
 
       - name: Run unit tests
         run: |
