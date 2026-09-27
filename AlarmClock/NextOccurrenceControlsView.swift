@@ -11,7 +11,37 @@ struct NextOccurrenceControlsView: View {
         coordinator.occurrence(for: alarm.id)
     }
 
+    private var skippedOccurrence: AlarmOccurrence? {
+        let now = Date()
+        let overrides = alarm.overrides
+        for (key, override) in overrides where override.isSkipped {
+            let calendar = Calendar.autoupdatingCurrent
+            let components = key.split(separator: "-").compactMap { Int($0) }
+            guard components.count == 3 else { continue }
+            var dateComponents = DateComponents()
+            dateComponents.calendar = calendar
+            dateComponents.timeZone = calendar.timeZone
+            dateComponents.year = components[0]
+            dateComponents.month = components[1]
+            dateComponents.day = components[2]
+            dateComponents.hour = alarm.time.hour
+            dateComponents.minute = alarm.time.minute
+            if let baseDate = calendar.date(from: dateComponents), baseDate > now {
+                return AlarmOccurrence(
+                    alarmID: alarm.id,
+                    occurrenceKey: key,
+                    baseDate: baseDate,
+                    effectiveDate: baseDate,
+                    isAdjusted: false
+                )
+            }
+        }
+        return nil
+    }
+
     var body: some View {
+        let colors = ThemeManager.shared.colors
+
         NavigationStack {
             Form {
                 if let occurrence {
@@ -24,44 +54,74 @@ struct NextOccurrenceControlsView: View {
                     }
 
                     Section("Adjustment") {
-                        HStack {
-                            Button("−\(alarm.adjustmentStepMinutes)") {
+                        HStack(spacing: 12) {
+                            Button {
                                 Task { await coordinator.adjustNext(id: alarm.id, minutes: -alarm.adjustmentStepMinutes) }
+                            } label: {
+                                Text("−\(alarm.adjustmentStepMinutes)")
+                                    .frame(maxWidth: .infinity)
                             }
-                            Spacer()
-                            Button("Reset") {
+                            .buttonStyle(.bordered)
+
+                            Button {
                                 Task { await coordinator.resetNext(id: alarm.id) }
+                            } label: {
+                                Text("Reset")
+                                    .frame(maxWidth: .infinity)
                             }
-                            Spacer()
-                            Button("+\(alarm.adjustmentStepMinutes)") {
+                            .buttonStyle(.bordered)
+
+                            Button {
                                 Task { await coordinator.adjustNext(id: alarm.id, minutes: alarm.adjustmentStepMinutes) }
+                            } label: {
+                                Text("+\(alarm.adjustmentStepMinutes)")
+                                    .frame(maxWidth: .infinity)
                             }
+                            .buttonStyle(.bordered)
                         }
+
                         DatePicker("Custom Time", selection: $customDate, in: Date.now...)
                         Button("Apply Custom Time") {
                             Task { await coordinator.setNextTime(id: alarm.id, date: customDate) }
                         }
-                        Button("Skip Next", role: .destructive) {
-                            Task { await coordinator.skipNext(id: alarm.id) }
-                        }
-                        Button("Undo Skip") {
-                            Task { await coordinator.undoSkip(id: alarm.id) }
+                        .buttonStyle(.bordered)
+
+                        if let skipped = skippedOccurrence {
+                            Section("Skipped Occurrence") {
+                                Text("This occurrence is skipped: \(skipped.baseDate.formatted(date: .abbreviated, time: .shortened))")
+                                    .foregroundStyle(colors.accent)
+                                Button("Undo Skip") {
+                                    Task { await coordinator.undoSkip(id: alarm.id) }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        } else {
+                            Button("Skip Next", role: .destructive) {
+                                Task { await coordinator.skipNext(id: alarm.id) }
+                            }
                         }
                     }
                 } else {
                     ContentUnavailableView("No Upcoming Occurrence", systemImage: "alarm.waves.left.and.right.slash")
-                    Button("Undo Skip") {
-                        Task { await coordinator.undoSkip(id: alarm.id) }
+                    if let skipped = skippedOccurrence {
+                        Text("Skipped: \(skipped.baseDate.formatted(date: .abbreviated, time: .shortened))")
+                            .foregroundStyle(colors.accent)
+                        Button("Undo Skip") {
+                            Task { await coordinator.undoSkip(id: alarm.id) }
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
 
                 if let error = coordinator.lastError {
                     Section("Scheduling Error") {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(colors.destructive)
                     }
                 }
             }
             .navigationTitle(alarm.label.isEmpty ? "Alarm" : alarm.label)
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

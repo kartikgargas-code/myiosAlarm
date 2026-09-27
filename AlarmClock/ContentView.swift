@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var showingEditor = false
     @State private var controlsAlarm: AlarmRecord?
     @State private var showingDiagnostics = false
+    @State private var showingAppearance = false
 
     var body: some View {
         NavigationStack {
@@ -37,16 +38,17 @@ struct ContentView: View {
 
                 if let error = coordinator.lastError {
                     Section("Scheduling Error") {
-                        Text(error).foregroundStyle(.red)
+                        Text(error).foregroundStyle(ThemeManager.shared.colors.destructive)
                     }
                 }
 
                 Section {
                     Button("AlarmKit Diagnostics") { showingDiagnostics = true }
+                    Button("Appearance") { showingAppearance = true }
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background(ThemeManager.shared.colors.background)
             .navigationTitle("Alarm Clock")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -72,13 +74,16 @@ struct ContentView: View {
             .sheet(isPresented: $showingDiagnostics) {
                 diagnosticsView
             }
+            .sheet(isPresented: $showingAppearance) {
+                AppearanceView()
+            }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {
                     await coordinator.synchronize()
                 }
             }
         }
-        .tint(.orange)
+        .tint(ThemeManager.shared.colors.accent)
     }
 
     private var authorizationSection: some View {
@@ -96,46 +101,69 @@ struct ContentView: View {
     }
 
     private func nextAlarmSection(alarm: AlarmRecord, occurrence: AlarmOccurrence) -> some View {
-        Section("Next Alarm") {
-            Button {
-                controlsAlarm = alarm
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 42, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
-                        .font(.headline)
-                    if occurrence.isAdjusted {
-                        Text("Normally \(occurrence.baseDate.formatted(date: .omitted, time: .shortened)) · \(adjustmentDescription(occurrence))")
-                            .foregroundStyle(.secondary)
-                    }
+        let colors = ThemeManager.shared.colors
+        let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
+
+        return Section("Next Alarm") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 44, weight: .medium))
+                    .foregroundStyle(colors.primaryText)
+                Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
+                    .font(.headline)
+                    .foregroundStyle(colors.primaryText)
+
+                if occurrence.isAdjusted {
+                    Text("Normally \(occurrence.baseDate.formatted(date: .omitted, time: .shortened)) · \(adjustmentDescription(occurrence))")
+                        .foregroundStyle(colors.secondaryText)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let skipped = skippedOccurrence {
+                    Text("Skipped: \(skipped.baseDate.formatted(date: .abbreviated, time: .shortened))")
+                        .foregroundStyle(colors.accent)
+                }
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
         }
     }
 
     private func alarmRow(_ alarm: AlarmRecord) -> some View {
-        HStack {
+        let colors = ThemeManager.shared.colors
+        let occurrence = coordinator.occurrence(for: alarm.id)
+        let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
+
+        return HStack(spacing: 12) {
             Button {
                 editorAlarm = alarm
                 showingEditor = true
             } label: {
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(timeText(alarm.time))
-                        .font(.title2)
-                        .foregroundStyle(.primary)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(colors.primaryText)
                     Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
-                        .foregroundStyle(.primary)
+                        .font(.subheadline)
+                        .foregroundStyle(colors.primaryText)
                     Text(alarm.repeatRule.displayName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let occurrence = coordinator.occurrence(for: alarm.id), occurrence.isAdjusted {
-                        Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        .foregroundStyle(colors.secondaryText)
+                    if let occurrence {
+                        HStack(spacing: 4) {
+                            if let skipped = skippedOccurrence {
+                                Label("Skipped", systemImage: "slash.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(colors.accent)
+                            } else if occurrence.isAdjusted {
+                                Label(adjustmentDescription(occurrence), systemImage: "clock.badge.checkmark.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(colors.accent)
+                            } else {
+                                Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(colors.secondaryText)
+                            }
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -146,6 +174,7 @@ struct ContentView: View {
                 controlsAlarm = alarm
             } label: {
                 Image(systemName: "ellipsis.circle")
+                    .foregroundStyle(colors.secondaryText)
             }
             .buttonStyle(.borderless)
 
@@ -155,6 +184,34 @@ struct ContentView: View {
             ))
             .labelsHidden()
         }
+    }
+
+    private func skippedOccurrenceForAlarm(_ alarm: AlarmRecord) -> AlarmOccurrence? {
+        let now = Date()
+        let overrides = alarm.overrides
+        for (key, override) in overrides where override.isSkipped {
+            let calendar = Calendar.autoupdatingCurrent
+            let components = key.split(separator: "-").compactMap { Int($0) }
+            guard components.count == 3 else { continue }
+            var dateComponents = DateComponents()
+            dateComponents.calendar = calendar
+            dateComponents.timeZone = calendar.timeZone
+            dateComponents.year = components[0]
+            dateComponents.month = components[1]
+            dateComponents.day = components[2]
+            dateComponents.hour = alarm.time.hour
+            dateComponents.minute = alarm.time.minute
+            if let baseDate = calendar.date(from: dateComponents), baseDate > now {
+                return AlarmOccurrence(
+                    alarmID: alarm.id,
+                    occurrenceKey: key,
+                    baseDate: baseDate,
+                    effectiveDate: baseDate,
+                    isAdjusted: false
+                )
+            }
+        }
+        return nil
     }
 
     private var diagnosticsView: some View {
@@ -185,6 +242,7 @@ struct ContentView: View {
 
     private func adjustmentDescription(_ occurrence: AlarmOccurrence) -> String {
         let minutes = Int(occurrence.effectiveDate.timeIntervalSince(occurrence.baseDate) / 60)
-        return minutes >= 0 ? "Adjusted +\(minutes) minutes" : "Adjusted \(minutes) minutes"
+        if minutes == 0 { return "No adjustment" }
+        return minutes > 0 ? "Adjusted +\(minutes) min" : "Adjusted \(minutes) min"
     }
 }

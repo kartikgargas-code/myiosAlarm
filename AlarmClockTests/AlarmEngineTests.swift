@@ -189,6 +189,59 @@ final class AlarmEngineTests: XCTestCase {
         XCTAssertEqual(plan.cancel, [stale])
     }
 
+    func testSkippedOccurrenceDisplayState() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+
+        // Initially no skipped occurrence
+        XCTAssertNil(engine.nextOccurrence(for: id, now: now)?.isAdjusted)
+
+        // Skip next occurrence
+        try engine.skipNext(id: id, now: now)
+
+        // Should have a skipped occurrence visible
+        let alarm = try XCTUnwrap(engine.alarm(id: id))
+        let skippedKey = alarm.overrides.first { $0.value.isSkipped }?.key
+        XCTAssertNotNil(skippedKey)
+        XCTAssertEqual(alarm.overrides[skippedKey!]?.isSkipped, true)
+
+        // After skip, next effective occurrence should be the following day
+        let afterSkip = engine.nextOccurrence(for: id, now: now)
+        XCTAssertNotNil(afterSkip)
+        XCTAssertNotEqual(afterSkip?.occurrenceKey, skippedKey)
+
+        // Undo skip should remove the skipped indicator
+        try engine.undoSkip(id: id, now: now)
+        let afterUndo = engine.alarm(id: id)?.overrides
+        XCTAssertNil(afterUndo?[skippedKey!]?.isSkipped)
+
+        // Original occurrence should be next again
+        let finalOccurrence = engine.nextOccurrence(for: id, now: now)
+        XCTAssertEqual(finalOccurrence?.occurrenceKey, skippedKey)
+    }
+
+    func testAdjustmentDisplayAfterMultipleAdjustments() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+
+        try engine.adjustNext(id: id, byMinutes: 10, now: now)
+        var occ = try XCTUnwrap(engine.nextOccurrence(for: id, now: now))
+        XCTAssertTrue(occ.isAdjusted)
+        XCTAssertEqual(Int(occ.effectiveDate.timeIntervalSince(occ.baseDate) / 60), 10)
+
+        try engine.adjustNext(id: id, byMinutes: 10, now: now)
+        occ = try XCTUnwrap(engine.nextOccurrence(for: id, now: now))
+        XCTAssertEqual(Int(occ.effectiveDate.timeIntervalSince(occ.baseDate) / 60), 20)
+
+        try engine.adjustNext(id: id, byMinutes: -10, now: now)
+        occ = try XCTUnwrap(engine.nextOccurrence(for: id, now: now))
+        XCTAssertEqual(Int(occ.effectiveDate.timeIntervalSince(occ.baseDate) / 60), 10)
+
+        try engine.resetNext(id: id, now: now)
+        occ = try XCTUnwrap(engine.nextOccurrence(for: id, now: now))
+        XCTAssertFalse(occ.isAdjusted)
+    }
+
     private func engineWithDailyAlarm() -> AlarmEngine {
         var engine = AlarmEngine(calendar: calendar)
         try! engine.upsert(

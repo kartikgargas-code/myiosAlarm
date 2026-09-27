@@ -65,6 +65,8 @@ struct AlarmEditorView: View {
                 }
             }
             .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -92,6 +94,7 @@ struct AlarmEditorView: View {
                 }
             }
         }
+        .background(ThemeManager.shared.colors.background)
     }
 
     private var repeatSelection: Binding<RepeatSelection> {
