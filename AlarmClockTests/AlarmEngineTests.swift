@@ -262,6 +262,7 @@ final class AlarmEngineTests: XCTestCase {
         return [values.year!, values.month!, values.day!, values.hour!, values.minute!]
     }
 
+    @MainActor
     func testImportedSoundStableIDAndLookup() throws {
         let fileName = "song_abc123.mp3"
         let id = StableSoundID.make(for: fileName)
@@ -272,6 +273,7 @@ final class AlarmEngineTests: XCTestCase {
         }
     }
 
+    @MainActor
     func testBuiltInSoundNameMapping() {
         XCTAssertEqual(AlarmSound.builtIn("Chime").systemFileName, "chime.wav")
         XCTAssertNil(AlarmSound.systemDefault.systemFileName)
