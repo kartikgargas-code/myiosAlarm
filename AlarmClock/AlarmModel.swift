@@ -1,4 +1,27 @@
 import Foundation
+import UniformTypeIdentifiers
+
+enum AlarmSound: Codable, Equatable, Hashable {
+    case systemDefault
+    case builtIn(String)
+    case imported(UUID)
+
+    var id: String {
+        switch self {
+        case .systemDefault: "systemDefault"
+        case .builtIn(let name): "builtin_\(name)"
+        case .imported(let id): "imported_\(id.uuidString)"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .systemDefault: "Default"
+        case .builtIn(let name): name
+        case .imported(_): "Imported"
+        }
+    }
+}
 
 enum AlarmRepeatRule: Codable, Equatable, Hashable {
     case never
@@ -59,6 +82,7 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
     var isEnabled: Bool
     var adjustmentStepMinutes: Int
     var overrides: [String: AlarmOccurrenceOverride]
+    var sound: AlarmSound
 
     init(
         id: UUID = UUID(),
@@ -68,7 +92,8 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
         oneTimeDate: Date? = nil,
         isEnabled: Bool = true,
         adjustmentStepMinutes: Int = 10,
-        overrides: [String: AlarmOccurrenceOverride] = [:]
+        overrides: [String: AlarmOccurrenceOverride] = [:],
+        sound: AlarmSound = .systemDefault
     ) {
         self.id = id
         self.label = label
@@ -78,6 +103,7 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
         self.isEnabled = isEnabled
         self.adjustmentStepMinutes = adjustmentStepMinutes
         self.overrides = overrides
+        self.sound = sound
     }
 }
 

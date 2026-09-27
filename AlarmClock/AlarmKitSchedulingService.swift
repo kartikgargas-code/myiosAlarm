@@ -12,6 +12,7 @@ struct DesiredSystemAlarm: Equatable {
     let id: UUID
     let occurrence: AlarmOccurrence
     let label: String
+    let sound: AlarmSound
 }
 
 @MainActor

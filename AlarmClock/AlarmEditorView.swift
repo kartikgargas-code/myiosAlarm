@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AlarmEditorView: View {
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +13,9 @@ struct AlarmEditorView: View {
     @State private var customDays: Set<Int>
     @State private var oneTimeDate: Date
     @State private var adjustmentStep: Int
+    @State private var selectedSound: AlarmSound
+    @State private var showingSoundPicker = false
+    @State private var showingDocumentPicker = false
 
     init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void) {
         self.existingAlarm = existingAlarm
@@ -29,6 +33,7 @@ struct AlarmEditorView: View {
         }
         _oneTimeDate = State(initialValue: existingAlarm?.oneTimeDate ?? Date.now.addingTimeInterval(3_600))
         _adjustmentStep = State(initialValue: existingAlarm?.adjustmentStepMinutes ?? 10)
+        _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
     }
 
     var body: some View {
@@ -58,6 +63,22 @@ struct AlarmEditorView: View {
                     }
                 }
 
+                Section("Sound") {
+                    Button {
+                        showingSoundPicker = true
+                    } label: {
+                        HStack {
+                            Text("Alarm Sound")
+                            Spacer()
+                            Text(selectedSound.displayName)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Picker("Adjustment Step", selection: $adjustmentStep) {
                     ForEach([1, 5, 10, 15, 30], id: \.self) { value in
                         Text("\(value) minutes").tag(value)
@@ -83,7 +104,8 @@ struct AlarmEditorView: View {
                             oneTimeDate: repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil,
                             isEnabled: existingAlarm?.isEnabled ?? true,
                             adjustmentStepMinutes: adjustmentStep,
-                            overrides: existingAlarm?.overrides ?? [:]
+                            overrides: existingAlarm?.overrides ?? [:],
+                            sound: selectedSound
                         )
                         Task {
                             await onSave(alarm)
@@ -95,6 +117,31 @@ struct AlarmEditorView: View {
             }
         }
         .background(ThemeManager.shared.colors.background)
+        .sheet(isPresented: $showingSoundPicker) {
+            SoundPickerView(selectedSound: $selectedSound, showingDocumentPicker: $showingDocumentPicker)
+        }
+        .fileImporter(
+            isPresented: $showingDocumentPicker,
+            allowedContentTypes: [UTType.mp3, UTType.audio],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { await importAndSelectMP3(url) }
+                }
+            case .failure:
+                break
+            }
+        }
+    }
+
+    private func importAndSelectMP3(_ url: URL) async {
+        if let sound = await SoundLibrary.shared.importMP3(from: url, accessGranted: true) {
+            await MainActor.run {
+                selectedSound = .imported(sound.id)
+            }
+        }
     }
 
     private var repeatSelection: Binding<RepeatSelection> {

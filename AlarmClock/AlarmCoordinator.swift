@@ -102,7 +102,8 @@ final class AlarmCoordinator {
             return DesiredSystemAlarm(
                 id: SystemScheduleID.make(for: occurrence, label: label),
                 occurrence: occurrence,
-                label: label
+                label: label,
+                sound: alarm.sound
             )
         }
     }
