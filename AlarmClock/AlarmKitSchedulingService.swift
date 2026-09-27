@@ -102,20 +102,20 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
         _ = try await manager.schedule(id: item.id, configuration: configuration)
     }
 
-    private func soundForAlarmKit(_ sound: AlarmSound) -> AlertConfiguration.AlertSound? {
+    private func soundForAlarmKit(_ sound: AlarmSound) -> AlarmConfiguration.AlertSound? {
         switch sound {
         case .systemDefault:
             return nil // Use system default
         case .builtIn(let name):
             // For built-in sounds, try to use system sound name
-            return AlertConfiguration.AlertSound.named(name)
+            return AlarmConfiguration.AlertSound.named(name)
         case .imported(let id):
             // For imported sounds, get the filename from SoundLibrary
             guard let importedSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
                   let fileName = SoundLibrary.shared.getAlarmKitSoundFileName(for: importedSound) else {
                 return nil
             }
-            return AlertConfiguration.AlertSound.named(fileName)
+            return AlarmConfiguration.AlertSound.named(fileName)
         }
     }
 }
