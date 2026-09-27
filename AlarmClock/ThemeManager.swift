@@ -21,7 +21,22 @@ final class ThemeManager {
         if currentTheme == .custom {
             return customThemeColors.toThemeColors()
         }
-        return currentTheme.colors
+        switch currentTheme {
+        case .midnightBlack:
+            return Theme.midnightBlack.colors
+        case .charcoalOrange:
+            return Theme.charcoalOrange.colors
+        case .deepBlue:
+            return Theme.deepBlue.colors
+        case .emeraldDark:
+            return Theme.emeraldDark.colors
+        case .crimsonDark:
+            return Theme.crimsonDark.colors
+        case .light:
+            return Theme.light.colors
+        case .custom:
+            return customThemeColors.toThemeColors()
+        }
     }
 
     var availableThemes: [Theme] = [
@@ -157,7 +172,17 @@ enum Theme: String, CaseIterable, Identifiable {
                 destructive: Color(red: 0.9, green: 0.18, blue: 0.2)
             )
         case .custom:
-            return customThemeColors.toThemeColors()
+            return ThemeColors(
+                background: Color(red: 0, green: 0, blue: 0),
+                card: Color(red: 0.11, green: 0.11, blue: 0.12),
+                primaryText: Color.white,
+                secondaryText: Color(red: 0.65, green: 0.65, blue: 0.68),
+                accent: Color(red: 1.0, green: 0.58, blue: 0.0),
+                toggleOn: Color(red: 1.0, green: 0.58, blue: 0.0),
+                toggleOff: Color(red: 0.33, green: 0.33, blue: 0.35),
+                divider: Color(red: 0.22, green: 0.22, blue: 0.24),
+                destructive: Color(red: 1.0, green: 0.23, blue: 0.19)
+            )
         }
     }
 }
