@@ -16,12 +16,12 @@ final class AlarmCoordinator {
 
     init(
         persistence: any AlarmPersisting = JSONAlarmPersistence(),
-        scheduler: any AlarmSystemScheduling = AlarmKitSchedulingService(),
+        scheduler: (any AlarmSystemScheduling)? = nil,
         calendar: Calendar = .autoupdatingCurrent,
         now: @escaping () -> Date = Date.init
     ) {
         self.persistence = persistence
-        self.scheduler = scheduler
+        self.scheduler = scheduler ?? AlarmKitSchedulingService()
         self.now = now
         do {
             engine = AlarmEngine(snapshot: try persistence.load(), calendar: calendar)
