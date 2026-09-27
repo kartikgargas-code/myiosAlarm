@@ -1,10 +1,9 @@
 import AlarmKit
-import ActivityKit
 import Foundation
 import SwiftUI
 
-// Type alias for ActivityKit's AlarmConfiguration.AlertSound
-typealias AlertSound = ActivityKit.AlarmConfiguration.AlertSound
+// Type alias for AlarmKit's AlarmConfiguration.AlertSound
+typealias AlertSound = AlarmKit.AlarmConfiguration.AlertSound
 
 struct ScheduledOccurrenceMetadata: AlarmMetadata {
     let alarmID: UUID
