@@ -1,11 +1,9 @@
 import Foundation
-import UniformTypeIdentifiers
 
 struct ImportedSound: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var fileName: String
-    var fileURL: URL?
     var duration: TimeInterval?
     var dateAdded: Date
 
@@ -29,6 +27,26 @@ struct ImportedSound: Identifiable, Codable, Hashable {
     }
 }
 
+enum SoundLibraryError: LocalizedError, Equatable {
+    case importedSoundNotFound(UUID)
+    case soundFileMissing(String)
+    case builtInSoundMissing(String)
+    case importFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .importedSoundNotFound(let id):
+            "The imported sound \(id.uuidString) is no longer available."
+        case .soundFileMissing(let fileName):
+            "The custom alarm sound file \(fileName) is missing from Library/Sounds."
+        case .builtInSoundMissing(let name):
+            "Built-in sound \(name) has no bundled audio resource."
+        case .importFailed(let message):
+            "MP3 import failed: \(message)"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class SoundLibrary {
@@ -36,10 +54,10 @@ final class SoundLibrary {
 
     private(set) var importedSounds: [ImportedSound] = []
     private let fileManager = FileManager.default
-    private let soundsDirectoryName = "Sounds"
+    private let displayNameKey = "importedSoundDisplayNames"
 
     var soundsDirectory: URL? {
-        // Use Library/Sounds for AlarmKit custom sounds
+        // AlarmKit custom sounds must live in the app container Library/Sounds.
         fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Sounds", isDirectory: true)
     }
@@ -59,14 +77,18 @@ final class SoundLibrary {
     private func loadSounds() {
         guard let dir = soundsDirectory else { return }
         do {
-            let files = try fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.creationDateKey])
+            let files = try fileManager.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.creationDateKey, .fileSizeKey]
+            )
+            let displayNames = savedDisplayNames()
             importedSounds = files.compactMap { url in
                 guard url.pathExtension.lowercased() == "mp3" else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 return ImportedSound(
                     id: stableID(for: url.lastPathComponent),
-                    name: url.deletingPathExtension().lastPathComponent,
+                    name: displayNames[url.lastPathComponent] ?? url.deletingPathExtension().lastPathComponent,
                     fileName: url.lastPathComponent,
                     duration: nil,
                     dateAdded: creationDate
@@ -77,71 +99,54 @@ final class SoundLibrary {
         }
     }
 
-    func importMP3(from sourceURL: URL, accessGranted: Bool = false) async -> ImportedSound? {
-        guard accessGranted || sourceURL.startAccessingSecurityScopedResource() else {
-            return nil
+    func importMP3(from sourceURL: URL) async throws -> ImportedSound {
+        guard let soundsDir = soundsDirectory else {
+            throw SoundLibraryError.importFailed("Library/Sounds is unavailable.")
         }
-        defer { sourceURL.stopAccessingSecurityScopedResource() }
 
-        guard let soundsDir = soundsDirectory else { return nil }
-
-        // Generate stable unique filename
         let baseName = sanitizedFileName(sourceURL.deletingPathExtension().lastPathComponent)
         let ext = sourceURL.pathExtension.lowercased()
         let stableFileName = "\(baseName)_\(UUID().uuidString.lowercased()).\(ext)"
         let destURL = soundsDir.appendingPathComponent(stableFileName)
+        let displayName = sourceURL.deletingPathExtension().lastPathComponent
 
-        do {
-            // Ensure directory exists
+        let copied: (fileName: String, bytes: Int) = try await Task.detached(priority: .userInitiated) {
+            let fileManager = FileManager.default
+            let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
+            defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
+
             try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
-
             if fileManager.fileExists(atPath: destURL.path) {
                 try fileManager.removeItem(at: destURL)
             }
             try fileManager.copyItem(at: sourceURL, to: destURL)
+            let size = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
+            return (stableFileName, size)
+        }.value
 
-            let sound = ImportedSound(
-                id: stableID(for: stableFileName),
-                name: sourceURL.deletingPathExtension().lastPathComponent,
-                fileName: stableFileName
-            )
-            importedSounds.insert(sound, at: 0)
-            return sound
-        } catch {
-            return nil
-        }
+        let sound = ImportedSound(
+            id: stableID(for: copied.fileName),
+            name: displayName,
+            fileName: copied.fileName
+        )
+        importedSounds.insert(sound, at: 0)
+        return sound
     }
 
     func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
         guard !isReferenced(sound, by: alarms) else { return }
-        guard let localURL = sound.localURL(soundsDirectory: soundsDirectory) else { return }
-        try? fileManager.removeItem(at: localURL)
+        if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
+            try? fileManager.removeItem(at: localURL)
+        }
+        removeDisplayNameOverride(for: sound.fileName)
         importedSounds.removeAll { $0.id == sound.id }
     }
 
-    func renameSound(_ sound: ImportedSound, newName: String) {
-        guard let localURL = sound.localURL(soundsDirectory: soundsDirectory),
-              let soundsDir = soundsDirectory else { return }
-
-        let ext = localURL.pathExtension
-        let newFileName = "\(newName).\(ext)"
-        let newURL = soundsDir.appendingPathComponent(newFileName)
-
-        guard !fileManager.fileExists(atPath: newURL.path) else { return }
-
-        do {
-            try fileManager.moveItem(at: localURL, to: newURL)
-            if let index = importedSounds.firstIndex(where: { $0.id == sound.id }) {
-                importedSounds[index].name = newName
-                importedSounds[index].fileName = newFileName
-            }
-        } catch {
-            // ignore
-        }
-    }
-
-    func getAlarmKitSoundURL(for sound: ImportedSound) -> URL? {
-        return sound.localURL(soundsDirectory: soundsDirectory)
+    func renameSound(_ sound: ImportedSound, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = importedSounds.firstIndex(where: { $0.id == sound.id }) else { return }
+        importedSounds[index].name = trimmed
+        setDisplayNameOverride(trimmed, for: sound.fileName)
     }
 
     func alarmKitFileName(for id: UUID) throws -> String {
@@ -172,19 +177,21 @@ final class SoundLibrary {
             occurrenceKey: fileName
         )
     }
-}
 
-enum SoundLibraryError: LocalizedError, Equatable {
-    case importedSoundNotFound(UUID)
-    case soundFileMissing(String)
+    private func savedDisplayNames() -> [String: String] {
+        (UserDefaults.standard.dictionary(forKey: displayNameKey) as? [String: String]) ?? [:]
+    }
 
-    var errorDescription: String? {
-        switch self {
-        case .importedSoundNotFound(let id):
-            "The imported sound \(id.uuidString) is no longer available."
-        case .soundFileMissing(let fileName):
-            "The custom alarm sound file \(fileName) is missing from Library/Sounds."
-        }
+    private func setDisplayNameOverride(_ name: String, for fileName: String) {
+        var overrides = savedDisplayNames()
+        overrides[fileName] = name
+        UserDefaults.standard.set(overrides, forKey: displayNameKey)
+    }
+
+    private func removeDisplayNameOverride(for fileName: String) {
+        var overrides = savedDisplayNames()
+        overrides[fileName] = nil
+        UserDefaults.standard.set(overrides, forKey: displayNameKey)
     }
 }
 

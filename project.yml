@@ -16,6 +16,9 @@ targets:
     platform: iOS
     sources:
       - path: AlarmClock
+      - path: AlarmClock/BuiltInSounds
+        type: folder
+        buildPhase: resources
     info:
       path: AlarmClock/Info.plist
       properties:

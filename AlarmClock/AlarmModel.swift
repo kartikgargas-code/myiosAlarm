@@ -1,5 +1,4 @@
 import Foundation
-import UniformTypeIdentifiers
 
 enum AlarmSound: Codable, Equatable, Hashable {
     case systemDefault
@@ -19,6 +18,13 @@ enum AlarmSound: Codable, Equatable, Hashable {
         case .systemDefault: "Default"
         case .builtIn(let name): name
         case .imported(_): "Imported"
+        }
+    }
+
+    var systemFileName: String? {
+        switch self {
+        case .systemDefault, .imported: nil
+        case .builtIn(let name): BuiltInSound.fileName(for: name)
         }
     }
 }

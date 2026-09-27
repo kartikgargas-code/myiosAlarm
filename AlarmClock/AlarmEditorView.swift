@@ -15,7 +15,6 @@ struct AlarmEditorView: View {
     @State private var adjustmentStep: Int
     @State private var selectedSound: AlarmSound
     @State private var showingSoundPicker = false
-    @State private var showingDocumentPicker = false
 
     init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void) {
         self.existingAlarm = existingAlarm
@@ -118,29 +117,7 @@ struct AlarmEditorView: View {
         }
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
-            SoundPickerView(selectedSound: $selectedSound, showingDocumentPicker: $showingDocumentPicker)
-        }
-        .fileImporter(
-            isPresented: $showingDocumentPicker,
-            allowedContentTypes: [UTType.mp3, UTType.audio],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    Task { await importAndSelectMP3(url) }
-                }
-            case .failure:
-                break
-            }
-        }
-    }
-
-    private func importAndSelectMP3(_ url: URL) async {
-        if let sound = await SoundLibrary.shared.importMP3(from: url, accessGranted: true) {
-            await MainActor.run {
-                selectedSound = .imported(sound.id)
-            }
+            SoundPickerView(selectedSound: $selectedSound)
         }
     }
 

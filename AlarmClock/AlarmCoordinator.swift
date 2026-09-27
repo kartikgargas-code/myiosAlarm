@@ -128,7 +128,13 @@ final class AlarmCoordinator {
         case .systemDefault:
             return .default
         case .builtIn(let name):
-            return .named(name)
+            guard let fileName = sound.systemFileName else {
+                throw SoundLibraryError.builtInSoundMissing(name)
+            }
+            guard SoundPreviewService.bundledSoundURL(for: fileName) != nil else {
+                throw SoundLibraryError.builtInSoundMissing(fileName)
+            }
+            return .named(fileName)
         case .imported(let id):
             let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
             return .named(fileName)

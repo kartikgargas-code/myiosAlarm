@@ -261,4 +261,22 @@ final class AlarmEngineTests: XCTestCase {
         let values = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         return [values.year!, values.month!, values.day!, values.hour!, values.minute!]
     }
+
+    func testImportedSoundStableIDAndLookup() throws {
+        let fileName = "song_abc123.mp3"
+        let id = StableSoundID.make(for: fileName)
+        XCTAssertEqual(StableSoundID.make(for: fileName), id)
+        let randomID = UUID()
+        XCTAssertThrowsError(try SoundLibrary.shared.alarmKitFileName(for: randomID)) { error in
+            XCTAssertEqual(error as? SoundLibraryError, .importedSoundNotFound(randomID))
+        }
+    }
+
+    func testBuiltInSoundNameMapping() {
+        XCTAssertEqual(AlarmSound.builtIn("Chime").systemFileName, "chime.wav")
+        XCTAssertNil(AlarmSound.systemDefault.systemFileName)
+        XCTAssertNil(AlarmSound.imported(UUID()).systemFileName)
+        XCTAssertEqual(BuiltInSound.fileName(for: "Chime"), "chime.wav")
+        XCTAssertNil(BuiltInSound.fileName(for: "Not Real"))
+    }
 }

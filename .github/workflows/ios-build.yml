@@ -75,6 +75,14 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :NSAlarmKitUsageDescription' "$PLIST")" = \
             "Alarm Clock schedules alarms you explicitly create and test."
 
+      - name: Verify bundled built-in alarm sounds
+        run: |
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app"
+          for f in classic-bell digital gentle-wake morning pulse chime soft bright; do
+            test -f "$APP/BuiltInSounds/$f.wav" || { echo "Missing bundled sound: $f.wav"; exit 1; }
+          done
+          echo "All 8 built-in alarm sounds are bundled."
+
       - name: Package unsigned IPA container
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
