@@ -70,7 +70,8 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     private func schedule(_ item: DesiredSystemAlarm) async throws {
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
-            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+            sound: soundForAlarmKit(item.sound)
         )
         let attributes = AlarmAttributes(
             presentation: AlarmPresentation(alert: alert),
@@ -86,6 +87,23 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
             attributes: attributes
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
+    }
+
+    private func soundForAlarmKit(_ sound: AlarmSound) -> AlarmPresentation.Alert.Sound? {
+        switch sound {
+        case .systemDefault:
+            return nil // Use system default
+        case .builtIn(let name):
+            // For built-in sounds, try to use system sound name
+            return AlarmPresentation.Alert.Sound(named: name)
+        case .imported(let id):
+            // For imported sounds, we need to reference the file
+            // The sound file should be in the app's Documents/Sounds directory
+            // AlarmKit may require the sound to be in the app bundle
+            // For now, return nil and let system default play
+            // TODO: Investigate AlarmKit custom sound file requirements
+            return nil
+        }
     }
 }
 

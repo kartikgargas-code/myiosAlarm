@@ -217,11 +217,48 @@ struct ContentView: View {
     private var diagnosticsView: some View {
         NavigationStack {
             ScrollView {
-                Text(authorizationModel.diagnosticsText)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Authorization Diagnostics")
+                        .font(.headline)
+                    Text(authorizationModel.diagnosticsText)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Divider()
+
+                    Text("Scheduling Diagnostics")
+                        .font(.headline)
+
+                    if let next = coordinator.nextOccurrence,
+                       let alarm = coordinator.alarms.first(where: { $0.id == next.alarmID }) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Next Scheduled Alarm")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Label: \(alarm.label.isEmpty ? "Alarm" : alarm.label)")
+                            Text("ID: \(alarm.id.uuidString)")
+                            Text("Sound: \(alarm.sound.displayName)")
+                            Text("Sound ID: \(alarm.sound.id)")
+                            Text("Next Fire: \(next.effectiveDate.formatted(date: .complete, time: .standard))")
+                            Text("Base Time: \(next.baseDate.formatted(date: .complete, time: .standard))")
+                            Text("Adjusted: \(next.isAdjusted ? "Yes" : "No")")
+                        }
+                    } else {
+                        Text("No next occurrence scheduled")
+                    }
+
+                    if let error = coordinator.lastError {
+                        Divider()
+                        Text("Last Error")
+                            .font(.subheadline.weight(.semibold))
+                        Text(error)
+                            .foregroundStyle(ThemeManager.shared.colors.destructive)
+                    }
+                }
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
             }
             .navigationTitle("Diagnostics")
             .toolbar {
