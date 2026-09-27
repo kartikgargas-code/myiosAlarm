@@ -46,6 +46,12 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+      - name: Verify built AlarmKit usage description
+        run: |
+          PLIST="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSAlarmKitUsageDescription' "$PLIST")" = \
+            "Alarm Clock schedules alarms you explicitly create and test."
+
       - name: Package unsigned IPA container
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"

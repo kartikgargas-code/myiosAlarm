@@ -18,6 +18,11 @@ targets:
       - path: AlarmClock
     info:
       path: AlarmClock/Info.plist
+      properties:
+        NSAlarmKitUsageDescription: Alarm Clock schedules alarms you explicitly create and test.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock
