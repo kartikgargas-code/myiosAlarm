@@ -25,7 +25,7 @@ struct AlarmScheduleCalculator {
             guard let day = calendar.date(byAdding: .day, value: dayOffset, to: startDay) else { continue }
             let weekday = calendar.component(.weekday, from: day)
             guard alarm.repeatRule.weekdays.contains(weekday),
-                  let candidate = date(on: day, time: alarm.time) else { continue }
+                  let candidate = alarmDate(on: day, time: alarm.time) else { continue }
             if candidate > date {
                 return candidate
             }
@@ -85,7 +85,7 @@ struct AlarmScheduleCalculator {
             .min { $0.effectiveDate < $1.effectiveDate }
     }
 
-    private func date(on day: Date, time: AlarmTime) -> Date? {
+    private func alarmDate(on day: Date, time: AlarmTime) -> Date? {
         var matching = DateComponents()
         matching.hour = time.hour
         matching.minute = time.minute
