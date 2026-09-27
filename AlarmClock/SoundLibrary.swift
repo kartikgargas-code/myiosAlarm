@@ -107,13 +107,13 @@ final class SoundLibrary {
     }
 
     func deleteSound(_ sound: ImportedSound) {
-        guard let localURL = sound.localURL else { return }
+        guard let localURL = sound.localURL(soundsDirectory: soundsDirectory) else { return }
         try? fileManager.removeItem(at: localURL)
         importedSounds.removeAll { $0.id == sound.id }
     }
 
     func renameSound(_ sound: ImportedSound, newName: String) {
-        guard let localURL = sound.localURL,
+        guard let localURL = sound.localURL(soundsDirectory: soundsDirectory),
               let soundsDir = soundsDirectory else { return }
 
         let ext = localURL.pathExtension
@@ -134,9 +134,7 @@ final class SoundLibrary {
     }
 
     func getAlarmKitSoundURL(for sound: ImportedSound) -> URL? {
-        // For AlarmKit custom sounds, the file needs to be in the app's bundle or accessible location
-        // We'll return the local file URL; AlarmKit may require specific handling
-        return sound.localURL
+        return sound.localURL(soundsDirectory: soundsDirectory)
     }
 }
 
