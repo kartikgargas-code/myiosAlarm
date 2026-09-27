@@ -39,51 +39,66 @@ struct AlarmScheduleCalculator {
 
     func effectiveOccurrences(for alarm: AlarmRecord, after date: Date, limit: Int) -> [AlarmOccurrence] {
         guard limit > 0 else { return [] }
-        var occurrences: [AlarmOccurrence] = []
-        var cursor = date.addingTimeInterval(-7 * 86_400)
+        var occurrencesByKey: [String: AlarmOccurrence] = [:]
 
-        for _ in 0..<400 {
-            guard let baseDate = nextBaseOccurrence(for: alarm, after: cursor) else { break }
-            cursor = baseDate.addingTimeInterval(1)
-            let key = occurrenceKey(for: baseDate)
-            let override = alarm.overrides[key]
-            guard override?.isSkipped != true else { continue }
-
-            let effectiveDate: Date
-            if let customDate = override?.customDate {
-                effectiveDate = customDate
-            } else if let offsetMinutes = override?.offsetMinutes {
-                effectiveDate = baseDate.addingTimeInterval(TimeInterval(offsetMinutes * 60))
-            } else {
-                effectiveDate = baseDate
-            }
+        for (key, override) in alarm.overrides where !override.isSkipped {
+            guard let baseDate = baseDate(for: key, alarm: alarm) else { continue }
+            let effectiveDate = override.customDate
+                ?? baseDate.addingTimeInterval(TimeInterval((override.offsetMinutes ?? 0) * 60))
             guard effectiveDate > date else { continue }
-
-            occurrences.append(AlarmOccurrence(
+            occurrencesByKey[key] = AlarmOccurrence(
                 alarmID: alarm.id,
                 occurrenceKey: key,
                 baseDate: baseDate,
                 effectiveDate: effectiveDate,
                 isAdjusted: effectiveDate != baseDate
-            ))
-            occurrences.sort { $0.effectiveDate < $1.effectiveDate }
-            if occurrences.count > limit {
-                occurrences.removeLast(occurrences.count - limit)
-            }
-
-            if occurrences.count == limit,
-               let latest = occurrences.last,
-               baseDate > latest.effectiveDate.addingTimeInterval(7 * 86_400) {
-                break
-            }
+            )
         }
-        return occurrences
+
+        var cursor = date
+        for _ in 0..<(limit + alarm.overrides.count + 14) {
+            guard let baseDate = nextBaseOccurrence(for: alarm, after: cursor) else { break }
+            cursor = baseDate.addingTimeInterval(1)
+            let key = occurrenceKey(for: baseDate)
+            let override = alarm.overrides[key]
+            guard override?.isSkipped != true else { continue }
+            let effectiveDate = override?.customDate
+                ?? baseDate.addingTimeInterval(TimeInterval((override?.offsetMinutes ?? 0) * 60))
+            guard effectiveDate > date else { continue }
+            occurrencesByKey[key] = AlarmOccurrence(
+                alarmID: alarm.id,
+                occurrenceKey: key,
+                baseDate: baseDate,
+                effectiveDate: effectiveDate,
+                isAdjusted: effectiveDate != baseDate
+            )
+        }
+
+        return occurrencesByKey.values
+            .sorted { $0.effectiveDate < $1.effectiveDate }
+            .prefix(limit)
+            .map { $0 }
     }
 
     func earliestEffectiveOccurrence(in alarms: [AlarmRecord], after date: Date) -> AlarmOccurrence? {
         alarms.compactMap { nextEffectiveOccurrence(for: $0, after: date) }
             .min { $0.effectiveDate < $1.effectiveDate }
     }
+
+    private func baseDate(for key: String, alarm: AlarmRecord) -> Date? {
+        let values = key.split(separator: "-").compactMap { Int($0) }
+        guard values.count == 3 else { return nil }
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = values[0]
+        components.month = values[1]
+        components.day = values[2]
+        components.hour = alarm.time.hour
+        components.minute = alarm.time.minute
+        return calendar.date(from: components)
+    }
+
 
     private func alarmDate(on day: Date, time: AlarmTime) -> Date? {
         var matching = DateComponents()

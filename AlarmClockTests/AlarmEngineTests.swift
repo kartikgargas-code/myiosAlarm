@@ -60,6 +60,16 @@ final class AlarmEngineTests: XCTestCase {
         XCTAssertEqual(components(occurrences[1].effectiveDate), [2026, 9, 22, 7, 0])
     }
 
+    func testDelayedOccurrenceRemainsNextAfterPermanentTimePasses() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.adjustNext(id: id, byMinutes: 120, now: now)
+        let afterBaseTime = date(2026, 9, 21, 7, 30)
+        let occurrence = try XCTUnwrap(engine.nextOccurrence(for: id, now: afterBaseTime))
+        XCTAssertEqual(occurrence.occurrenceKey, "2026-09-21")
+        XCTAssertEqual(components(occurrence.effectiveDate), [2026, 9, 21, 9, 0])
+    }
+
     func testMultipleAlarmsReorderWithoutLosingAdjustment() throws {
         var engine = AlarmEngine(calendar: calendar)
         let first = AlarmRecord(label: "A", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
