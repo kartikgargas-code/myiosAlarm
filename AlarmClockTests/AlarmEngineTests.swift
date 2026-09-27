@@ -1,0 +1,199 @@
+import XCTest
+@testable import AlarmClock
+
+final class AlarmEngineTests: XCTestCase {
+    private var calendar: Calendar!
+    private var now: Date!
+
+    override func setUp() {
+        calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        now = date(2026, 9, 21, 6, 0)
+    }
+
+    func testDailyPlusTenAdjustsOnlyNextOccurrence() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+
+        try engine.adjustNext(id: id, byMinutes: 10, now: now)
+
+        let occurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 2)
+        XCTAssertEqual(components(occurrences[0].effectiveDate), [2026, 9, 21, 7, 10])
+        XCTAssertEqual(components(occurrences[1].effectiveDate), [2026, 9, 22, 7, 0])
+        XCTAssertEqual(engine.alarm(id: id)?.time, AlarmTime(hour: 7, minute: 0))
+    }
+
+    func testDailyMinusTen() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.adjustNext(id: id, byMinutes: -10, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 21, 6, 50])
+    }
+
+    func testAdjustmentsAccumulateAndReset() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.adjustNext(id: id, byMinutes: 10, now: now)
+        try engine.adjustNext(id: id, byMinutes: 10, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 21, 7, 20])
+        try engine.adjustNext(id: id, byMinutes: -10, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 21, 7, 10])
+        try engine.resetNext(id: id, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 21, 7, 0])
+    }
+
+    func testSkipAndUndoAffectOnlyOneOccurrence() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.skipNext(id: id, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 22, 7, 0])
+        try engine.undoSkip(id: id, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: id, now: now)!.effectiveDate), [2026, 9, 21, 7, 0])
+    }
+
+    func testCustomNextTimePreservesBaseSchedule() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.setNextTime(id: id, date: date(2026, 9, 21, 8, 17), now: now)
+        let occurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 2)
+        XCTAssertEqual(components(occurrences[0].effectiveDate), [2026, 9, 21, 8, 17])
+        XCTAssertEqual(components(occurrences[1].effectiveDate), [2026, 9, 22, 7, 0])
+    }
+
+    func testMultipleAlarmsReorderWithoutLosingAdjustment() throws {
+        var engine = AlarmEngine(calendar: calendar)
+        let first = AlarmRecord(label: "A", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
+        let second = AlarmRecord(label: "B", time: AlarmTime(hour: 7, minute: 5), repeatRule: .daily)
+        try engine.upsert(first, now: now)
+        try engine.upsert(second, now: now)
+        XCTAssertEqual(engine.earliestOccurrence(now: now)?.alarmID, first.id)
+        try engine.adjustNext(id: first.id, byMinutes: 10, now: now)
+        XCTAssertEqual(engine.earliestOccurrence(now: now)?.alarmID, second.id)
+        XCTAssertEqual(components(engine.nextOccurrence(for: first.id, now: now)!.effectiveDate), [2026, 9, 21, 7, 10])
+    }
+
+    func testWeekdayWeekendAndCustomRecurrence() throws {
+        var engine = AlarmEngine(calendar: calendar)
+        let weekday = AlarmRecord(label: "Weekday", time: AlarmTime(hour: 7, minute: 0), repeatRule: .weekdays)
+        let weekend = AlarmRecord(label: "Weekend", time: AlarmTime(hour: 8, minute: 0), repeatRule: .weekends)
+        let custom = AlarmRecord(label: "Custom", time: AlarmTime(hour: 9, minute: 0), repeatRule: .custom([3, 5]))
+        try engine.upsert(weekday, now: now)
+        try engine.upsert(weekend, now: now)
+        try engine.upsert(custom, now: now)
+        XCTAssertEqual(components(engine.nextOccurrence(for: weekday.id, now: date(2026, 9, 25, 8, 0))!.baseDate), [2026, 9, 28, 7, 0])
+        XCTAssertEqual(components(engine.nextOccurrence(for: weekend.id, now: date(2026, 9, 25, 8, 0))!.baseDate), [2026, 9, 26, 8, 0])
+        XCTAssertEqual(components(engine.nextOccurrence(for: custom.id, now: now)!.baseDate), [2026, 9, 22, 9, 0])
+    }
+
+    func testMidnightCrossingKeepsOccurrenceIdentity() throws {
+        var engine = AlarmEngine(calendar: calendar)
+        let alarm = AlarmRecord(label: "Midnight", time: AlarmTime(hour: 0, minute: 5), repeatRule: .daily)
+        let beforeMidnight = date(2026, 9, 21, 23, 0)
+        try engine.upsert(alarm, now: beforeMidnight)
+        try engine.adjustNext(id: alarm.id, byMinutes: -10, now: beforeMidnight)
+        let occurrence = try XCTUnwrap(engine.nextOccurrence(for: alarm.id, now: beforeMidnight))
+        XCTAssertEqual(occurrence.occurrenceKey, "2026-09-22")
+        XCTAssertEqual(components(occurrence.effectiveDate), [2026, 9, 21, 23, 55])
+    }
+
+    func testMovingOccurrenceIntoPastFails() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        XCTAssertThrowsError(try engine.adjustNext(id: id, byMinutes: -120, now: now)) {
+            XCTAssertEqual($0 as? AlarmEngineError, .occurrenceWouldBeInPast)
+        }
+    }
+
+    func testDisablingAndDeletingRemoveDesiredOccurrences() throws {
+        var engine = engineWithDailyAlarm()
+        let id = try XCTUnwrap(engine.alarms.first?.id)
+        try engine.setEnabled(false, id: id)
+        XCTAssertNil(engine.nextOccurrence(for: id, now: now))
+        engine.delete(id: id)
+        XCTAssertTrue(engine.desiredOccurrences(now: now).isEmpty)
+    }
+
+    func testScheduleEditClearsOverridesButLabelEditPreservesThem() throws {
+        var engine = engineWithDailyAlarm()
+        var alarm = try XCTUnwrap(engine.alarms.first)
+        try engine.adjustNext(id: alarm.id, byMinutes: 10, now: now)
+        alarm = try XCTUnwrap(engine.alarm(id: alarm.id))
+        alarm.label = "Renamed"
+        try engine.upsert(alarm, now: now)
+        XCTAssertEqual(engine.alarm(id: alarm.id)?.overrides.count, 1)
+        alarm.time = AlarmTime(hour: 8, minute: 0)
+        try engine.upsert(alarm, now: now)
+        XCTAssertTrue(engine.alarm(id: alarm.id)?.overrides.isEmpty == true)
+    }
+
+    func testPersistenceRoundTripPreservesAdjustmentsAndSkips() throws {
+        var engine = engineWithDailyAlarm()
+        let first = try XCTUnwrap(engine.alarms.first)
+        let second = AlarmRecord(label: "Second", time: AlarmTime(hour: 8, minute: 0), repeatRule: .daily)
+        try engine.upsert(second, now: now)
+        try engine.adjustNext(id: first.id, byMinutes: 10, now: now)
+        try engine.skipNext(id: second.id, now: now)
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let persistence = JSONAlarmPersistence(fileURL: url)
+        try persistence.save(engine.snapshot)
+        let loaded = try persistence.load()
+        XCTAssertEqual(loaded, engine.snapshot)
+    }
+
+    func testStableOccurrenceAndSystemIDsAreDeterministic() throws {
+        let engine = engineWithDailyAlarm()
+        let occurrence = try XCTUnwrap(engine.earliestOccurrence(now: now))
+        XCTAssertEqual(occurrence.id, occurrence.id)
+        XCTAssertEqual(
+            SystemScheduleID.make(for: occurrence, label: "Morning"),
+            SystemScheduleID.make(for: occurrence, label: "Morning")
+        )
+        XCTAssertNotEqual(
+            SystemScheduleID.make(for: occurrence, label: "Morning"),
+            SystemScheduleID.make(for: occurrence, label: "Changed")
+        )
+    }
+
+    func testDSTSpringForwardUsesNextValidLocalTime() throws {
+        var engine = AlarmEngine(calendar: calendar)
+        let alarm = AlarmRecord(label: "DST", time: AlarmTime(hour: 2, minute: 30), repeatRule: .daily)
+        let before = date(2027, 3, 13, 3, 0)
+        try engine.upsert(alarm, now: before)
+        let dates = engine.desiredOccurrences(now: before, perAlarmLimit: 2)
+        XCTAssertEqual(components(dates[0].baseDate), [2027, 3, 14, 3, 0])
+        XCTAssertEqual(components(dates[1].baseDate), [2027, 3, 15, 2, 30])
+    }
+
+    func testReconciliationDoesNotDuplicateExistingSystemAlarms() {
+        let existing = UUID()
+        let missing = UUID()
+        let stale = UUID()
+        let plan = AlarmReconciliationPlan(
+            desiredIDs: [existing, missing],
+            existingIDs: [existing, stale],
+            managedIDs: [existing, stale]
+        )
+        XCTAssertEqual(plan.schedule, [missing])
+        XCTAssertEqual(plan.cancel, [stale])
+    }
+
+    private func engineWithDailyAlarm() -> AlarmEngine {
+        var engine = AlarmEngine(calendar: calendar)
+        try! engine.upsert(
+            AlarmRecord(label: "Morning", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily),
+            now: now
+        )
+        return engine
+    }
+
+    private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private func components(_ date: Date) -> [Int] {
+        let values = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return [values.year!, values.month!, values.day!, values.hour!, values.minute!]
+    }
+}
