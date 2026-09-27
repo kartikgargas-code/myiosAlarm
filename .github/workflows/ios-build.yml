@@ -30,7 +30,7 @@ jobs:
           xcodebuild test \
             -project AlarmClock.xcodeproj \
             -scheme AlarmClock \
-            -destination 'platform=iOS Simulator,OS=26.0,name=iPhone 16' \
+            -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Build unsigned device application

@@ -24,7 +24,7 @@ Sources:
 2. Open **Actions > iOS Build > Run workflow**.
 3. Download the `AlarmClock-unsigned-ipa` artifact after the job succeeds.
 
-The workflow uses `macos-15`, selects Xcode 26, generates `AlarmClock.xcodeproj` from `project.yml`, runs unit tests in an iOS 26 simulator, builds for `iphoneos` with signing disabled, and wraps the `.app` as `Payload/AlarmClock.app` in an IPA container. GitHub's published `macos-15` image currently includes Xcode 26.0.1 and the iOS 26.0 iPhone 16 simulator.
+The workflow uses `macos-15`, selects Xcode 26, generates `AlarmClock.xcodeproj` from `project.yml`, runs unit tests using the latest installed iOS 26 simulator runtime, builds for `iphoneos` with signing disabled, and wraps the `.app` as `Payload/AlarmClock.app` in an IPA container. Selecting the latest installed runtime avoids coupling the workflow to a simulator patch version that changes as GitHub updates its runner image.
 
 The resulting file is unsigned. It cannot be installed directly. A sideloading tool must sign it for the target iPhone.
 
@@ -34,7 +34,7 @@ Local macOS equivalents:
 brew install xcodegen
 xcodegen generate
 xcodebuild test -project AlarmClock.xcodeproj -scheme AlarmClock \
-  -destination 'platform=iOS Simulator,OS=26.0,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
+  -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' CODE_SIGNING_ALLOWED=NO
 xcodebuild build -project AlarmClock.xcodeproj -scheme AlarmClock \
   -configuration Release -sdk iphoneos -derivedDataPath DerivedData \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
