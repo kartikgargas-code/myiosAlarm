@@ -1,4 +1,5 @@
 import AlarmKit
+import ActivityKit
 import Foundation
 import SwiftUI
 
@@ -13,6 +14,7 @@ struct DesiredSystemAlarm: Equatable {
     let occurrence: AlarmOccurrence
     let label: String
     let sound: AlarmSound
+    let alarmKitSound: AlertConfiguration.AlertSound
 }
 
 @MainActor
@@ -82,9 +84,10 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
             tintColor: .orange
         )
 
-        let configuration = AlarmManager.AlarmConfiguration(
+        let configuration = AlarmManager.AlarmConfiguration.alarm(
             schedule: .fixed(item.occurrence.effectiveDate),
-            attributes: attributes
+            attributes: attributes,
+            sound: item.alarmKitSound
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
     }

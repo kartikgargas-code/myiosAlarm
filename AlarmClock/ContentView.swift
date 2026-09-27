@@ -241,11 +241,14 @@ struct ContentView: View {
                             Text("Sound ID: \(alarm.sound.id)")
                             
                             // Show sound filename for AlarmKit
-                            if case .imported(let id) = alarm.sound,
-                               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
-                               let fileName = SoundLibrary.shared.getAlarmKitSoundFileName(for: sound) {
-                                Text("AlarmKit Sound File: \(fileName)")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                            if case .imported(let id) = alarm.sound {
+                                if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                                    Text("AlarmKit Sound File: \(sound.fileName)")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                } else {
+                                    Text("AlarmKit Sound File: MISSING (sound id no longer in library)")
+                                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                                }
                             }
                             
                             Text("Next Fire: \(next.effectiveDate.formatted(date: .complete, time: .standard))")

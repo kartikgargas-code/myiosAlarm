@@ -8,6 +8,7 @@ final class AlarmCoordinator {
     private(set) var nextOccurrence: AlarmOccurrence?
     private(set) var lastError: String?
     private(set) var isSynchronizing = false
+    private var commitError: String?
 
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
@@ -78,10 +79,15 @@ final class AlarmCoordinator {
         defer { isSynchronizing = false }
 
         var candidate = engine
+        commitError = nil
         do {
             try mutation(&candidate)
             candidate.pruneExpiredOverrides(now: now())
             let desired = desiredSystemAlarms(from: candidate)
+            if let desiredError = commitError {
+                lastError = desiredError
+                return
+            }
             candidate.snapshot.managedSystemAlarmIDs = try await scheduler.reconcile(
                 desired: desired,
                 managedIDs: engine.snapshot.managedSystemAlarmIDs
@@ -99,12 +105,31 @@ final class AlarmCoordinator {
         engine.desiredOccurrences(now: now()).compactMap { occurrence in
             guard let alarm = engine.alarm(id: occurrence.alarmID) else { return nil }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
-            return DesiredSystemAlarm(
-                id: SystemScheduleID.make(for: occurrence, label: label),
-                occurrence: occurrence,
-                label: label,
-                sound: alarm.sound
-            )
+            do {
+                let sound = try alarmKitSound(for: alarm.sound)
+                return DesiredSystemAlarm(
+                    id: SystemScheduleID.make(for: occurrence, label: label),
+                    occurrence: occurrence,
+                    label: label,
+                    sound: alarm.sound,
+                    alarmKitSound: sound
+                )
+            } catch {
+                commitError = error.localizedDescription
+                return nil
+            }
+        }
+    }
+
+    private func alarmKitSound(for sound: AlarmSound) throws -> AlertConfiguration.AlertSound {
+        switch sound {
+        case .systemDefault:
+            return .default
+        case .builtIn(let name):
+            return .named(name)
+        case .imported(let id):
+            let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
+            return .named(fileName)
         }
     }
 

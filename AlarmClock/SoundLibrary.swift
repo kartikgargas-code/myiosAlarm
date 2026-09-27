@@ -9,12 +9,18 @@ struct ImportedSound: Identifiable, Codable, Hashable {
     var duration: TimeInterval?
     var dateAdded: Date
 
-    init(id: UUID = UUID(), name: String, fileName: String, duration: TimeInterval? = nil) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        fileName: String,
+        duration: TimeInterval? = nil,
+        dateAdded: Date = Date()
+    ) {
         self.id = id
         self.name = name
         self.fileName = fileName
         self.duration = duration
-        self.dateAdded = Date()
+        self.dateAdded = dateAdded
     }
 
     func localURL(soundsDirectory: URL?) -> URL? {
@@ -59,9 +65,11 @@ final class SoundLibrary {
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 return ImportedSound(
+                    id: stableID(for: url.lastPathComponent),
                     name: url.deletingPathExtension().lastPathComponent,
                     fileName: url.lastPathComponent,
-                    duration: nil
+                    duration: nil,
+                    dateAdded: creationDate
                 )
             }.sorted { $0.dateAdded > $1.dateAdded }
         } catch {
@@ -78,10 +86,9 @@ final class SoundLibrary {
         guard let soundsDir = soundsDirectory else { return nil }
 
         // Generate stable unique filename
-        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let baseName = sanitizedFileName(sourceURL.deletingPathExtension().lastPathComponent)
         let ext = sourceURL.pathExtension.lowercased()
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let stableFileName = "\(baseName)_\(timestamp).\(ext)"
+        let stableFileName = "\(baseName)_\(UUID().uuidString.lowercased()).\(ext)"
         let destURL = soundsDir.appendingPathComponent(stableFileName)
 
         do {
@@ -94,6 +101,7 @@ final class SoundLibrary {
             try fileManager.copyItem(at: sourceURL, to: destURL)
 
             let sound = ImportedSound(
+                id: stableID(for: stableFileName),
                 name: sourceURL.deletingPathExtension().lastPathComponent,
                 fileName: stableFileName
             )
@@ -104,7 +112,8 @@ final class SoundLibrary {
         }
     }
 
-    func deleteSound(_ sound: ImportedSound) {
+    func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
+        guard !isReferenced(sound, by: alarms) else { return }
         guard let localURL = sound.localURL(soundsDirectory: soundsDirectory) else { return }
         try? fileManager.removeItem(at: localURL)
         importedSounds.removeAll { $0.id == sound.id }
@@ -135,9 +144,47 @@ final class SoundLibrary {
         return sound.localURL(soundsDirectory: soundsDirectory)
     }
 
-    /// Get the sound filename for AlarmKit AlertSound.named()
-    func getAlarmKitSoundFileName(for sound: ImportedSound) -> String? {
+    func alarmKitFileName(for id: UUID) throws -> String {
+        guard let sound = importedSounds.first(where: { $0.id == id }) else {
+            throw SoundLibraryError.importedSoundNotFound(id)
+        }
+        guard let url = sound.localURL(soundsDirectory: soundsDirectory),
+              fileManager.fileExists(atPath: url.path) else {
+            throw SoundLibraryError.soundFileMissing(sound.fileName)
+        }
         return sound.fileName
+    }
+
+    func isReferenced(_ sound: ImportedSound, by alarms: [AlarmRecord]) -> Bool {
+        alarms.contains { $0.sound == .imported(sound.id) }
+    }
+
+    private func sanitizedFileName(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let mapped = value.unicodeScalars.map { allowed.contains($0) ? Character(String($0)) : "_" }
+        let result = String(mapped).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return result.isEmpty ? "alarm-sound" : result
+    }
+
+    private func stableID(for fileName: String) -> UUID {
+        StableOccurrenceID.make(
+            alarmID: UUID(uuidString: "b23f4a5e-cc2f-4e71-9cde-979301000001")!,
+            occurrenceKey: fileName
+        )
+    }
+}
+
+enum SoundLibraryError: LocalizedError, Equatable {
+    case importedSoundNotFound(UUID)
+    case soundFileMissing(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .importedSoundNotFound(let id):
+            "The imported sound \(id.uuidString) is no longer available."
+        case .soundFileMissing(let fileName):
+            "The custom alarm sound file \(fileName) is missing from Library/Sounds."
+        }
     }
 }
 
