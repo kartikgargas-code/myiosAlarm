@@ -17,12 +17,9 @@ struct ImportedSound: Identifiable, Codable, Hashable {
         self.dateAdded = Date()
     }
 
-    var localURL: URL? {
-        guard let fileURL else { return nil }
-        if fileURL.isFileURL {
-            return fileURL
-        }
-        return SoundLibrary.shared.soundsDirectory?.appendingPathComponent(fileName)
+    func localURL(soundsDirectory: URL?) -> URL? {
+        guard let soundsDirectory else { return nil }
+        return soundsDirectory.appendingPathComponent(fileName)
     }
 }
 
