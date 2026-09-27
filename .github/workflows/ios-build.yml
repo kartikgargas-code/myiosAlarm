@@ -24,6 +24,18 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+
+      - name: Inspect Xcode 26 AlarmKit sound interfaces
+        run: |
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "SDK=$SDK"
+          find "$SDK/System/Library/Frameworks/AlarmKit.framework/Modules" \
+               "$SDK/System/Library/Frameworks/ActivityKit.framework/Modules" \
+               -type f \( -name '*.swiftinterface' -o -name '*.swiftmodule' \) -print
+          grep -R -n -E 'AlertSound|sound:|static func alarm|func alarm|struct AlarmConfiguration|enum AlarmConfiguration' \
+            "$SDK/System/Library/Frameworks/AlarmKit.framework/Modules" \
+            "$SDK/System/Library/Frameworks/ActivityKit.framework/Modules" || true
+
       - name: Run unit tests
         run: |
           set -o pipefail
