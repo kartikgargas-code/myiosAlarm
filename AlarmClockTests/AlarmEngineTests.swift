@@ -193,8 +193,10 @@ final class AlarmEngineTests: XCTestCase {
         var engine = engineWithDailyAlarm()
         let id = try XCTUnwrap(engine.alarms.first?.id)
 
-        // Initially no skipped occurrence
-        XCTAssertNil(engine.nextOccurrence(for: id, now: now)?.isAdjusted)
+        // Initially no skipped occurrence - first occurrence should not be adjusted
+        let initialOccurrence = try XCTUnwrap(engine.nextOccurrence(for: id, now: now))
+        XCTAssertFalse(initialOccurrence.isAdjusted)
+        let initialKey = initialOccurrence.occurrenceKey
 
         // Skip next occurrence
         try engine.skipNext(id: id, now: now)
@@ -217,7 +219,7 @@ final class AlarmEngineTests: XCTestCase {
 
         // Original occurrence should be next again
         let finalOccurrence = engine.nextOccurrence(for: id, now: now)
-        XCTAssertEqual(finalOccurrence?.occurrenceKey, skippedKey)
+        XCTAssertEqual(finalOccurrence?.occurrenceKey, initialKey)
     }
 
     func testAdjustmentDisplayAfterMultipleAdjustments() throws {
