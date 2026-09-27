@@ -33,8 +33,9 @@ final class SoundLibrary {
     private let soundsDirectoryName = "Sounds"
 
     var soundsDirectory: URL? {
-        fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent(soundsDirectoryName, isDirectory: true)
+        // Use Library/Sounds for AlarmKit custom sounds
+        fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Sounds", isDirectory: true)
     }
 
     private init() {
@@ -76,28 +77,25 @@ final class SoundLibrary {
 
         guard let soundsDir = soundsDirectory else { return nil }
 
-        let destFileName = sourceURL.lastPathComponent
-        let destURL = soundsDir.appendingPathComponent(destFileName)
-
-        // Handle duplicate names
-        var finalURL = destURL
-        var counter = 1
-        while fileManager.fileExists(atPath: finalURL.path) {
-            let baseName = destURL.deletingPathExtension().lastPathComponent
-            let ext = destURL.pathExtension
-            finalURL = soundsDir.appendingPathComponent("\(baseName) \(counter).\(ext)")
-            counter += 1
-        }
+        // Generate stable unique filename
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let ext = sourceURL.pathExtension.lowercased()
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let stableFileName = "\(baseName)_\(timestamp).\(ext)"
+        let destURL = soundsDir.appendingPathComponent(stableFileName)
 
         do {
-            if fileManager.fileExists(atPath: finalURL.path) {
-                try fileManager.removeItem(at: finalURL)
+            // Ensure directory exists
+            try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
+
+            if fileManager.fileExists(atPath: destURL.path) {
+                try fileManager.removeItem(at: destURL)
             }
-            try fileManager.copyItem(at: sourceURL, to: finalURL)
+            try fileManager.copyItem(at: sourceURL, to: destURL)
 
             let sound = ImportedSound(
-                name: finalURL.deletingPathExtension().lastPathComponent,
-                fileName: finalURL.lastPathComponent
+                name: sourceURL.deletingPathExtension().lastPathComponent,
+                fileName: stableFileName
             )
             importedSounds.insert(sound, at: 0)
             return sound
@@ -135,6 +133,11 @@ final class SoundLibrary {
 
     func getAlarmKitSoundURL(for sound: ImportedSound) -> URL? {
         return sound.localURL(soundsDirectory: soundsDirectory)
+    }
+
+    /// Get the sound filename for AlarmKit AlertSound.named()
+    func getAlarmKitSoundFileName(for sound: ImportedSound) -> String? {
+        return sound.fileName
     }
 }
 

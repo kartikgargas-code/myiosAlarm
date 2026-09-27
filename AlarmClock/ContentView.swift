@@ -239,6 +239,15 @@ struct ContentView: View {
                             Text("ID: \(alarm.id.uuidString)")
                             Text("Sound: \(alarm.sound.displayName)")
                             Text("Sound ID: \(alarm.sound.id)")
+                            
+                            // Show sound filename for AlarmKit
+                            if case .imported(let id) = alarm.sound,
+                               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
+                               let fileName = SoundLibrary.shared.getAlarmKitSoundFileName(for: sound) {
+                                Text("AlarmKit Sound File: \(fileName)")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                            }
+                            
                             Text("Next Fire: \(next.effectiveDate.formatted(date: .complete, time: .standard))")
                             Text("Base Time: \(next.baseDate.formatted(date: .complete, time: .standard))")
                             Text("Adjusted: \(next.isAdjusted ? "Yes" : "No")")

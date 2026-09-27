@@ -81,11 +81,42 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
             ),
             tintColor: .orange
         )
-        let configuration = AlarmManager.AlarmConfiguration(
-            schedule: .fixed(item.occurrence.effectiveDate),
-            attributes: attributes
-        )
+
+        // Create custom sound if needed
+        let alarmSound = soundForAlarmKit(item.sound)
+
+        let configuration: AlarmManager.AlarmConfiguration
+        if let sound = alarmSound {
+            configuration = AlarmManager.AlarmConfiguration(
+                schedule: .fixed(item.occurrence.effectiveDate),
+                attributes: attributes,
+                sound: sound
+            )
+        } else {
+            configuration = AlarmManager.AlarmConfiguration(
+                schedule: .fixed(item.occurrence.effectiveDate),
+                attributes: attributes
+            )
+        }
+
         _ = try await manager.schedule(id: item.id, configuration: configuration)
+    }
+
+    private func soundForAlarmKit(_ sound: AlarmSound) -> AlertConfiguration.AlertSound? {
+        switch sound {
+        case .systemDefault:
+            return nil // Use system default
+        case .builtIn(let name):
+            // For built-in sounds, try to use system sound name
+            return AlertConfiguration.AlertSound.named(name)
+        case .imported(let id):
+            // For imported sounds, get the filename from SoundLibrary
+            guard let importedSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
+                  let fileName = SoundLibrary.shared.getAlarmKitSoundFileName(for: importedSound) else {
+                return nil
+            }
+            return AlertConfiguration.AlertSound.named(fileName)
+        }
     }
 }
 
