@@ -1,0 +1,41 @@
+﻿name: AlarmClock
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTS_MACCATALYST: false
+    DEVELOPMENT_TEAM: ""
+targets:
+  AlarmClock:
+    type: application
+    platform: iOS
+    sources:
+      - path: AlarmClock
+    info:
+      path: AlarmClock/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock
+        PRODUCT_NAME: AlarmClock
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: false
+        CODE_SIGN_STYLE: Automatic
+    scheme:
+      testTargets:
+        - AlarmClockTests
+  AlarmClockTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AlarmClockTests
+    dependencies:
+      - target: AlarmClock
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.tests
+        GENERATE_INFOPLIST_FILE: true
