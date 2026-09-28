@@ -56,9 +56,9 @@ struct NextOccurrenceControlsView: View {
                     Section("Adjustment") {
                         HStack(spacing: 12) {
                             Button {
-                                Task { await coordinator.adjustNext(id: alarm.id, minutes: -alarm.adjustmentStepMinutes) }
+                                Task { await coordinator.adjustNext(id: alarm.id, minutes: -10) }
                             } label: {
-                                Text("−\(alarm.adjustmentStepMinutes)")
+                                Text("−10")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)
@@ -72,9 +72,9 @@ struct NextOccurrenceControlsView: View {
                             .buttonStyle(.bordered)
 
                             Button {
-                                Task { await coordinator.adjustNext(id: alarm.id, minutes: alarm.adjustmentStepMinutes) }
+                                Task { await coordinator.adjustNext(id: alarm.id, minutes: 10) }
                             } label: {
-                                Text("+\(alarm.adjustmentStepMinutes)")
+                                Text("+10")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.bordered)

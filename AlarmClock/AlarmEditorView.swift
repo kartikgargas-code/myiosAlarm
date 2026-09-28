@@ -13,7 +13,6 @@ struct AlarmEditorView: View {
     @State private var repeatRule: AlarmRepeatRule
     @State private var customDays: Set<Int>
     @State private var oneTimeDate: Date
-    @State private var adjustmentStep: Int
     @State private var selectedSound: AlarmSound
     @State private var selectedLoudness: AlarmLoudness
     @State private var showingSoundPicker = false
@@ -46,7 +45,6 @@ struct AlarmEditorView: View {
             _customDays = State(initialValue: [])
         }
         _oneTimeDate = State(initialValue: existingAlarm?.oneTimeDate ?? Date.now.addingTimeInterval(3_600))
-        _adjustmentStep = State(initialValue: existingAlarm?.adjustmentStepMinutes ?? 10)
         _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
         _selectedLoudness = State(initialValue: existingAlarm?.loudness ?? .defaultValue)
     }
@@ -72,7 +70,6 @@ struct AlarmEditorView: View {
             scheduleFields
             soundSection
             loudnessSection
-            adjustmentStepPicker
             if existingAlarm != nil {
                 testAlarmSection
             }
@@ -137,13 +134,6 @@ struct AlarmEditorView: View {
             get: { Double(selectedLoudness.percentage) },
             set: { selectedLoudness = AlarmLoudness(Int($0.rounded())) }
         )
-    }
-    private var adjustmentStepPicker: some View {
-        Picker("Adjustment Step", selection: $adjustmentStep) {
-            ForEach([1, 5, 10, 15, 30], id: \.self) { value in
-                Text("\(value) minutes").tag(value)
-            }
-        }
     }
     private var testAlarmSection: some View {
         Section("Test Alarm") {
@@ -243,7 +233,7 @@ struct AlarmEditorView: View {
             repeatRule: resolvedRepeatRule,
             oneTimeDate: date,
             isEnabled: isEnabled,
-            adjustmentStepMinutes: adjustmentStep,
+            adjustmentStepMinutes: 10, // Fixed adjustment step
             overrides: existingAlarm?.overrides ?? [:],
             sound: selectedSound,
             loudness: selectedLoudness

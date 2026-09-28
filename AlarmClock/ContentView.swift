@@ -178,9 +178,9 @@ struct ContentView: View {
                 
                 HStack {
                     Button {
-                        Task { await coordinator.adjustNext(id: alarm.id, minutes: -alarm.adjustmentStepMinutes) }
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: -10) }
                     } label: {
-                        Label("−\(alarm.adjustmentStepMinutes) min", systemImage: "minus")
+                        Label("−10 min", systemImage: "minus")
                     }
                     Button {
                         Task { await coordinator.resetNext(id: alarm.id) }
@@ -188,9 +188,9 @@ struct ContentView: View {
                         Label("Reset", systemImage: "arrow.counterclockwise")
                     }
                     Button {
-                        Task { await coordinator.adjustNext(id: alarm.id, minutes: alarm.adjustmentStepMinutes) }
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: 10) }
                     } label: {
-                        Label("+\(alarm.adjustmentStepMinutes) min", systemImage: "plus")
+                        Label("+10 min", systemImage: "plus")
                     }
                 }
                 
