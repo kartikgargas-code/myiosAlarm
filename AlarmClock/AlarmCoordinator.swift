@@ -211,7 +211,8 @@ final class AlarmCoordinator {
             // If loudness is not 100%, use the processed sound file
             if loudness != .hundred {
                 // Get the original sound info
-                if let originalSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                let originalSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id })
+                if let originalSound {
                     // Get or create the processed sound
                     let processedURL = try await AudioProcessingService.shared.getOrCreateProcessedSound(
                         for: originalSound,
@@ -248,7 +249,7 @@ final class AlarmCoordinator {
         let testID = UUID() // Separate temporary ID for test alarm
 
         // Resolve the sound for the test (handles random mode)
-        var soundToUse = alarm.sound
+        let soundToUse: AlarmSound
         var displaySound = "Default"
         var displayLoudness = alarm.loudness
 
@@ -274,6 +275,8 @@ final class AlarmCoordinator {
                         displaySound = "\(sound.name) (from \(playlist.name))"
                     }
                     soundToUse = .imported(selectedSoundID)
+                } else {
+                    soundToUse = .systemDefault
                 }
             }
 
