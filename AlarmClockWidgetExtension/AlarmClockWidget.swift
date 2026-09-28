@@ -2,11 +2,14 @@ import WidgetKit
 import SwiftUI
 import AlarmClockShared
 
-/// The main widget bundle for the Alarm Clock Lock Screen widget
+/// The main widget bundle for the Alarm Clock Lock Screen widget and control.
+/// Apple's WidgetKit architecture hosts both widgets and controls in a single
+/// WidgetBundle inside the widget extension.
 @main
 struct AlarmClockWidgetBundle: WidgetBundle {
     var body: some Widget {
         NextAlarmWidget()
+        NextAlarmControl()
     }
 }
 
@@ -23,6 +26,52 @@ struct NextAlarmWidget: Widget {
         .description("Shows the next scheduled alarm time and name.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
+}
+
+/// Lock Screen bottom-area control button for the next alarm.
+struct NextAlarmControl: ControlWidget {
+    static let kind: String = "com.example.alarmclock.next-alarm-control"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: OpenNextAlarmIntent()) {
+                Label("Next Alarm", systemImage: "alarm.fill")
+            }
+        }
+        .displayName("Next Alarm")
+        .description("Opens the Next Alarm control screen.")
+    }
+}
+
+/// App Intent to open the Next Alarm control screen
+struct OpenNextAlarmIntent: OpenIntent {
+    static let title: LocalizedStringResource = "Open Next Alarm"
+
+    @Parameter(title: "Destination")
+    var target: AlarmDestination
+
+    init() {
+        self.target = .nextAlarm
+    }
+
+    func perform() async throws -> some IntentResult {
+        // The OpenIntent protocol opens the app automatically.
+        return .result()
+    }
+}
+
+/// Enum representing where the control can navigate
+enum AlarmDestination: String, AppEnum {
+    case nextAlarm
+
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Alarm Destination")
+
+    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+        .nextAlarm: DisplayRepresentation(
+            title: "Next Alarm",
+            subtitle: "View and control the next scheduled alarm"
+        )
+    ]
 }
 
 /// Timeline provider for the next alarm widget
