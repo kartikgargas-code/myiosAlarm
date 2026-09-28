@@ -36,6 +36,11 @@ targets:
         CODE_SIGN_STYLE: Automatic
     entitlements:
       path: AlarmClock/AlarmClock.entitlements
+    dependencies:
+      - target: AlarmClockWidgetExtension
+        embed: true
+      - target: AlarmClockControlExtension
+        embed: true
     scheme:
       testTargets:
         - AlarmClockTests
