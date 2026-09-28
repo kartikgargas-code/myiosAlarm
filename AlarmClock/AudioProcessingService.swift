@@ -151,6 +151,7 @@ final class AudioProcessingService {
         let playlist = try SoundLibrary.shared.playlist(for: playlistID)
         let soundIDs = playlist.soundIDs
         let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
+        let importedSounds = SoundLibrary.shared.importedSounds  // Capture imported sounds
         
         guard let soundsDir else {
             throw AudioProcessingError.soundsDirectoryUnavailable
@@ -179,13 +180,13 @@ final class AudioProcessingService {
         }
         
         // Concatenate songs into single file
-        return try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager] in
+        return try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
             var combinedBuffer: AVAudioPCMBuffer?
             var outputFormat: AVAudioFormat?
             
             // Read and concatenate each song
             for soundID in selectedSoundIDs {
-                guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }),
+                guard let sound = importedSounds.first(where: { $0.id == soundID }),
                       let soundURL = sound.localURL(soundsDirectory: soundsDir),
                       fileManager.fileExists(atPath: soundURL.path) else {
                     continue
@@ -220,7 +221,7 @@ final class AudioProcessingService {
                     // Calculate total frames
                     var totalFrames = 0
                     for id in selectedSoundIDs {
-                        guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
+                        guard let sound = importedSounds.first(where: { $0.id == id }),
                               let soundURL = sound.localURL(soundsDirectory: soundsDir),
                               fileManager.fileExists(atPath: soundURL.path) else { continue }
                         let audioFile = try AVAudioFile(forReading: soundURL)
