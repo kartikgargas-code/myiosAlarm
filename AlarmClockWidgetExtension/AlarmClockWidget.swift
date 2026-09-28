@@ -254,6 +254,7 @@ struct NextAlarmWidgetView: View {
         .padding(.vertical, 4)
     }
     
+    @ViewBuilder
     private var accessoryInlineView: some View {
         if entry.hasAlarm {
             HStack(spacing: 4) {
