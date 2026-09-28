@@ -384,7 +384,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotNormalRepeatingAlarm() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm = AlarmRecord(
             label: "Morning Alarm",
             time: AlarmTime(hour: 7, minute: 0),
@@ -415,7 +415,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotWithTemporaryAdjustment() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm = AlarmRecord(
             label: "Adjusted Alarm",
             time: AlarmTime(hour: 7, minute: 0),
@@ -441,7 +441,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotWithCustomTime() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm = AlarmRecord(
             label: "Custom Time Alarm",
             time: AlarmTime(hour: 7, minute: 0),
@@ -466,7 +466,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotWithSkippedOccurrence() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm = AlarmRecord(
             label: "Skipped Alarm",
             time: AlarmTime(hour: 7, minute: 0),
@@ -491,7 +491,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotWithDisabledAlarm() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm1 = AlarmRecord(
             label: "Disabled Alarm",
             time: AlarmTime(hour: 7, minute: 0),
@@ -525,7 +525,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotNoUpcomingAlarm() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let now = Date()
         
         let nextOccurrence = engine.earliestOccurrence(now: now)
@@ -538,7 +538,7 @@ final class AlarmEngineTests: XCTestCase {
 
     @MainActor
     func testNextAlarmSnapshotMidnightCrossing() throws {
-        let engine = AlarmEngine()
+        var engine = AlarmEngine()
         let alarm = AlarmRecord(
             label: "Midnight Alarm",
             time: AlarmTime(hour: 0, minute: 30),
