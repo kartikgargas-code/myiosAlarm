@@ -1,4 +1,5 @@
 ﻿import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
@@ -298,6 +299,16 @@ struct ContentView: View {
                         Text(error)
                             .foregroundStyle(ThemeManager.shared.colors.destructive)
                     }
+                    
+                    Divider()
+                    
+                    Text("Playlist Diagnostics")
+                        .font(.headline)
+                    
+                    Text(coordinator.playlistDiagnostics.diagnosticsText)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
@@ -307,7 +318,10 @@ struct ContentView: View {
             .navigationTitle("Diagnostics")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Copy") { authorizationModel.copyDiagnostics() }
+                    Button("Copy All Diagnostics") { 
+                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText
+                        UIPasteboard.general.string = combined
+                    }
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { showingDiagnostics = false }
