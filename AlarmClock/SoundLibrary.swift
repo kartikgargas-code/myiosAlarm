@@ -294,8 +294,8 @@ final class SoundLibrary {
         guard let sound = importedSounds.first(where: { $0.id == id }) else {
             throw SoundLibraryError.importedSoundNotFound(id)
         }
-        guard let url = sound.localURL(soundsDirectory: soundsDirectory),
-              fileManager.fileExists(atPath: url.path) else {
+        let url = sound.localURL(soundsDirectory: soundsDirectory)
+        guard let url, fileManager.fileExists(atPath: url.path) else {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
         return sound.fileName
@@ -305,7 +305,8 @@ final class SoundLibrary {
         guard let playlist = playlists.first(where: { $0.id == id }) else {
             throw SoundLibraryError.playlistNotFound(id)
         }
-        guard !playlist.soundIDs.isEmpty else {
+        let soundIDs = playlist.soundIDs
+        guard !soundIDs.isEmpty else {
             throw SoundLibraryError.emptyPlaylist(id)
         }
         return playlist

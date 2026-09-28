@@ -222,10 +222,15 @@ struct SoundPickerView: View {
         return Button {
             selectedSound = randomSound
             // Play first song as preview
-            if let firstSoundID = playlist.soundIDs.first,
-               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
-               let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory) {
-                preview.play(url: previewURL, id: randomSound.id)
+            let firstSoundID = playlist.soundIDs.first
+            if let firstSoundID {
+                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID })
+                if let sound {
+                    let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                    if let previewURL {
+                        preview.play(url: previewURL, id: randomSound.id)
+                    }
+                }
             }
         } label: {
             HStack {
