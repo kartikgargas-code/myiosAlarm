@@ -216,6 +216,6 @@ struct NextAlarmControlView: View {
 #Preview {
     let coordinator = AlarmCoordinator()
     NextAlarmControlView()
-        .environmentObject(coordinator)
+        .environmentObject(NextAlarmProvider(coordinator: coordinator))
         .preferredColorScheme(.dark)
 }
