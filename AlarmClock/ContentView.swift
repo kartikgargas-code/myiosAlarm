@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var controlsAlarm: AlarmRecord?
     @State private var showingDiagnostics = false
     @State private var showingAppearance = false
+    @State private var showingNextAlarmControl = false
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,13 @@ struct ContentView: View {
                         Image(systemName: "plus")
                     }
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        showingNextAlarmControl = true
+                    } label: {
+                        Label("Next Alarm", systemImage: "alarm.waves.left.and.right")
+                    }
+                }
             }
             .sheet(isPresented: $showingEditor) {
                 AlarmEditorView(
@@ -73,6 +81,10 @@ struct ContentView: View {
                     alarm: alarm,
                     coordinator: coordinator
                 )
+            }
+            .sheet(isPresented: $showingNextAlarmControl) {
+                NextAlarmControlView()
+                    .environmentObject(coordinator)
             }
             .sheet(isPresented: $showingDiagnostics) {
                 diagnosticsView
