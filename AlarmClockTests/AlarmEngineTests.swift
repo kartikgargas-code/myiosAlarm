@@ -376,10 +376,7 @@ final class AlarmEngineTests: XCTestCase {
             "dateCreated": Date().timeIntervalSinceReferenceDate
         ]
         let data = try JSONSerialization.data(withJSONObject: legacyPlaylist)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .secondsSinceReferenceDate
-
-        let playlist = try decoder.decode(Playlist.self, from: data)
+        let playlist = try JSONDecoder().decode(Playlist.self, from: data)
 
         XCTAssertEqual(playlist.selectedSoundIDs, soundIDs)
     }
