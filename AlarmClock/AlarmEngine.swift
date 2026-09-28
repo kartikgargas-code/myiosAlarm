@@ -83,11 +83,14 @@ struct AlarmEngine {
             throw AlarmEngineError.alarmNotFound
         }
         let alarm = snapshot.alarms[index]
-        let skipped = alarm.overrides.compactMap { key, value -> (String, AlarmOccurrenceOverride, Date)? in
+        let skippedCandidates = alarm.overrides.compactMap { key, value -> (String, AlarmOccurrenceOverride, Date)? in
             guard value.isSkipped, let date = baseDate(for: key, alarm: alarm) else { return nil }
             return (key, value, date)
-        }.filter { $0.2 > now }.min { $0.2 < $1.2 }
-        guard let skipped else { throw AlarmEngineError.noSkippedOccurrence }
+        }
+        let filtered = skippedCandidates.filter { $0.2 > now }
+        guard let skipped = filtered.min { $0.2 < $1.2 } else {
+            throw AlarmEngineError.noSkippedOccurrence
+        }
         var restored = skipped.1
         restored.isSkipped = false
         snapshot.alarms[index].overrides[skipped.0] = restored == .none ? nil : restored

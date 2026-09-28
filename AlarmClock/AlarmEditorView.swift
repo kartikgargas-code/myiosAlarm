@@ -89,18 +89,23 @@ struct AlarmEditorView: View {
 
                     // Show next song for random mode
                     if case .random(let playlistID) = selectedSound {
-                        if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
-                           let nextSoundID = getNextRandomSound(for: playlist),
-                           let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID }) {
-                            HStack {
-                                Image(systemName: "shuffle")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                                    .font(.caption)
-                                Text("Next alarm song: \(nextSound.name)")
-                                    .font(.caption)
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })
+                        if let playlist {
+                            let nextSoundID = getNextRandomSound(for: playlist)
+                            if let nextSoundID {
+                                let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID })
+                                if let nextSound {
+                                    HStack {
+                                        Image(systemName: "shuffle")
+                                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                                            .font(.caption)
+                                        Text("Next alarm song: \(nextSound.name)")
+                                            .font(.caption)
+                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                    }
+                                    .padding(.leading, 4)
+                                }
                             }
-                            .padding(.leading, 4)
                         }
                     }
                 }
@@ -280,12 +285,13 @@ struct AlarmEditorView: View {
 
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+        let oneTimeDate: Date? = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
         let alarm = AlarmRecord(
             id: existingAlarm?.id ?? UUID(),
             label: label,
             time: time,
             repeatRule: resolvedRepeatRule,
-            oneTimeDate: repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil,
+            oneTimeDate: oneTimeDate,
             isEnabled: true,
             adjustmentStepMinutes: adjustmentStep,
             overrides: existingAlarm?.overrides ?? [:],
