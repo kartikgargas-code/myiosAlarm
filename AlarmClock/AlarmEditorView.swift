@@ -47,175 +47,11 @@ struct AlarmEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                    .datePickerStyle(.wheel)
-                TextField("Label", text: $label)
-
-                Picker("Repeat", selection: repeatSelection) {
-                    Text("Never").tag(RepeatSelection.never)
-                    Text("Every Day").tag(RepeatSelection.daily)
-                    Text("Weekdays").tag(RepeatSelection.weekdays)
-                    Text("Weekends").tag(RepeatSelection.weekends)
-                    Text("Custom").tag(RepeatSelection.custom)
-                }
-
-                if repeatSelection.wrappedValue == .never {
-                    DatePicker("Date", selection: $oneTimeDate, in: Date.now...)
-                }
-
-                if repeatSelection.wrappedValue == .custom {
-                    Section("Repeat Days") {
-                        ForEach(1...7, id: \.self) { weekday in
-                            Toggle(Calendar.current.weekdaySymbols[weekday - 1], isOn: dayBinding(weekday))
-                        }
-                    }
-                }
-
-                Section("Sound") {
-                    Button {
-                        showingSoundPicker = true
-                    } label: {
-                        HStack {
-                            Text("Alarm Sound")
-                            Spacer()
-                            Text(selectedSound.displayName)
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    // Show next song for random mode
-                    RandomModeNextSongView(selectedSound: selectedSound)
-                }
-
-                Section("Alarm Sound Loudness") {
-                    Picker("Loudness", selection: $selectedLoudness) {
-                        ForEach(AlarmLoudness.allCases) { loudness in
-                            Text(loudness.displayName).tag(loudness)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    Text("100% = original audio amplitude. Lower settings generate a quieter audio asset for AlarmKit.")
-                        .font(.caption2)
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                }
-
-                Picker("Adjustment Step", selection: $adjustmentStep) {
-                    ForEach([1, 5, 10, 15, 30], id: \.self) { value in
-                        Text("\(value) minutes").tag(value)
-                    }
-                }
-
-                if existingAlarm != nil {
-                    Section("Test Alarm") {
-                        if !testAlarmScheduled {
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Text("Test Delay")
-                                    Spacer()
-                                    Picker("Delay", selection: $testDelay) {
-                                        Text("10 seconds").tag(TimeInterval(10))
-                                        Text("30 seconds").tag(TimeInterval(30))
-                                        Text("60 seconds").tag(TimeInterval(60))
-                                        Text("90 seconds").tag(TimeInterval(90))
-                                        Text("2 minutes").tag(TimeInterval(120))
-                                    }
-                                    .pickerStyle(.menu)
-                                    .frame(width: 140)
-                                }
-
-                                Button {
-                                    Task {
-                                        await scheduleTestAlarm()
-                                    }
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "speaker.wave.3.fill")
-                                        Text("Test Alarm")
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(ThemeManager.shared.colors.accent)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                    Text("Test alarm scheduled")
-                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                    Spacer()
-                                    Button("Cancel Test") {
-                                        cancelTestAlarm()
-                                    }
-                                    .foregroundStyle(ThemeManager.shared.colors.destructive)
-                                }
-
-                                if let sound = testAlarmSound {
-                                    HStack {
-                                        Image(systemName: "music.note")
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                        Text("Sound: \(sound)")
-                                            .font(.caption)
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                    }
-                                }
-
-                                if let loudness = testAlarmLoudness {
-                                    HStack {
-                                        Image(systemName: "speaker.wave.2")
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                        Text("Loudness: \(loudness.displayName)")
-                                            .font(.caption)
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                    }
-                                }
-
-                                Text("This is a real AlarmKit test — not an audio preview. The system alarm UI will appear with Stop button.")
-                                    .font(.caption2)
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-            }
-            .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
-            .scrollContentBackground(.hidden)
-            .background(ThemeManager.shared.colors.background)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
-                        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
-                        let oneTimeDate: Date? = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
-                        let alarm = AlarmRecord(
-                            id: existingAlarm?.id ?? UUID(),
-                            label: label,
-                            time: time,
-                            repeatRule: resolvedRepeatRule,
-                            oneTimeDate: oneTimeDate,
-                            isEnabled: existingAlarm?.isEnabled ?? true,
-                            adjustmentStepMinutes: adjustmentStep,
-                            overrides: existingAlarm?.overrides ?? [:],
-                            sound: selectedSound,
-                            loudness: selectedLoudness
-                        )
-                        Task {
-                            await onSave(alarm)
-                            dismiss()
-                        }
-                    }
-                    .disabled(repeatSelection.wrappedValue == .custom && customDays.isEmpty)
-                }
-            }
+            editorForm
+                .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
+                .scrollContentBackground(.hidden)
+                .background(ThemeManager.shared.colors.background)
+                .toolbar { editorToolbar }
         }
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
@@ -225,7 +61,181 @@ struct AlarmEditorView: View {
             testAlarmTask?.cancel()
         }
     }
-
+    private var editorForm: some View {
+        Form {
+            scheduleFields
+            soundSection
+            loudnessSection
+            adjustmentStepPicker
+            if existingAlarm != nil {
+                testAlarmSection
+            }
+        }
+    }
+    @ViewBuilder
+    private var scheduleFields: some View {
+        DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+            .datePickerStyle(.wheel)
+        TextField("Label", text: $label)
+        Picker("Repeat", selection: repeatSelection) {
+            Text("Never").tag(RepeatSelection.never)
+            Text("Every Day").tag(RepeatSelection.daily)
+            Text("Weekdays").tag(RepeatSelection.weekdays)
+            Text("Weekends").tag(RepeatSelection.weekends)
+            Text("Custom").tag(RepeatSelection.custom)
+        }
+        if repeatSelection.wrappedValue == .never {
+            DatePicker("Date", selection: $oneTimeDate, in: Date.now...)
+        }
+        if repeatSelection.wrappedValue == .custom {
+            Section("Repeat Days") {
+                ForEach(1...7, id: \.self) { weekday in
+                    Toggle(Calendar.current.weekdaySymbols[weekday - 1], isOn: dayBinding(weekday))
+                }
+            }
+        }
+    }
+    private var soundSection: some View {
+        Section("Sound") {
+            Button {
+                showingSoundPicker = true
+            } label: {
+                HStack {
+                    Text("Alarm Sound")
+                    Spacer()
+                    Text(selectedSound.displayName)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+            }
+            .buttonStyle(.plain)
+            RandomModeNextSongView(selectedSound: selectedSound)
+        }
+    }
+    private var loudnessSection: some View {
+        Section("Alarm Sound Loudness") {
+            Picker("Loudness", selection: $selectedLoudness) {
+                ForEach(AlarmLoudness.allCases) { loudness in
+                    Text(loudness.displayName).tag(loudness)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text("100% = original audio amplitude. Lower settings generate a quieter audio asset for AlarmKit.")
+                .font(.caption2)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+        }
+    }
+    private var adjustmentStepPicker: some View {
+        Picker("Adjustment Step", selection: $adjustmentStep) {
+            ForEach([1, 5, 10, 15, 30], id: \.self) { value in
+                Text("\(value) minutes").tag(value)
+            }
+        }
+    }
+    private var testAlarmSection: some View {
+        Section("Test Alarm") {
+            if testAlarmScheduled {
+                scheduledTestAlarmView
+            } else {
+                testAlarmControls
+            }
+        }
+    }
+    private var testAlarmControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Test Delay")
+                Spacer()
+                Picker("Delay", selection: $testDelay) {
+                    Text("10 seconds").tag(TimeInterval(10))
+                    Text("30 seconds").tag(TimeInterval(30))
+                    Text("60 seconds").tag(TimeInterval(60))
+                    Text("90 seconds").tag(TimeInterval(90))
+                    Text("2 minutes").tag(TimeInterval(120))
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+            }
+            Button {
+                Task { await scheduleTestAlarm() }
+            } label: {
+                HStack {
+                    Image(systemName: "speaker.wave.3.fill")
+                    Text("Test Alarm")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(ThemeManager.shared.colors.accent)
+        }
+    }
+    private var scheduledTestAlarmView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Test alarm scheduled")
+                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                Spacer()
+                Button("Cancel Test") { cancelTestAlarm() }
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+            }
+            if let sound = testAlarmSound {
+                testAlarmDetail(icon: "music.note", text: "Sound: \(sound)")
+            }
+            if let loudness = testAlarmLoudness {
+                testAlarmDetail(icon: "speaker.wave.2", text: "Loudness: \(loudness.displayName)")
+            }
+            Text("This is a real AlarmKit test — not an audio preview. The system alarm UI will appear with Stop button.")
+                .font(.caption2)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+        }
+        .padding(.vertical, 4)
+    }
+    private func testAlarmDetail(icon: String, text: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+        }
+    }
+    @ToolbarContentBuilder
+    private var editorToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Save") { saveAlarm() }
+                .disabled(repeatSelection.wrappedValue == .custom && customDays.isEmpty)
+        }
+    }
+    private func saveAlarm() {
+        let alarm = makeAlarm(isEnabled: existingAlarm?.isEnabled ?? true)
+        Task {
+            await onSave(alarm)
+            dismiss()
+        }
+    }
+    private func makeAlarm(isEnabled: Bool) -> AlarmRecord {
+        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
+        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+        let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
+        return AlarmRecord(
+            id: existingAlarm?.id ?? UUID(),
+            label: label,
+            time: time,
+            repeatRule: resolvedRepeatRule,
+            oneTimeDate: date,
+            isEnabled: isEnabled,
+            adjustmentStepMinutes: adjustmentStep,
+            overrides: existingAlarm?.overrides ?? [:],
+            sound: selectedSound,
+            loudness: selectedLoudness
+        )
+    }
     private var repeatSelection: Binding<RepeatSelection> {
         Binding(
             get: { RepeatSelection(rule: repeatRule) },
@@ -264,30 +274,9 @@ struct AlarmEditorView: View {
     private func scheduleTestAlarm() async {
         guard let onTestAlarm else { return }
 
-        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
-        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
-        let oneTimeDate: Date? = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
-        let alarm = AlarmRecord(
-            id: existingAlarm?.id ?? UUID(),
-            label: label,
-            time: time,
-            repeatRule: resolvedRepeatRule,
-            oneTimeDate: oneTimeDate,
-            isEnabled: true,
-            adjustmentStepMinutes: adjustmentStep,
-            overrides: existingAlarm?.overrides ?? [:],
-            sound: selectedSound,
-            loudness: selectedLoudness
-        )
-
-        // Determine what sound will be used for display
-        var displaySound = "Default"
-        var displayLoudness = selectedLoudness
-
-        displaySound = soundDisplayName(for: selectedSound)
-
-        testAlarmSound = displaySound
-        testAlarmLoudness = displayLoudness
+        let alarm = makeAlarm(isEnabled: true)
+        testAlarmSound = soundDisplayName(for: selectedSound)
+        testAlarmLoudness = selectedLoudness
         testAlarmScheduled = true
 
         testAlarmTask = Task {
