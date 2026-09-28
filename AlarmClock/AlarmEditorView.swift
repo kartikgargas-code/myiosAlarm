@@ -5,6 +5,7 @@ struct AlarmEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     let existingAlarm: AlarmRecord?
+    let alarms: [AlarmRecord]
     let onSave: (AlarmRecord) async -> Void
     let onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)?
 
@@ -29,8 +30,9 @@ struct AlarmEditorView: View {
     @State private var testAlarmTask: Task<Void, Never>?
     private let testSchedulingDelay: TimeInterval = 10 // Internal minimal delay for reliable scheduling
 
-    init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
+    init(existingAlarm: AlarmRecord? = nil, alarms: [AlarmRecord], onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
         self.existingAlarm = existingAlarm
+        self.alarms = alarms
         self.onSave = onSave
         self.onTestAlarm = onTestAlarm
         let calendar = Calendar.autoupdatingCurrent
@@ -59,7 +61,7 @@ struct AlarmEditorView: View {
         }
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
-            SoundPickerView(selectedSound: $selectedSound)
+            SoundPickerView(selectedSound: $selectedSound, alarms: alarms)
         }
         .onDisappear {
             testAlarmTask?.cancel()

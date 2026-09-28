@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct SoundPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedSound: AlarmSound
+    let alarms: [AlarmRecord]
 
     @State private var showingDocumentPicker = false
     @State private var showingFolderPicker = false
@@ -162,7 +163,7 @@ struct SoundPickerView: View {
             })
         }
         .sheet(item: $showingPlaylistEditor) { playlist in
-            PlaylistEditorView(playlist: playlist)
+            PlaylistEditorView(playlist: playlist, alarms: alarms)
         }
         .onDisappear {
             preview.stop()
@@ -385,12 +386,14 @@ struct PlaylistCreatorView: View {
 struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let playlist: Playlist
+    let alarms: [AlarmRecord]
     @State private var selectedSoundIDs: Set<UUID>
     @State private var showingDeleteConfirmation = false
     @State private var deleteError: String?
 
-    init(playlist: Playlist) {
+    init(playlist: Playlist, alarms: [AlarmRecord]) {
         self.playlist = playlist
+        self.alarms = alarms
         self._selectedSoundIDs = State(initialValue: Set(playlist.selectedSoundIDs))
     }
 
@@ -402,7 +405,7 @@ struct PlaylistEditorView: View {
                         .font(.headline)
                 }
 
-                Section("Songs (\(playlist.selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
+                Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
                     ForEach(playlist.soundIDs, id: \.self) { soundID in
                         if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }) {
                             HStack {
@@ -465,22 +468,29 @@ struct PlaylistEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         var updatedPlaylist = playlist
-                        updatedPlaylist.selectedSoundIDs = Array(selectedSoundIDs)
-                        SoundLibrary.shared.updatePlaylist(updatedPlaylist, newSoundIDs: nil)
+                        updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
+                        SoundLibrary.shared.updatePlaylist(updatedPlaylist)
                         dismiss()
                     }
-                    .disabled(selectedSoundIDs.isEmpty)
                 }
             }
             .alert("Delete Playlist", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Delete", role: .destructive) {
-                    if let error = SoundLibrary.shared.deletePlaylist(Playlist(id: playlist.id, name: playlist.name, soundIDs: playlist.soundIDs, selectedSoundIDs: playlist.selectedSoundIDs, dateCreated: playlist.dateCreated), referencedBy: AlarmCoordinator().alarms) {
+                    if let error = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: alarms) {
                         deleteError = error.localizedDescription
                     } else {
                         dismiss()
                     }
                 }
+            }
+            .alert("Unable to Delete Playlist", isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteError = nil }
+            } message: {
+                Text(deleteError ?? "")
             }
         }
     }

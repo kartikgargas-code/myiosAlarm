@@ -365,4 +365,22 @@ final class AlarmEngineTests: XCTestCase {
         XCTAssertEqual(playlist.soundIDs.count, 3)
         XCTAssertEqual(playlist.soundIDs, soundIDs)
     }
+
+
+    func testPlaylistDecodesLegacySelectionAsAllSongs() throws {
+        let soundIDs = [UUID(), UUID()]
+        let legacyPlaylist: [String: Any] = [
+            "id": UUID().uuidString,
+            "name": "Legacy Mix",
+            "soundIDs": soundIDs.map(\.uuidString),
+            "dateCreated": Date().timeIntervalSinceReferenceDate
+        ]
+        let data = try JSONSerialization.data(withJSONObject: legacyPlaylist)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSinceReferenceDate
+
+        let playlist = try decoder.decode(Playlist.self, from: data)
+
+        XCTAssertEqual(playlist.selectedSoundIDs, soundIDs)
+    }
 }

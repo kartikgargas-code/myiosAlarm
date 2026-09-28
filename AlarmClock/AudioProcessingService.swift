@@ -28,6 +28,18 @@ final class AudioProcessingService {
         }
     }
 
+    private func audioMetadata(for url: URL) -> (duration: TimeInterval, sampleRate: Double, channelCount: Int)? {
+        guard let audioFile = try? AVAudioFile(forReading: url) else { return nil }
+        let sampleRate = audioFile.processingFormat.sampleRate
+        guard sampleRate > 0 else { return nil }
+        return (
+            Double(audioFile.length) / sampleRate,
+            sampleRate,
+            Int(audioFile.processingFormat.channelCount)
+        )
+    }
+
+
     /// Get the URL for a processed sound file at a specific loudness
     /// Returns nil if the file doesn't exist yet (needs to be generated)
     func processedSoundURL(for originalSound: ImportedSound, loudness: AlarmLoudness) -> URL? {
@@ -150,7 +162,7 @@ final class AudioProcessingService {
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
         let playlist = try SoundLibrary.shared.playlist(for: playlistID)
-        let soundIDs = playlist.soundIDs
+        let soundIDs = playlist.selectedSoundIDs
         let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
         let importedSounds = SoundLibrary.shared.importedSounds  // Capture imported sounds
         
@@ -192,7 +204,7 @@ final class AudioProcessingService {
                 alarmID: alarmID ?? UUID(),
                 playlistID: playlistID,
                 playlistName: playlistName,
-                totalSongsInPlaylist: soundIDs.count,
+                totalSongsInPlaylist: playlist.soundIDs.count,
                 selectedSongCount: selectedSoundIDs.count,
                 selectedSongIDs: selectedSoundIDs,
                 selectedSongNames: selectedSounds.map { $0.name },
@@ -207,20 +219,21 @@ final class AudioProcessingService {
                 error: nil
             )
             
-            // Create generated file entry for cached file
             let fileSize = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+            let metadata = audioMetadata(for: precomposedURL)
+            let actualDuration = metadata?.duration ?? 0
             let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
                 timestamp: Date(),
                 playlistID: playlistID,
                 fileExists: true,
                 fileSizeBytes: fileSize,
                 audioFormat: "WAV",
-                sampleRate: 44100.0, // Default assumption
-                channelCount: 2,
-                actualDuration: 0, // Would need to read from file
+                sampleRate: metadata?.sampleRate ?? 0,
+                channelCount: metadata?.channelCount ?? 0,
+                actualDuration: actualDuration,
                 expectedDuration: expectedTotalDuration,
-                fileReadable: true,
-                appearsComplete: true
+                fileReadable: metadata != nil,
+                appearsComplete: metadata.map { abs($0.duration - expectedTotalDuration) < 1.0 } ?? false
             )
             
             return (precomposedURL, preparationEntry, generatedFileEntry)
@@ -335,7 +348,7 @@ final class AudioProcessingService {
             alarmID: alarmID ?? UUID(),
             playlistID: playlistID,
             playlistName: playlist.name,
-            totalSongsInPlaylist: soundIDs.count,
+            totalSongsInPlaylist: playlist.soundIDs.count,
             selectedSongCount: selectedSoundIDs.count,
             selectedSongIDs: selectedSoundIDs,
             selectedSongNames: selectedSounds.map { $0.name },
@@ -350,21 +363,22 @@ final class AudioProcessingService {
             error: nil
         )
         
-        // Analyze generated file
+        let fileExists = fileManager.fileExists(atPath: precomposedURL.path)
         let fileSize = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
-        let actualDuration = expectedTotalDuration // Would need to read from file for exact value
+        let metadata = audioMetadata(for: precomposedURL)
+        let actualDuration = metadata?.duration ?? 0
         let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
             timestamp: Date(),
             playlistID: playlistID,
-            fileExists: fileManager.fileExists(atPath: precomposedURL.path),
+            fileExists: fileExists,
             fileSizeBytes: fileSize,
             audioFormat: "WAV",
-            sampleRate: 44100.0,
-            channelCount: 2,
-            actualDuration: expectedTotalDuration,
+            sampleRate: metadata?.sampleRate ?? 0,
+            channelCount: metadata?.channelCount ?? 0,
+            actualDuration: actualDuration,
             expectedDuration: expectedTotalDuration,
-            fileReadable: fileManager.fileExists(atPath: precomposedURL.path),
-            appearsComplete: abs(expectedTotalDuration - expectedTotalDuration) < 1.0
+            fileReadable: metadata != nil,
+            appearsComplete: metadata.map { abs($0.duration - expectedTotalDuration) < 1.0 } ?? false
         )
         
         return (precomposedURL, preparationEntry, generatedFileEntry)
@@ -392,10 +406,12 @@ final class AudioProcessingService {
     
     func removePrecomposedPlaylist(for playlistID: UUID) {
         guard let dir = processedSoundsDirectory else { return }
-        let prefix = "playlist_\(playlistID.uuidString.prefix(8))"
-        
+        let identifier = "_\(playlistID.uuidString.prefix(8))_"
+
         let files = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.lastPathComponent.hasPrefix(prefix) && file.lastPathComponent.hasSuffix("pct.wav") {
+        for file in files where file.lastPathComponent.hasPrefix("playlist_")
+            && file.lastPathComponent.contains(identifier)
+            && file.lastPathComponent.hasSuffix("pct.wav") {
             try? fileManager.removeItem(at: file)
         }
     }

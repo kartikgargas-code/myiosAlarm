@@ -17,8 +17,21 @@ struct Playlist: Identifiable, Codable, Hashable {
         self.id = id
         self.name = name
         self.soundIDs = soundIDs
-        self.selectedSoundIDs = selectedSoundIDs ?? soundIDs  // Default to all selected
+        self.selectedSoundIDs = selectedSoundIDs ?? soundIDs
         self.dateCreated = dateCreated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, soundIDs, selectedSoundIDs, dateCreated
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        soundIDs = try container.decode([UUID].self, forKey: .soundIDs)
+        selectedSoundIDs = try container.decodeIfPresent([UUID].self, forKey: .selectedSoundIDs) ?? soundIDs
+        dateCreated = try container.decode(Date.self, forKey: .dateCreated)
     }
 }
 

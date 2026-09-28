@@ -59,6 +59,7 @@ struct ContentView: View {
             .sheet(isPresented: $showingEditor) {
                 AlarmEditorView(
                     existingAlarm: editorAlarm,
+                    alarms: coordinator.alarms,
                     onSave: { alarm in
                         await coordinator.save(alarm)
                     },
