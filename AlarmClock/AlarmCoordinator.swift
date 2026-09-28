@@ -18,7 +18,7 @@ final class AlarmCoordinator {
     var playlistDiagnostics = PlaylistDiagnostics()
 
     /// The computed next alarm snapshot for widgets and Lock Screen controls
-    @Published private(set) var nextAlarmSnapshot: NextAlarmSnapshot? = nil
+    private(set) var nextAlarmSnapshot: NextAlarmSnapshot? = nil
 
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
