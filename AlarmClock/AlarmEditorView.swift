@@ -116,7 +116,7 @@ struct AlarmEditorView: View {
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
             Picker("Loudness", selection: $selectedLoudness) {
-                ForEach(AlarmLoudness.allCases) { loudness in
+                ForEach(AlarmLoudness.allCases, id: \.self) { loudness in
                     Text(loudness.displayName).tag(loudness)
                 }
             }
