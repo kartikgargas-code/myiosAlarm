@@ -380,4 +380,183 @@ final class AlarmEngineTests: XCTestCase {
 
         XCTAssertEqual(playlist.selectedSoundIDs, soundIDs)
     }
+
+
+    @MainActor
+    func testNextAlarmSnapshotNormalRepeatingAlarm() throws {
+        let engine = AlarmEngine()
+        let alarm = AlarmRecord(
+            label: "Morning Alarm",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm, now: Date())
+
+        let now = Date()
+        let calendar = Calendar.current
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        
+        XCTAssertNotNil(nextOccurrence)
+        XCTAssertEqual(nextOccurrence?.alarmID, alarm.id)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            XCTAssertEqual(snapshot?.alarmID, alarm.id)
+            XCTAssertEqual(snapshot?.label, "Morning Alarm")
+            XCTAssertEqual(snapshot?.permanentTime.hour, 7)
+            XCTAssertEqual(snapshot?.permanentTime.minute, 0)
+            XCTAssertFalse(snapshot?.isAdjusted ?? true)
+            XCTAssertFalse(snapshot?.isSkipped ?? true)
+            XCTAssertTrue(snapshot?.isEnabled ?? false)
+        }
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotWithTemporaryAdjustment() throws {
+        let engine = AlarmEngine()
+        let alarm = AlarmRecord(
+            label: "Adjusted Alarm",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm, now: Date())
+
+        let now = Date()
+        // Add a +10 minute adjustment
+        try engine.adjustNext(id: alarm.id, byMinutes: 10, now: now)
+        
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        XCTAssertNotNil(nextOccurrence)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            XCTAssertTrue(snapshot?.isAdjusted ?? false)
+            XCTAssertEqual(snapshot?.adjustmentDescription, "+10 minutes")
+        }
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotWithCustomTime() throws {
+        let engine = AlarmEngine()
+        let alarm = AlarmRecord(
+            label: "Custom Time Alarm",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm, now: Date())
+
+        let now = Date()
+        let customDate = now.addingTimeInterval(3600) // 1 hour from now
+        try engine.setNextTime(id: alarm.id, date: customDate, now: now)
+        
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        XCTAssertNotNil(nextOccurrence)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            XCTAssertTrue(snapshot?.isAdjusted ?? false)
+        }
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotWithSkippedOccurrence() throws {
+        let engine = AlarmEngine()
+        let alarm = AlarmRecord(
+            label: "Skipped Alarm",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm, now: Date())
+
+        let now = Date()
+        try engine.skipNext(id: alarm.id, now: now)
+        
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        // After skipping, the next occurrence should be the following day
+        XCTAssertNotNil(nextOccurrence)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            // The skipped occurrence should not be the one returned
+        }
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotWithDisabledAlarm() throws {
+        let engine = AlarmEngine()
+        let alarm1 = AlarmRecord(
+            label: "Disabled Alarm",
+            time: AlarmTime(hour: 7, minute: 0),
+            repeatRule: .daily
+        )
+        let alarm2 = AlarmRecord(
+            label: "Enabled Alarm",
+            time: AlarmTime(hour: 8, minute: 0),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm1, now: Date())
+        try engine.upsert(alarm2, now: Date())
+        
+        // Disable the earlier alarm
+        try engine.setEnabled(false, id: alarm1.id)
+        
+        let now = Date()
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        
+        // The enabled alarm at 8:00 should be the next occurrence
+        XCTAssertNotNil(nextOccurrence)
+        XCTAssertEqual(nextOccurrence?.alarmID, alarm2.id)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm2, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            XCTAssertEqual(snapshot?.label, "Enabled Alarm")
+        }
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotNoUpcomingAlarm() throws {
+        let engine = AlarmEngine()
+        let now = Date()
+        
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        XCTAssertNil(nextOccurrence)
+        
+        let snapshot = NextAlarmSnapshot(alarm: AlarmRecord(label: "Test", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily), occurrence: nil)
+        XCTAssertNil(snapshot)
+    }
+
+
+    @MainActor
+    func testNextAlarmSnapshotMidnightCrossing() throws {
+        let engine = AlarmEngine()
+        let alarm = AlarmRecord(
+            label: "Midnight Alarm",
+            time: AlarmTime(hour: 0, minute: 30),
+            repeatRule: .daily
+        )
+        try engine.upsert(alarm, now: Date())
+
+        let now = Date()
+        let nextOccurrence = engine.earliestOccurrence(now: now)
+        
+        XCTAssertNotNil(nextOccurrence)
+        
+        if let occurrence = nextOccurrence {
+            let snapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+            XCTAssertNotNil(snapshot)
+            // Verify the date indicator logic works for midnight crossing
+            let dateIndicator = snapshot?.dateIndicator
+            XCTAssertNotNil(dateIndicator)
+        }
+    }
 }

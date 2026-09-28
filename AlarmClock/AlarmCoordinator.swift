@@ -17,6 +17,9 @@ final class AlarmCoordinator {
     // Playlist diagnostics
     var playlistDiagnostics = PlaylistDiagnostics()
 
+    /// The computed next alarm snapshot for widgets and Lock Screen controls
+    @Published private(set) var nextAlarmSnapshot: NextAlarmSnapshot? = nil
+
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
     private let scheduler: any AlarmSystemScheduling
@@ -290,7 +293,17 @@ final class AlarmCoordinator {
     private func publish() {
         let currentDate = now()
         alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
-        nextOccurrence = engine.earliestOccurrence(now: currentDate)
+        let earliest = engine.earliestOccurrence(now: currentDate)
+        nextOccurrence = earliest
+        
+        // Compute next alarm snapshot for widgets and Lock Screen controls
+        if let earliest = earliest {
+            if let alarm = engine.alarm(id: earliest.alarmID) {
+                nextAlarmSnapshot = NextAlarmSnapshot(alarm: alarm, occurrence: earliest)
+            }
+        } else {
+            nextAlarmSnapshot = nil
+        }
     }
 
     /// Schedule a test alarm using the actual alarm configuration
