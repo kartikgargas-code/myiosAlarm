@@ -24,6 +24,7 @@ enum AlarmSound: Codable, Equatable, Hashable {
     case builtIn(String)
     case imported(UUID)
     case random(UUID) // References a Playlist ID
+    case precomposedPlaylist(UUID, AlarmLoudness) // Precomposed playlist with specific loudness
 
     var id: String {
         switch self {
@@ -31,6 +32,7 @@ enum AlarmSound: Codable, Equatable, Hashable {
         case .builtIn(let name): "builtin_\(name)"
         case .imported(let id): "imported_\(id.uuidString)"
         case .random(let playlistID): "random_\(playlistID.uuidString)"
+        case .precomposedPlaylist(let playlistID, let loudness): "precomposed_\(playlistID.uuidString)_\(loudness.percentage)"
         }
     }
 
@@ -40,12 +42,13 @@ enum AlarmSound: Codable, Equatable, Hashable {
         case .builtIn(let name): name
         case .imported(_): "Imported"
         case .random(let playlistID): "Random — Playlist \(playlistID.uuidString.prefix(8))"
+        case .precomposedPlaylist(let playlistID, _): "Precomposed — Playlist \(playlistID.uuidString.prefix(8))"
         }
     }
 
     var systemFileName: String? {
         switch self {
-        case .systemDefault, .imported, .random: nil
+        case .systemDefault, .imported, .random, .precomposedPlaylist: nil
         case .builtIn(let name): BuiltInSound.fileName(for: name)
         }
     }

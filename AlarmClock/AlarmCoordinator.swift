@@ -154,44 +154,44 @@ final class AlarmCoordinator {
     private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> (AlarmSound, AlarmOccurrenceOverride?) {
         switch alarm.sound {
         case .random(let playlistID):
-            // Check if we already have a random sound selected for this occurrence
+            // Check if we already have a precomposed playlist for this occurrence
             if let override = alarm.overrides[occurrence.occurrenceKey],
                let selectedSoundID = override.randomSoundID {
                 // Verify the sound still exists in the playlist
                 if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                    playlist.soundIDs.contains(selectedSoundID) {
-                    return (.imported(selectedSoundID), nil)
+                    // Check if precomposed playlist exists for this loudness
+                    let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+                    return (precomposedSound, nil)
                 }
             }
 
-            // Need to select a new random song
-            let playlist = try SoundLibrary.shared.playlist(for: playlistID)
-            let availableSounds = playlist.soundIDs
-
-            // Avoid immediately repeating the previous song if multiple available
-            var previousSoundID: UUID?
-            // Find the previous occurrence's selected sound
+            // Need to select a new random song (but we'll use precomposed playlist)
+            // Avoid immediately repeating the previous precomposed playlist if multiple available
+            var previousPlaylistID: UUID?
+            // Find the previous occurrence's selected playlist
             let earlierOccurrences = engine.desiredOccurrences(now: now().addingTimeInterval(-86400 * 7))
                 .filter { $0.alarmID == alarm.id && $0.effectiveDate < occurrence.effectiveDate }
                 .sorted { $0.effectiveDate > $1.effectiveDate }
             if let prevOccurrence = earlierOccurrences.first,
                let prevOverride = alarm.overrides[prevOccurrence.occurrenceKey],
                let prevSoundID = prevOverride.randomSoundID {
-                previousSoundID = prevSoundID
+                // The previousSoundID was a playlist ID for precomposed
+                previousPlaylistID = prevSoundID
             }
 
-            var candidates = availableSounds
-            if let previousSoundID, candidates.count > 1 {
-                candidates.removeAll { $0 == previousSoundID }
-            }
-
-            let selectedSoundID = candidates.randomElement() ?? availableSounds.randomElement()!
-
-            // Store the selection in the override for this occurrence
+            // For precomposed, we just need the playlist ID
+            // The actual song selection happens during precomposition
+            let playlist = try SoundLibrary.shared.playlist(for: playlistID)
+            let availableSounds = playlist.soundIDs
+            
+            // Store the playlist ID in the override for this occurrence
             var newOverride = alarm.overrides[occurrence.occurrenceKey] ?? .none
-            newOverride.randomSoundID = selectedSoundID
+            newOverride.randomSoundID = playlistID  // Store playlist ID for precomposed
 
-            return (.imported(selectedSoundID), newOverride)
+            // Return precomposed playlist sound with the alarm's loudness
+            let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+            return (precomposedSound, newOverride)
 
         default:
             return (alarm.sound, nil)
@@ -239,6 +239,22 @@ final class AlarmCoordinator {
         case .random:
             // This should never be reached since we resolve random before calling this
             throw SoundLibraryError.importFailed("Random sound not resolved")
+        case .precomposedPlaylist(let playlistID, let loudness):
+            // Generate or get the precomposed playlist file
+            let precomposedURL = try await AudioProcessingService.shared.precomposePlaylist(
+                playlistID: playlistID,
+                loudness: loudness,
+                songCount: 5
+            )
+            // Copy to Library/Sounds for AlarmKit access
+            let processedFileName = precomposedURL.lastPathComponent
+            let soundsDir = SoundLibrary.shared.soundsDirectory!
+            let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+            
+            if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+                try FileManager.default.copyItem(at: precomposedURL, to: alarmKitURL)
+            }
+            return .named(processedFileName)
         }
     }
 
@@ -275,12 +291,11 @@ final class AlarmCoordinator {
             case .random(let playlistID):
                 if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
                    !playlist.soundIDs.isEmpty {
-                    // Pick a random song for the test
-                    let selectedSoundID = playlist.soundIDs.randomElement()!
-                    if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == selectedSoundID }) {
-                        displaySound = "\(sound.name) (from \(playlist.name))"
+                    // Use precomposed playlist for test alarm too
+                    soundToUse = .precomposedPlaylist(playlistID, alarm.loudness)
+                    if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == playlist.soundIDs.first! }) {
+                        displaySound = "\(sound.name) (from \(playlist.name) — precomposed)"
                     }
-                    soundToUse = .imported(selectedSoundID)
                 } else {
                     soundToUse = .systemDefault
                 }
