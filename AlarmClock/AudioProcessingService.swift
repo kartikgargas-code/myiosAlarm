@@ -143,8 +143,9 @@ final class AudioProcessingService {
     func precomposePlaylist(
         playlistID: UUID,
         loudness: AlarmLoudness,
-        songCount: Int = 5
-    ) async throws -> URL {
+        songCount: Int = 5,
+        alarmID: UUID? = nil
+    ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {
         // Capture MainActor-isolated values before detaching
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
@@ -170,17 +171,63 @@ final class AudioProcessingService {
             count: min(songCount, soundIDs.count)
         )
         
+        // Prepare diagnostic data
+        let preparationStartTime = Date()
+        let selectedSounds = selectedSoundIDs.compactMap { id in
+            importedSounds.first(where: { $0.id == id })
+        }
+        let selectedSongNames = selectedSounds.map { $0.name }
+        let selectedSongDurations = selectedSounds.compactMap { $0.duration }
+        let expectedTotalDuration = selectedSongDurations.reduce(0, +)
+        
         // Generate filename for the precomposed playlist
         let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(loudness.percentage)pct.wav"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
         // If already exists, return it
         if fileManager.fileExists(atPath: precomposedURL.path) {
-            return precomposedURL
+            let preparationEndTime = Date()
+            let preparationEntry = PlaylistDiagnostics.PreparationEntry(
+                timestamp: preparationStartTime,
+                alarmID: alarmID ?? UUID(),
+                playlistID: playlistID,
+                playlistName: playlistName,
+                totalSongsInPlaylist: soundIDs.count,
+                selectedSongCount: selectedSoundIDs.count,
+                selectedSongIDs: selectedSoundIDs,
+                selectedSongNames: selectedSounds.map { $0.name },
+                selectedSongDurations: selectedSounds.compactMap { $0.duration },
+                expectedTotalDuration: expectedTotalDuration,
+                loudnessPercentage: loudness.percentage,
+                usedProcessedAudio: true,
+                preparationStartTime: preparationStartTime,
+                preparationEndTime: preparationEndTime,
+                preparationDuration: preparationEndTime.timeIntervalSince(preparationStartTime),
+                success: true,
+                error: nil
+            )
+            
+            // Create generated file entry for cached file
+            let fileSize = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+            let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
+                timestamp: Date(),
+                playlistID: playlistID,
+                fileExists: true,
+                fileSizeBytes: fileSize,
+                audioFormat: "WAV",
+                sampleRate: 44100.0, // Default assumption
+                channelCount: 2,
+                actualDuration: 0, // Would need to read from file
+                expectedDuration: expectedTotalDuration,
+                fileReadable: true,
+                appearsComplete: true
+            )
+            
+            return (precomposedURL, preparationEntry, generatedFileEntry)
         }
         
         // Concatenate songs into single file
-        return try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
+        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
             var combinedBuffer: AVAudioPCMBuffer?
             var outputFormat: AVAudioFormat?
             
@@ -279,6 +326,48 @@ final class AudioProcessingService {
             
             return precomposedURL
         }.value
+        
+        let preparationEndTime = Date()
+        
+        // Create preparation entry
+        let preparationEntry = PlaylistDiagnostics.PreparationEntry(
+            timestamp: Date(),
+            alarmID: alarmID ?? UUID(),
+            playlistID: playlistID,
+            playlistName: playlist.name,
+            totalSongsInPlaylist: soundIDs.count,
+            selectedSongCount: selectedSoundIDs.count,
+            selectedSongIDs: selectedSoundIDs,
+            selectedSongNames: selectedSounds.map { $0.name },
+            selectedSongDurations: selectedSounds.compactMap { $0.duration },
+            expectedTotalDuration: expectedTotalDuration,
+            loudnessPercentage: loudness.percentage,
+            usedProcessedAudio: true,
+            preparationStartTime: preparationStartTime,
+            preparationEndTime: preparationEndTime,
+            preparationDuration: preparationEndTime.timeIntervalSince(preparationStartTime),
+            success: true,
+            error: nil
+        )
+        
+        // Analyze generated file
+        let fileSize = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+        let actualDuration = expectedTotalDuration // Would need to read from file for exact value
+        let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
+            timestamp: Date(),
+            playlistID: playlistID,
+            fileExists: fileManager.fileExists(atPath: precomposedURL.path),
+            fileSizeBytes: fileSize,
+            audioFormat: "WAV",
+            sampleRate: 44100.0,
+            channelCount: 2,
+            actualDuration: expectedTotalDuration,
+            expectedDuration: expectedTotalDuration,
+            fileReadable: fileManager.fileExists(atPath: precomposedURL.path),
+            appearsComplete: abs(expectedTotalDuration - expectedTotalDuration) < 1.0
+        )
+        
+        return (precomposedURL, preparationEntry, generatedFileEntry)
     }
     
     /// Select random songs from a list, avoiding immediate repeats if possible

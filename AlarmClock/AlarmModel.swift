@@ -203,3 +203,184 @@ enum StableOccurrenceID {
         ))
     }
 }
+
+/// Diagnostics for playlist preparation and playback
+struct PlaylistDiagnostics: Codable, Equatable {
+    struct PreparationEntry: Codable, Equatable {
+        let timestamp: Date
+        let alarmID: UUID
+        let playlistID: UUID
+        let playlistName: String
+        let totalSongsInPlaylist: Int
+        let selectedSongCount: Int
+        let selectedSongIDs: [UUID]
+        let selectedSongNames: [String]
+        let selectedSongDurations: [TimeInterval]
+        let expectedTotalDuration: TimeInterval
+        let loudnessPercentage: Int
+        let usedProcessedAudio: Bool
+        let preparationStartTime: Date
+        let preparationEndTime: Date
+        let preparationDuration: TimeInterval
+        let success: Bool
+        let error: String?
+    }
+    
+    struct GeneratedFileEntry: Codable, Equatable {
+        let timestamp: Date
+        let playlistID: UUID
+        let fileExists: Bool
+        let fileSizeBytes: Int64
+        let audioFormat: String?
+        let sampleRate: Double?
+        let channelCount: Int?
+        let actualDuration: TimeInterval
+        let expectedDuration: TimeInterval
+        let fileReadable: Bool
+        let appearsComplete: Bool
+    }
+    
+    struct SchedulingEntry: Codable, Equatable {
+        let timestamp: Date
+        let alarmID: UUID
+        let occurrenceKey: String
+        let scheduledDate: Date
+        let soundConfiguration: String
+        let usedPrecomposedFile: Bool
+        let fileName: String?
+        let fileExistedAtScheduling: Bool
+        let alarmKitAccepted: Bool
+        let error: String?
+        let fallbackToSingleSong: Bool
+        let fallbackReason: String?
+    }
+    
+    struct PlaybackEventEntry: Codable, Equatable {
+        let timestamp: Date
+        let alarmID: UUID
+        let eventType: String
+        let details: String?
+    }
+    
+    var preparationHistory: [PreparationEntry] = []
+    var generatedFileHistory: [GeneratedFileEntry] = []
+    var schedulingHistory: [SchedulingEntry] = []
+    var playbackHistory: [PlaybackEventEntry] = []
+    
+    // Keep only last 50 entries per category to avoid unbounded growth
+    private let maxHistory = 50
+    
+    mutating func addPreparation(_ entry: PreparationEntry) {
+        preparationHistory.append(entry)
+        if preparationHistory.count > maxHistory {
+            preparationHistory.removeFirst(preparationHistory.count - maxHistory)
+        }
+    }
+    
+    mutating func addGeneratedFile(_ entry: GeneratedFileEntry) {
+        generatedFileHistory.append(entry)
+        if generatedFileHistory.count > maxHistory {
+            generatedFileHistory.removeFirst(generatedFileHistory.count - maxHistory)
+        }
+    }
+    
+    mutating func addScheduling(_ entry: SchedulingEntry) {
+        schedulingHistory.append(entry)
+        if schedulingHistory.count > maxHistory {
+            schedulingHistory.removeFirst(schedulingHistory.count - maxHistory)
+        }
+    }
+    
+    mutating func addPlaybackEvent(_ entry: PlaybackEventEntry) {
+        playbackHistory.append(entry)
+        if playbackHistory.count > maxHistory {
+            playbackHistory.removeFirst(playbackHistory.count - maxHistory)
+        }
+    }
+    
+    var diagnosticsText: String {
+        var output = ""
+        output += "=== PLAYLIST DIAGNOSTICS ===\n\n"
+        
+        if preparationHistory.isEmpty && generatedFileHistory.isEmpty && schedulingHistory.isEmpty && playbackHistory.isEmpty {
+            output += "No playlist diagnostics available yet.\n"
+            return output
+        }
+        
+        if !preparationHistory.isEmpty {
+            output += "--- PREPARATION HISTORY (most recent first) ---\n"
+            for entry in preparationHistory.reversed() {
+                output += "\n"
+                output += "Alarm: \(entry.alarmID.uuidString)\n"
+                output += "Playlist: \(entry.playlistName) (\(entry.playlistID.uuidString))\n"
+                output += "Total songs in playlist: \(entry.totalSongsInPlaylist)\n"
+                output += "Selected songs: \(entry.selectedSongCount)\n"
+                for (index, name) in entry.selectedSongNames.enumerated() {
+                    let duration = index < entry.selectedSongDurations.count ? entry.selectedSongDurations[index] : 0
+                    output += "  \(index + 1). \(name) — \(String(format: "%.1f", duration)) seconds\n"
+                }
+                output += "Expected total duration: \(String(format: "%.1f", entry.expectedTotalDuration)) seconds\n"
+                output += "Loudness: \(entry.loudnessPercentage)%\n"
+                output += "Used processed audio: \(entry.usedProcessedAudio ? "yes" : "no")\n"
+                output += "Preparation: \(entry.preparationStartTime.formatted(date: .omitted, time: .standard)) → \(entry.preparationEndTime.formatted(date: .omitted, time: .standard)) (\(String(format: "%.2f", entry.preparationDuration))s)\n"
+                output += "Success: \(entry.success ? "yes" : "no")\n"
+                if let error = entry.error {
+                    output += "Error: \(error)\n"
+                }
+            }
+        }
+        
+        if !generatedFileHistory.isEmpty {
+            output += "\n--- GENERATED FILE HISTORY (most recent first) ---\n"
+            for entry in generatedFileHistory.reversed() {
+                output += "\n"
+                output += "Playlist: \(entry.playlistID.uuidString)\n"
+                output += "File exists: \(entry.fileExists ? "yes" : "no")\n"
+                output += "File size: \(entry.fileSizeBytes) bytes\n"
+                if let format = entry.audioFormat { output += "Audio format: \(format)\n" }
+                if let rate = entry.sampleRate { output += "Sample rate: \(rate) Hz\n" }
+                if let channels = entry.channelCount { output += "Channels: \(channels)\n" }
+                output += "Actual duration: \(String(format: "%.1f", entry.actualDuration)) seconds\n"
+                output += "Expected duration: \(String(format: "%.1f", entry.expectedDuration)) seconds\n"
+                output += "File readable: \(entry.fileReadable ? "yes" : "no")\n"
+                output += "Appears complete: \(entry.appearsComplete ? "yes" : "no")\n"
+                if abs(entry.actualDuration - entry.expectedDuration) > 1.0 {
+                    output += "⚠️ DURATION MISMATCH > 1s\n"
+                }
+            }
+        }
+        
+        if !schedulingHistory.isEmpty {
+            output += "\n--- SCHEDULING HISTORY (most recent first) ---\n"
+            for entry in schedulingHistory.reversed() {
+                output += "\n"
+                output += "Alarm: \(entry.alarmID.uuidString)\n"
+                output += "Occurrence: \(entry.occurrenceKey)\n"
+                output += "Scheduled: \(entry.scheduledDate.formatted(date: .complete, time: .standard))\n"
+                output += "Sound: \(entry.soundConfiguration)\n"
+                output += "Precomposed: \(entry.usedPrecomposedFile ? "yes" : "no")\n"
+                if let fileName = entry.fileName { output += "File: \(fileName)\n" }
+                output += "File existed: \(entry.fileExistedAtScheduling ? "yes" : "no")\n"
+                output += "AlarmKit accepted: \(entry.alarmKitAccepted ? "yes" : "no")\n"
+                if let error = entry.error { output += "Error: \(error)\n" }
+                output += "Fallback: \(entry.fallbackToSingleSong ? "yes (\(entry.fallbackReason ?? "unknown"))" : "no")\n"
+            }
+        }
+        
+        if !playbackHistory.isEmpty {
+            output += "\n--- PLAYBACK EVENTS (most recent first) ---\n"
+            for entry in playbackHistory.reversed() {
+                output += "\n"
+                output += "\(entry.timestamp.formatted(date: .omitted, time: .standard)) — \(entry.eventType)\n"
+                if let details = entry.details { output += "  \(details)\n" }
+            }
+        }
+        
+        output += "\n=== NOTE ===\n"
+        output += "• AlarmKit does NOT expose song-completion callbacks during active alarm.\n"
+        output += "• Transitions between songs in precomposed file are EXPECTED, not OBSERVED via API.\n"
+        output += "• User must manually confirm if Song B actually played after Song A.\n"
+        
+        return output
+    }
+}

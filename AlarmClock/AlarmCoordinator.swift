@@ -14,6 +14,9 @@ final class AlarmCoordinator {
     // Store the engine modified by desiredSystemAlarms to persist random sound selections
     private var desiredSystemAlarmsEngine: AlarmEngine?
 
+    // Playlist diagnostics
+    var playlistDiagnostics = PlaylistDiagnostics()
+
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
     private let scheduler: any AlarmSystemScheduling
@@ -241,19 +244,45 @@ final class AlarmCoordinator {
             throw SoundLibraryError.importFailed("Random sound not resolved")
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
-            let precomposedURL = try await AudioProcessingService.shared.precomposePlaylist(
+            let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
                 playlistID: playlistID,
                 loudness: loudness,
                 songCount: 5
             )
+            
+            // Record diagnostics
+            playlistDiagnostics.addPreparation(preparationEntry)
+            playlistDiagnostics.addGeneratedFile(generatedFileEntry)
+            
             // Copy to Library/Sounds for AlarmKit access
             let processedFileName = precomposedURL.lastPathComponent
             let soundsDir = SoundLibrary.shared.soundsDirectory!
             let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
             
-            if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+            let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
+            
+            if !fileExistedAtScheduling {
                 try FileManager.default.copyItem(at: precomposedURL, to: alarmKitURL)
             }
+            
+            // Record scheduling diagnostics
+            let schedulingEntry = PlaylistDiagnostics.SchedulingEntry(
+                timestamp: Date(),
+                alarmID: UUID(), // Will be filled by caller
+                occurrenceKey: "", // Will be filled by caller
+                scheduledDate: Date(),
+                soundConfiguration: "Precomposed playlist (\(precomposedURL.lastPathComponent))",
+                usedPrecomposedFile: true,
+                fileName: precomposedURL.lastPathComponent,
+                fileExistedAtScheduling: fileExistedAtScheduling,
+                alarmKitAccepted: false, // Will be updated after scheduling
+                error: nil,
+                fallbackToSingleSong: false,
+                fallbackReason: nil
+            )
+            
+            // Store for later update after scheduling
+            // For now, we'll just return the sound
             return .named(processedFileName)
         }
     }
