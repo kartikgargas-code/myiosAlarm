@@ -1,6 +1,7 @@
 import XCTest
 @testable import AlarmClock
 
+@MainActor
 final class AlarmEngineTests: XCTestCase {
     private var calendar: Calendar!
     private var now: Date!
