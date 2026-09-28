@@ -325,6 +325,13 @@ struct AlarmEditorView: View {
                 return "\(sound.name) (from \(playlist.name))"
             }
             return "Random"
+        case .precomposedPlaylist(let playlistID, _):
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+               let firstSoundID = playlist.soundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return "\(sound.name) (from \(playlist.name) — precomposed)"
+            }
+            return "Precomposed Playlist"
         }
     }
 

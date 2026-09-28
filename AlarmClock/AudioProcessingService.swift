@@ -145,8 +145,12 @@ final class AudioProcessingService {
         loudness: AlarmLoudness,
         songCount: Int = 5
     ) async throws -> URL {
+        // Capture MainActor-isolated values before detaching
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
+        let playlist = try SoundLibrary.shared.playlist(for: playlistID)
+        let soundIDs = playlist.soundIDs
+        let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
         
         guard let soundsDir else {
             throw AudioProcessingError.soundsDirectoryUnavailable
@@ -154,10 +158,6 @@ final class AudioProcessingService {
         guard let processedDir else {
             throw AudioProcessingError.processedDirectoryUnavailable
         }
-        
-        // Get the playlist
-        let playlist = try SoundLibrary.shared.playlist(for: playlistID)
-        let soundIDs = playlist.soundIDs
         
         guard !soundIDs.isEmpty else {
             throw AudioProcessingError.processingFailed("Playlist is empty")
@@ -170,7 +170,6 @@ final class AudioProcessingService {
         )
         
         // Generate filename for the precomposed playlist
-        let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
         let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(loudness.percentage)pct.wav"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
@@ -180,12 +179,12 @@ final class AudioProcessingService {
         }
         
         // Concatenate songs into single file
-        return try await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager] in
             var combinedBuffer: AVAudioPCMBuffer?
             var outputFormat: AVAudioFormat?
             
             // Read and concatenate each song
-            for (index, soundID) in selectedSoundIDs.enumerated() {
+            for soundID in selectedSoundIDs {
                 guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }),
                       let soundURL = sound.localURL(soundsDirectory: soundsDir),
                       fileManager.fileExists(atPath: soundURL.path) else {
@@ -217,26 +216,15 @@ final class AudioProcessingService {
                 // Initialize combined buffer with first song's format
                 if combinedBuffer == nil {
                     outputFormat = format
-                    let totalFrames = selectedSoundIDs.reduce(0) { total, id in
+                    
+                    // Calculate total frames
+                    var totalFrames = 0
+                    for id in selectedSoundIDs {
                         guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
                               let soundURL = sound.localURL(soundsDirectory: soundsDir),
-                              fileManager.fileExists(atPath: soundURL.path) else { return total }
+                              fileManager.fileExists(atPath: soundURL.path) else { continue }
                         let audioFile = try AVAudioFile(forReading: soundURL)
-                        return total + Int(audioFile.length)
-                    }
-                    
-                    guard let totalFrames = try? {
-                        var sum = 0
-                        for id in selectedSoundIDs {
-                            guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
-                                  let soundURL = sound.localURL(soundsDirectory: soundsDir),
-                                  fileManager.fileExists(atPath: soundURL.path) else { continue }
-                            let audioFile = try AVAudioFile(forReading: soundURL)
-                            sum += Int(audioFile.length)
-                        }
-                        return sum
-                    }() else {
-                        throw AudioProcessingError.processingFailed("Failed to calculate total frames")
+                        totalFrames += Int(audioFile.length)
                     }
                     
                     guard let outputFormat = outputFormat else {

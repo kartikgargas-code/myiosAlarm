@@ -299,6 +299,8 @@ final class AlarmCoordinator {
                 } else {
                     soundToUse = .systemDefault
                 }
+            case .precomposedPlaylist:
+                soundToUse = alarm.sound
             }
 
             let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
