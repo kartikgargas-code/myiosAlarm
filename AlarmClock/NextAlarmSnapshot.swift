@@ -1,15 +1,5 @@
 import Foundation
 
-/// Provider for accessing the coordinator from SwiftUI environment
-@MainActor
-public final class NextAlarmProvider: ObservableObject {
-    let coordinator: AlarmCoordinator
-    
-    init(coordinator: AlarmCoordinator) {
-        self.coordinator = coordinator
-    }
-}
-
 /// A snapshot of the next upcoming alarm, designed for sharing with
 /// widget extensions and control widgets without duplicating scheduling logic.
 public struct NextAlarmSnapshot: Codable, Equatable {
