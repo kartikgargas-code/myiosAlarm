@@ -129,9 +129,6 @@ struct AlarmEditorView: View {
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
             Slider(value: loudnessBinding, in: 0...100, step: 1)
-            Text("100% = original audio amplitude. Lower settings generate a quieter audio asset for AlarmKit.")
-                .font(.caption2)
-                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
     }
 
@@ -215,10 +212,6 @@ struct AlarmEditorView: View {
                 }
                 Spacer()
             }
-            
-            Text("This is a real AlarmKit test — not an audio preview. The system alarm UI will appear with Stop button.")
-                .font(.caption2)
-                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
         .padding(.vertical, 4)
     }

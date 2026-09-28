@@ -168,8 +168,34 @@ struct ContentView: View {
         }
         .contentShape(Rectangle())
         .contextMenu {
-            // Preserve secondary actions
+            // Secondary actions
             if let occurrence {
+                Button("Custom Time…") {
+                    controlsAlarm = alarm
+                }
+                
+                Divider()
+                
+                HStack {
+                    Button {
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: -alarm.adjustmentStepMinutes) }
+                    } label: {
+                        Label("−\(alarm.adjustmentStepMinutes) min", systemImage: "minus")
+                    }
+                    Button {
+                        Task { await coordinator.resetNext(id: alarm.id) }
+                    } label: {
+                        Label("Reset", systemImage: "arrow.counterclockwise")
+                    }
+                    Button {
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: alarm.adjustmentStepMinutes) }
+                    } label: {
+                        Label("+\(alarm.adjustmentStepMinutes) min", systemImage: "plus")
+                    }
+                }
+                
+                Divider()
+                
                 if let skipped = skippedOccurrence {
                     Button("Undo Skip") {
                         Task { await coordinator.undoSkip(id: alarm.id) }
@@ -179,14 +205,10 @@ struct ContentView: View {
                         Task { await coordinator.skipNext(id: alarm.id) }
                     }
                 }
-
-                if occurrence.isAdjusted {
-                    Button("Reset") {
-                        Task { await coordinator.resetNext(id: alarm.id) }
-                    }
-                }
             }
-
+            
+            Divider()
+            
             Button("Delete", role: .destructive) {
                 Task { await coordinator.delete(id: alarm.id) }
             }
