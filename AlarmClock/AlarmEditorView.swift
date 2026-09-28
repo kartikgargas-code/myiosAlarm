@@ -209,12 +209,13 @@ struct AlarmEditorView: View {
                     Button("Save") {
                         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
                         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+                        let oneTimeDate: Date? = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
                         let alarm = AlarmRecord(
                             id: existingAlarm?.id ?? UUID(),
                             label: label,
                             time: time,
                             repeatRule: resolvedRepeatRule,
-                            oneTimeDate: repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil,
+                            oneTimeDate: oneTimeDate,
                             isEnabled: existingAlarm?.isEnabled ?? true,
                             adjustmentStepMinutes: adjustmentStep,
                             overrides: existingAlarm?.overrides ?? [:],
