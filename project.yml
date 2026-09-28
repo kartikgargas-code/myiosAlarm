@@ -87,5 +87,6 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: true
         TARGETED_DEVICE_FAMILY: "1"
         DEVELOPMENT_TEAM: ""
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @loader_path/Frameworks"
     entitlements:
       path: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements
