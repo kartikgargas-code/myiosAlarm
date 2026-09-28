@@ -1,13 +1,13 @@
 import Foundation
 
-struct Playlist: Identifiable, Codable, Hashable {
-    let id: UUID
-    var name: String
-    var soundIDs: [UUID]
-    var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
-    var dateCreated: Date
+public struct Playlist: Identifiable, Codable, Hashable {
+    public let id: UUID
+    public var name: String
+    public var soundIDs: [UUID]
+    public var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
+    public var dateCreated: Date
 
-    init(
+    public init(
         id: UUID = UUID(),
         name: String,
         soundIDs: [UUID] = [],
@@ -25,7 +25,7 @@ struct Playlist: Identifiable, Codable, Hashable {
         case id, name, soundIDs, selectedSoundIDs, dateCreated
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
@@ -35,14 +35,14 @@ struct Playlist: Identifiable, Codable, Hashable {
     }
 }
 
-enum AlarmSound: Codable, Equatable, Hashable {
+public enum AlarmSound: Codable, Equatable, Hashable {
     case systemDefault
     case builtIn(String)
     case imported(UUID)
     case random(UUID) // References a Playlist ID
     case precomposedPlaylist(UUID, AlarmLoudness) // Precomposed playlist with specific loudness
 
-    var id: String {
+    public var id: String {
         switch self {
         case .systemDefault: "systemDefault"
         case .builtIn(let name): "builtin_\(name)"
@@ -52,7 +52,7 @@ enum AlarmSound: Codable, Equatable, Hashable {
         }
     }
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .systemDefault: "Default"
         case .builtIn(let name): name
@@ -62,7 +62,7 @@ enum AlarmSound: Codable, Equatable, Hashable {
         }
     }
 
-    var systemFileName: String? {
+    public var systemFileName: String? {
         switch self {
         case .systemDefault, .imported, .random, .precomposedPlaylist: nil
         case .builtIn(let name): BuiltInSound.fileName(for: name)
@@ -70,34 +70,34 @@ enum AlarmSound: Codable, Equatable, Hashable {
     }
 }
 
-struct AlarmLoudness: Codable, Equatable, Hashable {
-    let percentage: Int
+public struct AlarmLoudness: Codable, Equatable, Hashable {
+    public let percentage: Int
 
-    init(_ percentage: Int) {
+    public init(_ percentage: Int) {
         self.percentage = min(max(percentage, 0), 100)
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         self.init(try container.decode(Int.self))
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(percentage)
     }
 
-    var displayName: String { "\(percentage)%" }
-    var gainFactor: Float { Float(percentage) / 100.0 }
+    public var displayName: String { "\(percentage)%" }
+    public var gainFactor: Float { Float(percentage) / 100.0 }
 
-    static let twentyFive = AlarmLoudness(25)
-    static let fifty = AlarmLoudness(50)
-    static let seventyFive = AlarmLoudness(75)
-    static let hundred = AlarmLoudness(100)
-    static let defaultValue = hundred
+    public static let twentyFive = AlarmLoudness(25)
+    public static let fifty = AlarmLoudness(50)
+    public static let seventyFive = AlarmLoudness(75)
+    public static let hundred = AlarmLoudness(100)
+    public static let defaultValue = hundred
 }
 
-enum AlarmRepeatRule: Codable, Equatable, Hashable {
+public enum AlarmRepeatRule: Codable, Equatable, Hashable {
     case never
     case daily
     case weekdays
@@ -135,33 +135,33 @@ enum AlarmRepeatRule: Codable, Equatable, Hashable {
 }
 
 struct AlarmTime: Codable, Equatable, Hashable {
-    var hour: Int
-    var minute: Int
+    public var hour: Int
+    public var minute: Int
 }
 
-struct AlarmOccurrenceOverride: Codable, Equatable {
-    var offsetMinutes: Int?
-    var customDate: Date?
-    var isSkipped: Bool
+public struct AlarmOccurrenceOverride: Codable, Equatable {
+    public var offsetMinutes: Int?
+    public var customDate: Date?
+    public var isSkipped: Bool
     // Random song selection for this occurrence
-    var randomSoundID: UUID?
+    public var randomSoundID: UUID?
 
-    static let none = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false, randomSoundID: nil)
+    public static let none = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false, randomSoundID: nil)
 }
 
-struct AlarmRecord: Codable, Identifiable, Equatable {
-    let id: UUID
-    var label: String
-    var time: AlarmTime
-    var repeatRule: AlarmRepeatRule
-    var oneTimeDate: Date?
-    var isEnabled: Bool
-    var adjustmentStepMinutes: Int
-    var overrides: [String: AlarmOccurrenceOverride]
-    var sound: AlarmSound
-    var loudness: AlarmLoudness
+public struct AlarmRecord: Codable, Identifiable, Equatable {
+    public let id: UUID
+    public var label: String
+    public var time: AlarmTime
+    public var repeatRule: AlarmRepeatRule
+    public var oneTimeDate: Date?
+    public var isEnabled: Bool
+    public var adjustmentStepMinutes: Int
+    public var overrides: [String: AlarmOccurrenceOverride]
+    public var sound: AlarmSound
+    public var loudness: AlarmLoudness
 
-    init(
+    public init(
         id: UUID = UUID(),
         label: String,
         time: AlarmTime,
@@ -186,20 +186,20 @@ struct AlarmRecord: Codable, Identifiable, Equatable {
     }
 }
 
-struct AlarmOccurrence: Codable, Identifiable, Equatable {
-    let alarmID: UUID
-    let occurrenceKey: String
-    let baseDate: Date
-    let effectiveDate: Date
-    let isAdjusted: Bool
+public struct AlarmOccurrence: Codable, Identifiable, Equatable {
+    public let alarmID: UUID
+    public let occurrenceKey: String
+    public let baseDate: Date
+    public let effectiveDate: Date
+    public let isAdjusted: Bool
 
-    var id: UUID {
+    public var id: UUID {
         StableOccurrenceID.make(alarmID: alarmID, occurrenceKey: occurrenceKey)
     }
 }
 
-enum StableOccurrenceID {
-    static func make(alarmID: UUID, occurrenceKey: String) -> UUID {
+public enum StableOccurrenceID {
+    public static func make(alarmID: UUID, occurrenceKey: String) -> UUID {
         var bytes = withUnsafeBytes(of: alarmID.uuid) { Array($0) }
         var hash: UInt64 = 14_695_981_039_346_656_037
         for byte in occurrenceKey.utf8 {

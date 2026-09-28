@@ -37,6 +37,7 @@ targets:
     entitlements:
       path: AlarmClock/AlarmClock.entitlements
     dependencies:
+      - target: AlarmClockShared
       - target: AlarmClockWidgetExtension
         embed: true
       - target: AlarmClockControlExtension
@@ -50,17 +51,31 @@ targets:
     sources:
       - path: AlarmClockTests
     dependencies:
-      - target: AlarmClock
+      - target: AlarmClockShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.tests
         GENERATE_INFOPLIST_FILE: true
+
+  AlarmClockShared:
+    type: framework
+    platform: iOS
+    sources:
+      - path: AlarmClock/NextAlarmSnapshot.swift
+      - path: AlarmClock/AlarmModel.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.shared
+        CODE_SIGN_STYLE: Automatic
+        DEFINES_MODULE: true
 
   AlarmClockWidgetExtension:
     type: app-extension
     platform: iOS
     sources:
       - path: AlarmClockWidgetExtension
+    dependencies:
+      - target: AlarmClockShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.widget
@@ -77,6 +92,8 @@ targets:
     platform: iOS
     sources:
       - path: AlarmClockControlExtension
+    dependencies:
+      - target: AlarmClockShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.control

@@ -2,7 +2,7 @@ import Foundation
 
 /// Provider for accessing the coordinator from SwiftUI environment
 @MainActor
-final class NextAlarmProvider: ObservableObject {
+public final class NextAlarmProvider: ObservableObject {
     let coordinator: AlarmCoordinator
     
     init(coordinator: AlarmCoordinator) {
@@ -12,42 +12,42 @@ final class NextAlarmProvider: ObservableObject {
 
 /// A snapshot of the next upcoming alarm, designed for sharing with
 /// widget extensions and control widgets without duplicating scheduling logic.
-struct NextAlarmSnapshot: Codable, Equatable {
+public struct NextAlarmSnapshot: Codable, Equatable {
     /// The alarm's unique identifier
-    let alarmID: UUID
+    public let alarmID: UUID
 
     /// The alarm's label/name
-    let label: String
+    public let label: String
 
     /// The permanent scheduled time (without adjustments)
-    let permanentTime: AlarmTime
+    public let permanentTime: AlarmTime
 
     /// The repeat rule for this alarm
-    let repeatRule: AlarmRepeatRule
+    public let repeatRule: AlarmRepeatRule
 
     /// The actual next occurrence date and time
-    let nextOccurrenceDate: Date
+    public let nextOccurrenceDate: Date
 
     /// Whether the next occurrence has a temporary adjustment
-    let isAdjusted: Bool
+    public let isAdjusted: Bool
 
     /// Adjustment description (e.g., "+10 minutes", "Custom Time")
-    let adjustmentDescription: String?
+    public let adjustmentDescription: String?
 
     /// Whether the next occurrence is skipped
-    let isSkipped: Bool
+    public let isSkipped: Bool
 
     /// Whether the alarm is enabled
-    let isEnabled: Bool
+    public let isEnabled: Bool
 
     /// The alarm's sound configuration
-    let sound: AlarmSound
+    public let sound: AlarmSound
 
     /// The alarm's loudness setting
-    let loudness: AlarmLoudness
+    public let loudness: AlarmLoudness
 
     /// Creates a snapshot from an alarm record and its next occurrence
-    init?(alarm: AlarmRecord, occurrence: AlarmOccurrence?) {
+    public init?(alarm: AlarmRecord, occurrence: AlarmOccurrence?) {
         guard let occurrence = occurrence else { return nil }
         self.alarmID = alarm.id
         self.label = alarm.label.isEmpty ? "Alarm" : alarm.label
@@ -70,7 +70,7 @@ struct NextAlarmSnapshot: Codable, Equatable {
     }
 
     /// Creates a snapshot indicating no upcoming alarm
-    static func none() -> NextAlarmSnapshot? {
+    public static func none() -> NextAlarmSnapshot? {
         return nil
     }
 }
@@ -78,14 +78,14 @@ struct NextAlarmSnapshot: Codable, Equatable {
 /// Extension to provide formatted strings for the widget
 extension NextAlarmSnapshot {
     /// Formatted time string (e.g., "7:00 AM")
-    var formattedTime: String {
+    public var formattedTime: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: nextOccurrenceDate)
     }
 
     /// Formatted date indicator (e.g., "Today", "Tomorrow", or "MMM d")
-    var dateIndicator: String {
+    public var dateIndicator: String {
         let calendar = Calendar.current
         let now = Date()
         if calendar.isDate(nextOccurrenceDate, inSameDayAs: now) {
