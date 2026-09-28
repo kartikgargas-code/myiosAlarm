@@ -184,7 +184,7 @@ final class AlarmCoordinator {
         case .systemDefault:
             return .default
         case .builtIn(let name):
-            guard let fileName = sound.systemFileName else {
+            guard let fileName = AlarmSound.builtIn(name).systemFileName else {
                 throw SoundLibraryError.builtInSoundMissing(name)
             }
             guard SoundPreviewService.bundledSoundURL(for: fileName) != nil else {
