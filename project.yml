@@ -51,6 +51,7 @@ targets:
     sources:
       - path: AlarmClockTests
     dependencies:
+      - target: AlarmClock
       - target: AlarmClockShared
     settings:
       base:
