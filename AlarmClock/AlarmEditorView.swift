@@ -158,17 +158,6 @@ struct AlarmEditorView: View {
         }
     }
     
-    private enum TestAlarmState {
-        case idle
-        case starting
-        case success
-        case error(String)
-    }
-    
-    @State private var testAlarmState: TestAlarmState = .idle
-    @State private var testAlarmTask: Task<Void, Never>?
-    private let testSchedulingDelay: TimeInterval = 10 // Internal minimal delay for reliable scheduling
-    
     private var testAlarmButton: some View {
         Button {
             Task { await scheduleTestAlarm() }
@@ -383,9 +372,7 @@ struct AlarmEditorView: View {
     private func cancelTestAlarm() {
         testAlarmTask?.cancel()
         testAlarmTask = nil
-        testAlarmScheduled = false
-        testAlarmSound = nil
-        testAlarmLoudness = nil
+        testAlarmState = .idle
     }
 }
 
