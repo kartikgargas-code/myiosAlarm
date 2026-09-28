@@ -11,6 +11,8 @@ final class AlarmCoordinator {
     private(set) var lastError: String?
     private(set) var isSynchronizing = false
     private var commitError: String?
+    // Store the engine modified by desiredSystemAlarms to persist random sound selections
+    private var desiredSystemAlarmsEngine: AlarmEngine?
 
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
@@ -90,6 +92,10 @@ final class AlarmCoordinator {
                 lastError = desiredError
                 return
             }
+            // Use the engine modified by desiredSystemAlarms to persist random sound selections
+            if let modifiedEngine = desiredSystemAlarmsEngine {
+                candidate = modifiedEngine
+            }
             candidate.snapshot.managedSystemAlarmIDs = try await scheduler.reconcile(
                 desired: desired,
                 managedIDs: engine.snapshot.managedSystemAlarmIDs
@@ -104,15 +110,16 @@ final class AlarmCoordinator {
     }
 
     private func desiredSystemAlarms(from engine: AlarmEngine) async -> [DesiredSystemAlarm] {
-        let occurrences = engine.desiredOccurrences(now: now())
+        var mutableEngine = engine
+        let occurrences = mutableEngine.desiredOccurrences(now: now())
         var results: [DesiredSystemAlarm] = []
         
         for occurrence in occurrences {
-            guard let alarm = engine.alarm(id: occurrence.alarmID) else { continue }
+            guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
             do {
                 // For random mode, select a song for this occurrence if not already selected
-                let soundToUse = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
+                let soundToUse = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: &mutableEngine)
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                 results.append(DesiredSystemAlarm(
                     id: SystemScheduleID.make(for: occurrence, label: label),
@@ -125,11 +132,13 @@ final class AlarmCoordinator {
                 commitError = error.localizedDescription
             }
         }
+        // Store the modified engine for persistence
+        desiredSystemAlarmsEngine = mutableEngine
         return results
     }
 
     /// Resolve the sound for a specific occurrence, handling random mode
-    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> AlarmSound {
+    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: inout AlarmEngine) throws -> AlarmSound {
         switch alarm.sound {
         case .random(let playlistID):
             // Check if we already have a random sound selected for this occurrence
@@ -168,10 +177,13 @@ final class AlarmCoordinator {
             // Store the selection in the override for this occurrence
             var newOverride = alarm.overrides[occurrence.occurrenceKey] ?? .none
             newOverride.randomSoundID = selectedSoundID
+            
+            // Update the alarm's overrides in the engine
+            if var updatedAlarm = engine.alarm(id: alarm.id) {
+                updatedAlarm.overrides[occurrence.occurrenceKey] = newOverride
+                engine.upsert(updatedAlarm, now: now())
+            }
 
-            // We need to persist this - but we can't mutate engine here directly
-            // The override will be picked up when the alarm is next saved/synchronized
-            // For now, we'll just use the selected sound
             return .imported(selectedSoundID)
 
         default:
@@ -203,8 +215,8 @@ final class AlarmCoordinator {
                         for: originalSound,
                         loudness: loudness
                     )
-                    // The processed file is in Library/ProcessedSounds, but AlarmKit needs it in Library/Sounds
-                    // We need to copy it to Library/Sounds with a specific name
+                    // The processed file is a WAV in Library/ProcessedSounds
+                    // Copy it to Library/Sounds for AlarmKit access
                     let processedFileName = processedURL.lastPathComponent
                     let soundsDir = SoundLibrary.shared.soundsDirectory!
                     let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)

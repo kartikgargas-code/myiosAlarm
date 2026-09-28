@@ -40,6 +40,7 @@ final class AudioProcessingService {
 
     /// Generate a gain-adjusted version of the audio file at the specified loudness
     /// Uses AVAudioEngine for non-destructive processing
+    /// Output is written as WAV to ensure AlarmKit compatibility
     func generateProcessedSound(for originalSound: ImportedSound, loudness: AlarmLoudness) async throws -> URL {
         guard let soundsDir = SoundLibrary.shared.soundsDirectory else {
             throw AudioProcessingError.soundsDirectoryUnavailable
@@ -54,8 +55,8 @@ final class AudioProcessingService {
         }
 
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
-        let ext = (originalSound.fileName as NSString).pathExtension
-        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.\(ext)"
+        // Use WAV extension for processed files since AVAudioFile doesn't support MP3 encoding
+        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
         let processedURL = processedDir.appendingPathComponent(processedFileName)
 
         // If already exists, return it
@@ -87,8 +88,17 @@ final class AudioProcessingService {
                 }
             }
 
-            // Write processed file
-            let outputFile = try AVAudioFile(forWriting: processedURL, settings: format.settings)
+            // Write processed file as WAV (AVAudioFile supports WAV/AIFF/CAF)
+            let outputSettings = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: format.sampleRate,
+                AVNumberOfChannelsKey: format.channelCount,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false
+            ] as [String: Any]
+            let outputFile = try AVAudioFile(forWriting: processedURL, settings: outputSettings)
             try outputFile.write(from: buffer)
 
             return processedURL
@@ -107,10 +117,9 @@ final class AudioProcessingService {
     func removeProcessedSounds(for originalSound: ImportedSound) {
         guard let dir = processedSoundsDirectory else { return }
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
-        let ext = (originalSound.fileName as NSString).pathExtension
 
         for loudness in AlarmLoudness.allCases {
-            let processedFileName = "\(baseName)_\(loudness.rawValue)pct.\(ext)"
+            let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
             let url = dir.appendingPathComponent(processedFileName)
             try? fileManager.removeItem(at: url)
         }

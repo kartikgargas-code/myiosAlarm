@@ -169,7 +169,7 @@ final class SoundLibrary {
         defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
 
         let folderName = sourceURL.lastPathComponent
-        var importedSoundIDs: [UUID] = []
+        var importedSoundInfos: [(id: UUID, name: String, fileName: String)] = []
         var errors: [String] = []
 
         do {
@@ -197,13 +197,8 @@ final class SoundLibrary {
                     }
                     try fileManager.copyItem(at: sourceFileURL, to: destURL)
 
-                    let sound = ImportedSound(
-                        id: stableID(for: stableFileName),
-                        name: displayName,
-                        fileName: stableFileName
-                    )
-                    importedSounds.insert(sound, at: 0)
-                    importedSoundIDs.append(sound.id)
+                    let id = stableID(for: stableFileName)
+                    importedSoundInfos.append((id: id, name: displayName, fileName: stableFileName))
                 } catch {
                     errors.append("\(sourceFileURL.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -212,21 +207,41 @@ final class SoundLibrary {
             throw SoundLibraryError.folderImportFailed("Failed to read folder: \(error.localizedDescription)")
         }
 
-        guard !importedSoundIDs.isEmpty else {
+        guard !importedSoundInfos.isEmpty else {
             throw SoundLibraryError.folderImportFailed("No valid MP3 files found in folder.")
         }
 
-        let playlist = Playlist(
-            name: folderName,
-            soundIDs: importedSoundIDs
-        )
-        playlists.append(playlist)
-        savePlaylists()
+        // Update @MainActor state
+        await MainActor.run {
+            let importedSoundIDs = importedSoundInfos.map { $0.id }
+            for info in importedSoundInfos {
+                let sound = ImportedSound(
+                    id: info.id,
+                    name: info.name,
+                    fileName: info.fileName
+                )
+                self.importedSounds.insert(sound, at: 0)
+            }
+
+            let playlist = Playlist(
+                name: folderName,
+                soundIDs: importedSoundIDs
+            )
+            self.playlists.append(playlist)
+            self.savePlaylists()
+        }
 
         if !errors.isEmpty {
             print("Folder import completed with \(errors.count) errors: \(errors.joined(separator: "; "))")
         }
 
+        // Return the playlist (we need to fetch it)
+        let playlist = try await MainActor.run {
+            guard let p = self.playlists.first(where: { $0.name == folderName }) else {
+                throw SoundLibraryError.folderImportFailed("Failed to create playlist.")
+            }
+            return p
+        }
         return playlist
     }
 
