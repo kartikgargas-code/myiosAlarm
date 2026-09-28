@@ -136,7 +136,7 @@ struct NextAlarmControlView: View {
                 }
             }
             
-            if let error = coordinator.lastError {
+            if let error = provider.coordinator.lastError {
                 Section("Scheduling Error") {
                     Text(error).foregroundStyle(colors.destructive)
                 }
