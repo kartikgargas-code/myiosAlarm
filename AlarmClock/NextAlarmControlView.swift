@@ -4,10 +4,10 @@ import SwiftUI
 /// Reuses the existing alarm-management implementation without duplicating scheduling logic.
 struct NextAlarmControlView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var coordinator: AlarmCoordinator
+    @Environment(NextAlarmProvider.self) private var provider
     
     private var snapshot: NextAlarmSnapshot? {
-        coordinator.nextAlarmSnapshot
+        provider.coordinator.nextAlarmSnapshot
     }
     
     @State private var customDate = Date.now.addingTimeInterval(600)
@@ -166,31 +166,31 @@ struct NextAlarmControlView: View {
     
     private func adjustNext(minutes: Int) async {
         guard let snapshot = snapshot else { return }
-        await coordinator.adjustNext(id: snapshot.alarmID, minutes: minutes)
+        await provider.coordinator.adjustNext(id: snapshot.alarmID, minutes: minutes)
         await updateMessage("Adjusted by \(minutes >= 0 ? "+" : "")\(minutes) minutes")
     }
     
     private func resetNext() async {
         guard let snapshot = snapshot else { return }
-        await coordinator.resetNext(id: snapshot.alarmID)
+        await provider.coordinator.resetNext(id: snapshot.alarmID)
         await updateMessage("Reset to permanent schedule")
     }
     
     private func setCustomTime(_ date: Date) async {
         guard let snapshot = snapshot else { return }
-        await coordinator.setNextTime(id: snapshot.alarmID, date: date)
+        await provider.coordinator.setNextTime(id: snapshot.alarmID, date: date)
         await updateMessage("Set custom time to \(date.formatted(date: .omitted, time: .shortened))")
     }
     
     private func skipNext() async {
         guard let snapshot = snapshot else { return }
-        await coordinator.skipNext(id: snapshot.alarmID)
+        await provider.coordinator.skipNext(id: snapshot.alarmID)
         await updateMessage("Skipped next occurrence")
     }
     
     private func undoSkip() async {
         guard let snapshot = snapshot else { return }
-        await coordinator.undoSkip(id: snapshot.alarmID)
+        await provider.coordinator.undoSkip(id: snapshot.alarmID)
         await updateMessage("Undid skip")
     }
     
