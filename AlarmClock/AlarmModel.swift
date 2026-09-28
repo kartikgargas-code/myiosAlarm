@@ -61,13 +61,6 @@ public enum AlarmSound: Codable, Equatable, Hashable {
         case .precomposedPlaylist(let playlistID, _): "Precomposed — Playlist \(playlistID.uuidString.prefix(8))"
         }
     }
-
-    public var systemFileName: String? {
-        switch self {
-        case .systemDefault, .imported, .random, .precomposedPlaylist: nil
-        case .builtIn(let name): BuiltInSound.fileName(for: name)
-        }
-    }
 }
 
 public struct AlarmLoudness: Codable, Equatable, Hashable {

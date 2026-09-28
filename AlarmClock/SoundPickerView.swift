@@ -523,3 +523,12 @@ enum BuiltInSound: String, CaseIterable {
         allCases.first { $0.rawValue == displayName }?.fileName
     }
 }
+
+extension AlarmSound {
+    var systemFileName: String? {
+        switch self {
+        case .systemDefault, .imported, .random, .precomposedPlaylist: nil
+        case .builtIn(let name): BuiltInSound.fileName(for: name)
+        }
+    }
+}
