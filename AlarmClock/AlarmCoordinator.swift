@@ -119,7 +119,14 @@ final class AlarmCoordinator {
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
             do {
                 // For random mode, select a song for this occurrence if not already selected
-                let soundToUse = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: &mutableEngine)
+                let (soundToUse, override) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: mutableEngine)
+                // Apply the override if there is one
+                if let newOverride = override {
+                    if var updatedAlarm = mutableEngine.alarm(id: alarm.id) {
+                        updatedAlarm.overrides[occurrence.occurrenceKey] = newOverride
+                        try mutableEngine.upsert(updatedAlarm, now: now())
+                    }
+                }
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                 results.append(DesiredSystemAlarm(
                     id: SystemScheduleID.make(for: occurrence, label: label),
@@ -138,7 +145,8 @@ final class AlarmCoordinator {
     }
 
     /// Resolve the sound for a specific occurrence, handling random mode
-    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: inout AlarmEngine) throws -> AlarmSound {
+    /// Returns the sound to use and the updated override (if any)
+    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> (AlarmSound, AlarmOccurrenceOverride?) {
         switch alarm.sound {
         case .random(let playlistID):
             // Check if we already have a random sound selected for this occurrence
@@ -147,7 +155,7 @@ final class AlarmCoordinator {
                 // Verify the sound still exists in the playlist
                 if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                    playlist.soundIDs.contains(selectedSoundID) {
-                    return .imported(selectedSoundID)
+                    return (.imported(selectedSoundID), nil)
                 }
             }
 
@@ -177,17 +185,11 @@ final class AlarmCoordinator {
             // Store the selection in the override for this occurrence
             var newOverride = alarm.overrides[occurrence.occurrenceKey] ?? .none
             newOverride.randomSoundID = selectedSoundID
-            
-            // Update the alarm's overrides in the engine
-            if var updatedAlarm = engine.alarm(id: alarm.id) {
-                updatedAlarm.overrides[occurrence.occurrenceKey] = newOverride
-                engine.upsert(updatedAlarm, now: now())
-            }
 
-            return .imported(selectedSoundID)
+            return (.imported(selectedSoundID), newOverride)
 
         default:
-            return alarm.sound
+            return (alarm.sound, nil)
         }
     }
 

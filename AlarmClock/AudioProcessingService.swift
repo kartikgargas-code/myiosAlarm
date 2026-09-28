@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AudioToolbox
 
 /// Service for non-destructive audio gain adjustment
 /// Creates modified audio files at different loudness levels without modifying the originals
