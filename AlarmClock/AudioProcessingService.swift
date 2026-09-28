@@ -43,10 +43,14 @@ final class AudioProcessingService {
     /// Uses AVAudioEngine for non-destructive processing
     /// Output is written as WAV to ensure AlarmKit compatibility
     func generateProcessedSound(for originalSound: ImportedSound, loudness: AlarmLoudness) async throws -> URL {
-        guard let soundsDir = SoundLibrary.shared.soundsDirectory else {
+        // Capture MainActor-isolated values before detaching
+        let soundsDir = SoundLibrary.shared.soundsDirectory
+        let processedDir = processedSoundsDirectory
+        
+        guard let soundsDir else {
             throw AudioProcessingError.soundsDirectoryUnavailable
         }
-        guard let processedDir = processedSoundsDirectory else {
+        guard let processedDir else {
             throw AudioProcessingError.processedDirectoryUnavailable
         }
 
@@ -66,7 +70,8 @@ final class AudioProcessingService {
         }
 
         // Process on background queue
-        return try await Task.detached(priority: .userInitiated) { [gainFactor = loudness.gainFactor] in
+        let gainFactor = loudness.gainFactor
+        return try await Task.detached(priority: .userInitiated) {
             let audioFile = try AVAudioFile(forReading: originalURL)
             let format = audioFile.processingFormat
             let frameCount = UInt32(audioFile.length)
