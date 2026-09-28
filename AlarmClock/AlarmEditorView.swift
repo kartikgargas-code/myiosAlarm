@@ -19,7 +19,7 @@ struct AlarmEditorView: View {
     @State private var showingSoundPicker = false
     
     // Simplified test alarm state
-    private enum TestAlarmState {
+    private enum TestAlarmState: Equatable {
         case idle
         case starting
         case success
@@ -303,37 +303,19 @@ struct AlarmEditorView: View {
         let alarm = makeAlarm(isEnabled: true)
         
         testAlarmTask = Task {
-            do {
-                await onTestAlarm(alarm, testSchedulingDelay)
-                
-                // Check if task was cancelled
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        testAlarmState = .success
-                        
-                        // Auto-reset to idle after showing success briefly
-                        Task {
-                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                            if !Task.isCancelled {
-                                await MainActor.run {
-                                    testAlarmState = .idle
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch {
-                if !Task.isCancelled {
-                    await MainActor.run {
-                        testAlarmState = .error(error.localizedDescription)
-                        
-                        // Auto-reset to idle after showing error
-                        Task {
-                            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
-                            if !Task.isCancelled {
-                                await MainActor.run {
-                                    testAlarmState = .idle
-                                }
+            await onTestAlarm(alarm, testSchedulingDelay)
+            
+            // Check if task was cancelled
+            if !Task.isCancelled {
+                await MainActor.run {
+                    testAlarmState = .success
+                    
+                    // Auto-reset to idle after showing success briefly
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                        if !Task.isCancelled {
+                            await MainActor.run {
+                                testAlarmState = .idle
                             }
                         }
                     }
