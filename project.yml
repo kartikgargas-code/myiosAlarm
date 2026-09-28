@@ -62,6 +62,10 @@ targets:
     sources:
       - path: AlarmClock/NextAlarmSnapshot.swift
       - path: AlarmClock/AlarmModel.swift
+    info:
+      path: AlarmClock/AlarmClockShared-Info.plist
+      properties:
+        CFBundleDisplayName: AlarmClockShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.shared
