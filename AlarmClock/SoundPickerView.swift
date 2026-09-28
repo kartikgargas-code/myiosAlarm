@@ -382,9 +382,6 @@ struct PlaylistCreatorView: View {
     }
 }
 
-}
-}
-
 struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let playlist: Playlist
@@ -485,5 +482,33 @@ struct PlaylistEditorView: View {
                 }
             }
         }
+    }
+}
+
+enum BuiltInSound: String, CaseIterable {
+    case classicBell = "Classic Bell"
+    case digital = "Digital"
+    case gentleWake = "Gentle Wake"
+    case morning = "Morning"
+    case pulse = "Pulse"
+    case chime = "Chime"
+    case soft = "Soft"
+    case bright = "Bright"
+
+    var fileName: String {
+        switch self {
+        case .classicBell: "classic-bell.wav"
+        case .digital: "digital.wav"
+        case .gentleWake: "gentle-wake.wav"
+        case .morning: "morning.wav"
+        case .pulse: "pulse.wav"
+        case .chime: "chime.wav"
+        case .soft: "soft.wav"
+        case .bright: "bright.wav"
+        }
+    }
+
+    static func fileName(for displayName: String) -> String? {
+        allCases.first { $0.rawValue == displayName }?.fileName
     }
 }
