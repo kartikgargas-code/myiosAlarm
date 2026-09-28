@@ -11,6 +11,7 @@ struct SoundPickerView: View {
     @State private var importError: String?
     @State private var importStatus: String?
     @State private var pickerEventLog: [String] = []
+    @State private var showingDeleteConfirmation = false
 
     private let preview = SoundPreviewService.shared
 
@@ -120,16 +121,18 @@ struct SoundPickerView: View {
         .fileImporter(
             isPresented: $showingDocumentPicker,
             allowedContentTypes: [.mp3, .audio, .movie],
-            allowsMultipleSelection: false
+            allowsMultipleSelection: true
         ) { result in
             switch result {
             case .success(let urls):
-                guard let url = urls.first else {
+                guard !urls.isEmpty else {
                     pickerEventLog.append("[\(timestamp())] Picker returned no file")
                     return
                 }
-                pickerEventLog.append("[\(timestamp())] File selected: \(url.lastPathComponent)")
-                Task { await importSound(from: url) }
+                pickerEventLog.append("[\(timestamp())] Files selected: \(urls.map { $0.lastPathComponent }.joined(separator: ", "))")
+                for url in urls {
+                    Task { await importSound(from: url) }
+                }
             case .failure(let error):
                 pickerEventLog.append("[\(timestamp())] Picker failed: \(error.localizedDescription)")
                 importError = "Files picker failed: \(error.localizedDescription)"
@@ -157,6 +160,9 @@ struct SoundPickerView: View {
             PlaylistCreatorView(onSave: { name, soundIDs in
                 let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
             })
+        }
+        .sheet(item: $showingPlaylistEditor) { playlist in
+            PlaylistEditorView(playlist: playlist)
         }
         .onDisappear {
             preview.stop()
@@ -219,10 +225,13 @@ struct SoundPickerView: View {
     private func randomPlaylistRow(playlist: Playlist) -> some View {
         let randomSound = AlarmSound.random(playlist.id)
         let isSelected = selectedSound.id == randomSound.id
+        let selectedCount = playlist.selectedSoundIDs.count
+        let totalCount = playlist.soundIDs.count
+        
         return Button {
             selectedSound = randomSound
             // Play first song as preview
-            let firstSoundID = playlist.soundIDs.first
+            let firstSoundID = playlist.selectedSoundIDs.first
             if let firstSoundID {
                 let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID })
                 if let sound {
@@ -238,7 +247,7 @@ struct SoundPickerView: View {
                     Text("Random — \(playlist.name)")
                         .font(.body)
                         .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                    Text("\(playlist.soundIDs.count) songs")
+                    Text("\(selectedCount) of \(totalCount) songs selected")
                         .font(.caption)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
@@ -257,7 +266,16 @@ struct SoundPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                showingPlaylistEditor = playlist
+            } label: {
+                Label("Edit Songs", systemImage: "music.note.list")
+            }
+        }
     }
+    
+    @State private var showingPlaylistEditor: Playlist? = nil
 
     private func builtInSoundURL(_ builtIn: BuiltInSound) -> URL? {
         let url = SoundPreviewService.bundledSoundURL(for: builtIn.fileName)
@@ -364,30 +382,108 @@ struct PlaylistCreatorView: View {
     }
 }
 
-enum BuiltInSound: String, CaseIterable {
-    case classicBell = "Classic Bell"
-    case digital = "Digital"
-    case gentleWake = "Gentle Wake"
-    case morning = "Morning"
-    case pulse = "Pulse"
-    case chime = "Chime"
-    case soft = "Soft"
-    case bright = "Bright"
+}
+}
 
-    var fileName: String {
-        switch self {
-        case .classicBell: "classic-bell.wav"
-        case .digital: "digital.wav"
-        case .gentleWake: "gentle-wake.wav"
-        case .morning: "morning.wav"
-        case .pulse: "pulse.wav"
-        case .chime: "chime.wav"
-        case .soft: "soft.wav"
-        case .bright: "bright.wav"
-        }
+struct PlaylistEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    let playlist: Playlist
+    @State private var selectedSoundIDs: Set<UUID>
+    @State private var showingDeleteConfirmation = false
+    @State private var deleteError: String?
+    
+    init(playlist: Playlist) {
+        self.playlist = playlist
+        self._selectedSoundIDs = State(initialValue: Set(playlist.selectedSoundIDs))
     }
-
-    static func fileName(for displayName: String) -> String? {
-        allCases.first { $0.rawValue == displayName }?.fileName
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Playlist Name") {
+                    Text(playlist.name)
+                        .font(.headline)
+                }
+                
+                Section("Songs (\(playlist.selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
+                    ForEach(playlist.soundIDs, id: \.self) { soundID in
+                        if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(sound.name)
+                                        .font(.body)
+                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                    Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
+                                        .font(.caption)
+                                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                }
+                                Spacer()
+                                if selectedSoundIDs.contains(sound.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .font(.title2)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selectedSoundIDs.contains(sound.id) {
+                                    selectedSoundIDs.remove(sound.id)
+                                } else {
+                                    selectedSoundIDs.insert(sound.id)
+                                }
+                            }
+                        }
+                }
+                
+                Section {
+                    HStack {
+                        Button("Select All") {
+                            selectedSoundIDs = Set(playlist.soundIDs)
+                        }
+                        .disabled(selectedSoundIDs.count == playlist.soundIDs.count)
+                        
+                        Spacer()
+                        
+                        Button("Deselect All") {
+                            selectedSoundIDs.removeAll()
+                        }
+                        .disabled(selectedSoundIDs.isEmpty)
+                    }
+                }
+                
+                Section {
+                    Button("Delete Playlist", role: .destructive) {
+                        showingDeleteConfirmation = true
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle("Edit Playlist")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        var updatedPlaylist = playlist
+                        updatedPlaylist.selectedSoundIDs = Array(selectedSoundIDs)
+                        SoundLibrary.shared.updatePlaylist(updatedPlaylist, newSoundIDs: nil)
+                        dismiss()
+                    }
+                    .disabled(selectedSoundIDs.isEmpty)
+                }
+            }
+            .alert("Delete Playlist", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    if let error = SoundLibrary.shared.deletePlaylist(Playlist(id: playlist.id, name: playlist.name, soundIDs: playlist.soundIDs, selectedSoundIDs: playlist.selectedSoundIDs, dateCreated: playlist.dateCreated), referencedBy: AlarmCoordinator().alarms) {
+                        deleteError = error.localizedDescription
+                    } else {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }

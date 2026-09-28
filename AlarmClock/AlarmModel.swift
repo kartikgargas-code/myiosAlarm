@@ -4,17 +4,20 @@ struct Playlist: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var soundIDs: [UUID]
+    var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
     var dateCreated: Date
 
     init(
         id: UUID = UUID(),
         name: String,
         soundIDs: [UUID] = [],
+        selectedSoundIDs: [UUID]? = nil,
         dateCreated: Date = Date()
     ) {
         self.id = id
         self.name = name
         self.soundIDs = soundIDs
+        self.selectedSoundIDs = selectedSoundIDs ?? soundIDs  // Default to all selected
         self.dateCreated = dateCreated
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 struct ImportedSound: Identifiable, Codable, Hashable {
     let id: UUID
@@ -137,7 +138,7 @@ final class SoundLibrary {
         let destURL = soundsDir.appendingPathComponent(stableFileName)
         let displayName = sourceURL.deletingPathExtension().lastPathComponent
 
-        let copied: (fileName: String, bytes: Int) = try await Task.detached(priority: .userInitiated) {
+        let copied: (fileName: String, bytes: Int, duration: TimeInterval?) = try await Task.detached(priority: .userInitiated) {
             let fileManager = FileManager.default
             let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
             defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
@@ -148,13 +149,26 @@ final class SoundLibrary {
             }
             try fileManager.copyItem(at: sourceURL, to: destURL)
             let size = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-            return (stableFileName, size)
+            
+            // Read duration from the audio file
+            var duration: TimeInterval? = nil
+            do {
+                let audioFile = try AVAudioFile(forReading: destURL)
+                let sampleRate = audioFile.processingFormat.sampleRate
+                let frameCount = audioFile.length
+                duration = Double(frameCount) / sampleRate
+            } catch {
+                // Duration reading failed, leave as nil
+            }
+            
+            return (stableFileName, size, duration)
         }.value
 
         let sound = ImportedSound(
             id: stableID(for: copied.fileName),
             name: displayName,
-            fileName: copied.fileName
+            fileName: copied.fileName,
+            duration: copied.duration
         )
         importedSounds.insert(sound, at: 0)
         return sound
@@ -169,7 +183,7 @@ final class SoundLibrary {
         defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
 
         let folderName = sourceURL.lastPathComponent
-        var importedSoundInfos: [(id: UUID, name: String, fileName: String)] = []
+        var importedSoundInfos: [(id: UUID, name: String, fileName: String, duration: TimeInterval?)] = []
         var errors: [String] = []
 
         do {
@@ -197,8 +211,19 @@ final class SoundLibrary {
                     }
                     try fileManager.copyItem(at: sourceFileURL, to: destURL)
 
+                    // Read duration from the audio file
+                    var duration: TimeInterval? = nil
+                    do {
+                        let audioFile = try AVAudioFile(forReading: destURL)
+                        let sampleRate = audioFile.processingFormat.sampleRate
+                        let frameCount = audioFile.length
+                        duration = Double(frameCount) / sampleRate
+                    } catch {
+                        // Duration reading failed, leave as nil
+                    }
+
                     let id = stableID(for: stableFileName)
-                    importedSoundInfos.append((id: id, name: displayName, fileName: stableFileName))
+                    importedSoundInfos.append((id: id, name: displayName, fileName: stableFileName, duration: duration))
                 } catch {
                     errors.append("\(sourceFileURL.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -218,14 +243,16 @@ final class SoundLibrary {
                 let sound = ImportedSound(
                     id: info.id,
                     name: info.name,
-                    fileName: info.fileName
+                    fileName: info.fileName,
+                    duration: info.duration
                 )
                 self.importedSounds.insert(sound, at: 0)
             }
 
             let playlist = Playlist(
                 name: folderName,
-                soundIDs: importedSoundIDs
+                soundIDs: importedSoundIDs,
+                selectedSoundIDs: importedSoundIDs  // All songs selected by default
             )
             self.playlists.append(playlist)
             self.savePlaylists()
@@ -252,9 +279,22 @@ final class SoundLibrary {
         return playlist
     }
 
-    func deletePlaylist(_ playlist: Playlist) {
+    func deletePlaylist(_ playlist: Playlist, referencedBy alarms: [AlarmRecord]) -> SoundLibraryError? {
+        // Check if any alarm references this playlist
+        let referencingAlarms = alarms.filter { alarm in
+            if case .random(let playlistID) = alarm.sound {
+                return playlistID == playlist.id
+            }
+            return false
+        }
+        
+        if !referencingAlarms.isEmpty {
+            return SoundLibraryError.importFailed("Playlist is used by \(referencingAlarms.count) alarm(s). Remove or change those alarms first.")
+        }
+        
         playlists.removeAll { $0.id == playlist.id }
         savePlaylists()
+        return nil
     }
 
     func updatePlaylist(_ playlist: Playlist, newName: String? = nil, newSoundIDs: [UUID]? = nil) {
