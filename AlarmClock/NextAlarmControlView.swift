@@ -4,7 +4,7 @@ import SwiftUI
 /// Reuses the existing alarm-management implementation without duplicating scheduling logic.
 struct NextAlarmControlView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(NextAlarmProvider.self) private var provider
+    @EnvironmentObject private var provider: NextAlarmProvider
     
     private var snapshot: NextAlarmSnapshot? {
         provider.coordinator.nextAlarmSnapshot

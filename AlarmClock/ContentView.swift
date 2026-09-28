@@ -84,7 +84,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingNextAlarmControl) {
                 NextAlarmControlView()
-                    .environment(NextAlarmProvider(coordinator: coordinator))
+                    .environmentObject(NextAlarmProvider(coordinator: coordinator))
             }
             .sheet(isPresented: $showingDiagnostics) {
                 diagnosticsView
