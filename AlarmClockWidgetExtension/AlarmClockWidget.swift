@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 import AlarmClockShared
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
