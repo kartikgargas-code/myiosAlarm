@@ -88,19 +88,20 @@ struct AlarmEditorView: View {
                     .buttonStyle(.plain)
 
                     // Show next song for random mode
-                    if case .random(let playlistID) = selectedSound,
-                       let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
-                       let nextSoundID = getNextRandomSound(for: playlist),
-                       let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID }) {
-                        HStack {
-                            Image(systemName: "shuffle")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                                .font(.caption)
-                            Text("Next alarm song: \(nextSound.name)")
-                                .font(.caption)
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    if case .random(let playlistID) = selectedSound {
+                        if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+                           let nextSoundID = getNextRandomSound(for: playlist),
+                           let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID }) {
+                            HStack {
+                                Image(systemName: "shuffle")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                                    .font(.caption)
+                                Text("Next alarm song: \(nextSound.name)")
+                                    .font(.caption)
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            .padding(.leading, 4)
                         }
-                        .padding(.leading, 4)
                     }
                 }
 
