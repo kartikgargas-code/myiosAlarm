@@ -16,11 +16,6 @@ struct ContentView: View {
                     authorizationSection
                 }
 
-                if let next = coordinator.nextOccurrence,
-                   let alarm = coordinator.alarms.first(where: { $0.id == next.alarmID }) {
-                    nextAlarmSection(alarm: alarm, occurrence: next)
-                }
-
                 Section("Alarms") {
                     if coordinator.alarms.isEmpty {
                         ContentUnavailableView("No Alarms", systemImage: "alarm", description: Text("Tap + to create one."))
@@ -106,40 +101,13 @@ struct ContentView: View {
         }
     }
 
-    private func nextAlarmSection(alarm: AlarmRecord, occurrence: AlarmOccurrence) -> some View {
-        let colors = ThemeManager.shared.colors
-        let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
-
-        return Section("Next Alarm") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))
-                    .font(.system(size: 44, weight: .medium))
-                    .foregroundStyle(colors.primaryText)
-                Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
-                    .font(.headline)
-                    .foregroundStyle(colors.primaryText)
-
-                if occurrence.isAdjusted {
-                    Text("Normally \(occurrence.baseDate.formatted(date: .omitted, time: .shortened)) · \(adjustmentDescription(occurrence))")
-                        .foregroundStyle(colors.secondaryText)
-                }
-
-                if let skipped = skippedOccurrence {
-                    Text("Skipped: \(skipped.baseDate.formatted(date: .abbreviated, time: .shortened))")
-                        .foregroundStyle(colors.accent)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 8)
-        }
-    }
-
     private func alarmRow(_ alarm: AlarmRecord) -> some View {
         let colors = ThemeManager.shared.colors
         let occurrence = coordinator.occurrence(for: alarm.id)
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
 
         return HStack(spacing: 12) {
+            // Alarm details - tapping opens editor
             Button {
                 editorAlarm = alarm
                 showingEditor = true
@@ -176,19 +144,52 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
 
+            // Explicit Edit button
             Button {
-                controlsAlarm = alarm
+                editorAlarm = alarm
+                showingEditor = true
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .foregroundStyle(colors.secondaryText)
+                Text("Edit")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(colors.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
             }
             .buttonStyle(.borderless)
+            .contentShape(Rectangle())
 
+            // Toggle ONLY changes enabled state
             Toggle("Enabled", isOn: Binding(
                 get: { alarm.isEnabled },
                 set: { enabled in Task { await coordinator.setEnabled(enabled, id: alarm.id) } }
             ))
             .labelsHidden()
+            .toggleStyle(.switch)
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            // Preserve secondary actions
+            if let occurrence {
+                if let skipped = skippedOccurrence {
+                    Button("Undo Skip") {
+                        Task { await coordinator.undoSkip(id: alarm.id) }
+                    }
+                } else {
+                    Button("Skip Next", role: .destructive) {
+                        Task { await coordinator.skipNext(id: alarm.id) }
+                    }
+                }
+
+                if occurrence.isAdjusted {
+                    Button("Reset") {
+                        Task { await coordinator.resetNext(id: alarm.id) }
+                    }
+                }
+            }
+
+            Button("Delete", role: .destructive) {
+                Task { await coordinator.delete(id: alarm.id) }
+            }
         }
     }
 

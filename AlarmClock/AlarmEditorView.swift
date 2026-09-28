@@ -17,12 +17,18 @@ struct AlarmEditorView: View {
     @State private var selectedSound: AlarmSound
     @State private var selectedLoudness: AlarmLoudness
     @State private var showingSoundPicker = false
-    @State private var showingTestAlarm = false
-    @State private var testDelay: TimeInterval = 60 // Default 60 seconds
-    @State private var testAlarmScheduled = false
-    @State private var testAlarmSound: String?
-    @State private var testAlarmLoudness: AlarmLoudness?
+    
+    // Simplified test alarm state
+    private enum TestAlarmState {
+        case idle
+        case starting
+        case success
+        case error(String)
+    }
+    
+    @State private var testAlarmState: TestAlarmState = .idle
     @State private var testAlarmTask: Task<Void, Never>?
+    private let testSchedulingDelay: TimeInterval = 10 // Internal minimal delay for reliable scheduling
 
     init(existingAlarm: AlarmRecord? = nil, onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
         self.existingAlarm = existingAlarm
@@ -144,72 +150,88 @@ struct AlarmEditorView: View {
     }
     private var testAlarmSection: some View {
         Section("Test Alarm") {
-            if testAlarmScheduled {
-                scheduledTestAlarmView
+            if testAlarmState != .idle {
+                activeTestAlarmView
             } else {
-                testAlarmControls
+                testAlarmButton
             }
         }
     }
-    private var testAlarmControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    
+    private enum TestAlarmState {
+        case idle
+        case starting
+        case success
+        case error(String)
+    }
+    
+    @State private var testAlarmState: TestAlarmState = .idle
+    @State private var testAlarmTask: Task<Void, Never>?
+    private let testSchedulingDelay: TimeInterval = 10 // Internal minimal delay for reliable scheduling
+    
+    private var testAlarmButton: some View {
+        Button {
+            Task { await scheduleTestAlarm() }
+        } label: {
             HStack {
-                Text("Test Delay")
-                Spacer()
-                Picker("Delay", selection: $testDelay) {
-                    Text("10 seconds").tag(TimeInterval(10))
-                    Text("30 seconds").tag(TimeInterval(30))
-                    Text("60 seconds").tag(TimeInterval(60))
-                    Text("90 seconds").tag(TimeInterval(90))
-                    Text("2 minutes").tag(TimeInterval(120))
-                }
-                .pickerStyle(.menu)
-                .frame(width: 140)
+                Image(systemName: "speaker.wave.3.fill")
+                Text(testButtonLabel)
             }
-            Button {
-                Task { await scheduleTestAlarm() }
-            } label: {
-                HStack {
-                    Image(systemName: "speaker.wave.3.fill")
-                    Text("Test Alarm")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(ThemeManager.shared.colors.accent)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(testButtonTint)
+        .disabled(testAlarmState != .idle)
+        .animation(.easeInOut(duration: 0.15), value: testAlarmState)
+    }
+    
+    private var testButtonLabel: String {
+        switch testAlarmState {
+        case .idle: return "Test"
+        case .starting: return "Starting…"
+        case .success: return "Test Scheduled"
+        case .error: return "Test"
         }
     }
-    private var scheduledTestAlarmView: some View {
+    
+    private var testButtonTint: Color {
+        switch testAlarmState {
+        case .idle: return ThemeManager.shared.colors.accent
+        case .starting: return ThemeManager.shared.colors.accent.opacity(0.6)
+        case .success: return .green
+        case .error: return ThemeManager.shared.colors.destructive
+        }
+    }
+    
+    private var activeTestAlarmView: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Test alarm scheduled")
-                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                if testAlarmState == .starting {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Scheduling test alarm…")
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                } else if case .error(let message) = testAlarmState {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                    Text(message)
+                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                        .font(.caption)
+                } else if testAlarmState == .success {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Test alarm scheduled successfully")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                }
                 Spacer()
-                Button("Cancel Test") { cancelTestAlarm() }
-                    .foregroundStyle(ThemeManager.shared.colors.destructive)
             }
-            if let sound = testAlarmSound {
-                testAlarmDetail(icon: "music.note", text: "Sound: \(sound)")
-            }
-            if let loudness = testAlarmLoudness {
-                testAlarmDetail(icon: "speaker.wave.2", text: "Loudness: \(loudness.displayName)")
-            }
+            
             Text("This is a real AlarmKit test — not an audio preview. The system alarm UI will appear with Stop button.")
                 .font(.caption2)
                 .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
         .padding(.vertical, 4)
-    }
-    private func testAlarmDetail(icon: String, text: String) -> some View {
-        HStack {
-            Image(systemName: icon)
-                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-        }
     }
     @ToolbarContentBuilder
     private var editorToolbar: some ToolbarContent {
@@ -282,20 +304,59 @@ struct AlarmEditorView: View {
 
     private func scheduleTestAlarm() async {
         guard let onTestAlarm else { return }
-
+        
+        // Cancel any existing test alarm task
+        testAlarmTask?.cancel()
+        
+        // Immediate pressed feedback
+        testAlarmState = .starting
+        
         let alarm = makeAlarm(isEnabled: true)
-        testAlarmSound = soundDisplayName(for: selectedSound)
-        testAlarmLoudness = selectedLoudness
-        testAlarmScheduled = true
-
+        
         testAlarmTask = Task {
-            await onTestAlarm(alarm, testDelay)
-            await MainActor.run {
-                testAlarmScheduled = false
-                testAlarmSound = nil
-                testAlarmLoudness = nil
+            do {
+                await onTestAlarm(alarm, testSchedulingDelay)
+                
+                // Check if task was cancelled
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        testAlarmState = .success
+                        
+                        // Auto-reset to idle after showing success briefly
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            if !Task.isCancelled {
+                                await MainActor.run {
+                                    testAlarmState = .idle
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        testAlarmState = .error(error.localizedDescription)
+                        
+                        // Auto-reset to idle after showing error
+                        Task {
+                            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+                            if !Task.isCancelled {
+                                await MainActor.run {
+                                    testAlarmState = .idle
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+    
+    private func cancelTestAlarm() {
+        testAlarmTask?.cancel()
+        testAlarmTask = nil
+        testAlarmState = .idle
     }
 
     private func soundDisplayName(for sound: AlarmSound) -> String {

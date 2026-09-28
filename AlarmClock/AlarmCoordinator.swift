@@ -243,8 +243,9 @@ final class AlarmCoordinator {
     }
 
     private func publish() {
-        alarms = engine.alarms
-        nextOccurrence = engine.earliestOccurrence(now: now())
+        let currentDate = now()
+        alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
+        nextOccurrence = engine.earliestOccurrence(now: currentDate)
     }
 
     /// Schedule a test alarm using the actual alarm configuration

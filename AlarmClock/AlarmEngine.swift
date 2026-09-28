@@ -11,9 +11,23 @@ struct AlarmEngine {
     }
 
     var alarms: [AlarmRecord] {
-        snapshot.alarms.sorted {
-            if $0.time.hour == $1.time.hour { return $0.time.minute < $1.time.minute }
-            return $0.time.hour < $1.time.hour
+        snapshot.alarms.sorted(by: permanentTimeOrder)
+    }
+
+    func alarmsOrderedByNextOccurrence(now: Date) -> [AlarmRecord] {
+        snapshot.alarms.sorted { first, second in
+            let firstDate = calculator.nextEffectiveOccurrence(for: first, after: now)?.effectiveDate
+            let secondDate = calculator.nextEffectiveOccurrence(for: second, after: now)?.effectiveDate
+            switch (firstDate, secondDate) {
+            case let (.some(lhs), .some(rhs)) where lhs != rhs:
+                return lhs < rhs
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                return permanentTimeOrder(first, second)
+            }
         }
     }
 
@@ -160,6 +174,12 @@ struct AlarmEngine {
 
     private func scheduleIdentity(of alarm: AlarmRecord) -> String {
         "\(alarm.time.hour):\(alarm.time.minute)|\(alarm.repeatRule)|\(alarm.oneTimeDate?.timeIntervalSince1970 ?? 0)"
+    }
+
+    private func permanentTimeOrder(_ first: AlarmRecord, _ second: AlarmRecord) -> Bool {
+        if first.time.hour != second.time.hour { return first.time.hour < second.time.hour }
+        if first.time.minute != second.time.minute { return first.time.minute < second.time.minute }
+        return first.id.uuidString < second.id.uuidString
     }
 
     private func baseDate(for key: String, alarm: AlarmRecord) -> Date? {
