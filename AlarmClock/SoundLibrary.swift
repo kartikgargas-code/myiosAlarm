@@ -270,6 +270,7 @@ final class SoundLibrary {
 
     func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
         guard !isReferenced(sound, by: alarms) else { return }
+        AudioProcessingService.shared.removeProcessedSounds(for: sound)
         if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
             try? fileManager.removeItem(at: localURL)
         }

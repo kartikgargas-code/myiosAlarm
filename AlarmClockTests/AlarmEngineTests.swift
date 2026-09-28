@@ -301,11 +301,16 @@ final class AlarmEngineTests: XCTestCase {
     }
 
     @MainActor
-    func testAlarmLoudnessGainFactors() throws {
-        XCTAssertEqual(AlarmLoudness.twentyFive.gainFactor, 0.25)
-        XCTAssertEqual(AlarmLoudness.fifty.gainFactor, 0.50)
-        XCTAssertEqual(AlarmLoudness.seventyFive.gainFactor, 0.75)
-        XCTAssertEqual(AlarmLoudness.hundred.gainFactor, 1.0)
+    func testAlarmLoudnessSupportsEveryPercentageAndLegacyDecoding() throws {
+        XCTAssertEqual(AlarmLoudness(0).gainFactor, 0)
+        XCTAssertEqual(AlarmLoudness(37).gainFactor, 0.37, accuracy: 0.0001)
+        XCTAssertEqual(AlarmLoudness(100).gainFactor, 1)
+        XCTAssertEqual(AlarmLoudness(-1).percentage, 0)
+        XCTAssertEqual(AlarmLoudness(101).percentage, 100)
+
+        let decoded = try JSONDecoder().decode(AlarmLoudness.self, from: Data("50".utf8))
+        XCTAssertEqual(decoded, .fifty)
+        XCTAssertEqual(try JSONEncoder().encode(AlarmLoudness(63)), Data("63".utf8))
     }
 
     @MainActor
@@ -315,10 +320,25 @@ final class AlarmEngineTests: XCTestCase {
             time: AlarmTime(hour: 7, minute: 0),
             repeatRule: .daily,
             sound: .systemDefault,
-            loudness: .fifty
+            loudness: AlarmLoudness(63)
         )
-        XCTAssertEqual(alarm.loudness, .fifty)
-        XCTAssertEqual(alarm.loudness.gainFactor, 0.5)
+        XCTAssertEqual(alarm.loudness.percentage, 63)
+        XCTAssertEqual(alarm.loudness.gainFactor, 0.63, accuracy: 0.0001)
+    }
+
+    func testSystemScheduleIDChangesWithActualAudioConfiguration() throws {
+        let occurrence = try XCTUnwrap(engineWithDailyAlarm().earliestOccurrence(now: now))
+        let soundID = UUID()
+        let baseline = SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(soundID), loudness: AlarmLoudness(50))
+
+        XCTAssertNotEqual(
+            baseline,
+            SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(soundID), loudness: AlarmLoudness(51))
+        )
+        XCTAssertNotEqual(
+            baseline,
+            SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(UUID()), loudness: AlarmLoudness(50))
+        )
     }
 
     @MainActor

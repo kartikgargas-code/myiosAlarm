@@ -105,10 +105,15 @@ enum AlarmSynchronizationError: LocalizedError {
 }
 
 enum SystemScheduleID {
-    static func make(for occurrence: AlarmOccurrence, label: String) -> UUID {
+    static func make(
+        for occurrence: AlarmOccurrence,
+        label: String,
+        sound: AlarmSound = .systemDefault,
+        loudness: AlarmLoudness = .defaultValue
+    ) -> UUID {
         StableOccurrenceID.make(
             alarmID: occurrence.id,
-            occurrenceKey: "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)"
+            occurrenceKey: "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(sound.id)|\(loudness.percentage)"
         )
     }
 }

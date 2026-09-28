@@ -33,8 +33,7 @@ final class AudioProcessingService {
     func processedSoundURL(for originalSound: ImportedSound, loudness: AlarmLoudness) -> URL? {
         guard let dir = processedSoundsDirectory else { return nil }
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
-        // Processed files are always WAV
-        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
+        let processedFileName = "\(baseName)_\(loudness.percentage)pct.wav"
         let url = dir.appendingPathComponent(processedFileName)
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
@@ -60,8 +59,7 @@ final class AudioProcessingService {
         }
 
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
-        // Use WAV extension for processed files since AVAudioFile doesn't support MP3 encoding
-        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
+        let processedFileName = "\(baseName)_\(loudness.percentage)pct.wav"
         let processedURL = processedDir.appendingPathComponent(processedFileName)
 
         // If already exists, return it
@@ -119,15 +117,16 @@ final class AudioProcessingService {
         return try await generateProcessedSound(for: originalSound, loudness: loudness)
     }
 
-    /// Clean up processed sounds for a deleted original sound
     func removeProcessedSounds(for originalSound: ImportedSound) {
-        guard let dir = processedSoundsDirectory else { return }
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
+        let prefix = "\(baseName)_"
+        let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
 
-        for loudness in AlarmLoudness.allCases {
-            let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
-            let url = dir.appendingPathComponent(processedFileName)
-            try? fileManager.removeItem(at: url)
+        for directory in directories {
+            let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.lastPathComponent.hasPrefix(prefix) && file.lastPathComponent.hasSuffix("pct.wav") {
+                try? fileManager.removeItem(at: file)
+            }
         }
     }
 

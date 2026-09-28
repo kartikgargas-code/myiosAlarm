@@ -129,7 +129,12 @@ final class AlarmCoordinator {
                 }
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                 results.append(DesiredSystemAlarm(
-                    id: SystemScheduleID.make(for: occurrence, label: label),
+                    id: SystemScheduleID.make(
+                        for: occurrence,
+                        label: label,
+                        sound: soundToUse,
+                        loudness: alarm.loudness
+                    ),
                     occurrence: occurrence,
                     label: label,
                     sound: soundToUse,

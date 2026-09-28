@@ -115,16 +115,25 @@ struct AlarmEditorView: View {
     }
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
-            Picker("Loudness", selection: $selectedLoudness) {
-                ForEach(AlarmLoudness.allCases, id: \.self) { loudness in
-                    Text(loudness.displayName).tag(loudness)
-                }
+            HStack {
+                Text("Loudness")
+                Spacer()
+                Text(selectedLoudness.displayName)
+                    .monospacedDigit()
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
-            .pickerStyle(.segmented)
+            Slider(value: loudnessBinding, in: 0...100, step: 1)
             Text("100% = original audio amplitude. Lower settings generate a quieter audio asset for AlarmKit.")
                 .font(.caption2)
                 .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
+    }
+
+    private var loudnessBinding: Binding<Double> {
+        Binding(
+            get: { Double(selectedLoudness.percentage) },
+            set: { selectedLoudness = AlarmLoudness(Int($0.rounded())) }
+        )
     }
     private var adjustmentStepPicker: some View {
         Picker("Adjustment Step", selection: $adjustmentStep) {

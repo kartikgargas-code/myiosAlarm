@@ -51,22 +51,31 @@ enum AlarmSound: Codable, Equatable, Hashable {
     }
 }
 
-enum AlarmLoudness: Int, Codable, CaseIterable, Equatable, Hashable {
-    case twentyFive = 25
-    case fifty = 50
-    case seventyFive = 75
-    case hundred = 100
+struct AlarmLoudness: Codable, Equatable, Hashable {
+    let percentage: Int
 
-    var displayName: String {
-        "\(rawValue)%"
+    init(_ percentage: Int) {
+        self.percentage = min(max(percentage, 0), 100)
     }
 
-    var gainFactor: Float {
-        // Linear amplitude scaling: 25% = 0.25, 50% = 0.50, 75% = 0.75, 100% = 1.0
-        Float(rawValue) / 100.0
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(try container.decode(Int.self))
     }
 
-    static var defaultValue: AlarmLoudness = .hundred
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(percentage)
+    }
+
+    var displayName: String { "\(percentage)%" }
+    var gainFactor: Float { Float(percentage) / 100.0 }
+
+    static let twentyFive = AlarmLoudness(25)
+    static let fifty = AlarmLoudness(50)
+    static let seventyFive = AlarmLoudness(75)
+    static let hundred = AlarmLoudness(100)
+    static let defaultValue = hundred
 }
 
 enum AlarmRepeatRule: Codable, Equatable, Hashable {
