@@ -34,7 +34,8 @@ struct AlarmReconciliationPlan: Equatable {
 
 
 struct AlarmKitSchedulingService: AlarmSystemScheduling {
-    let manager = AlarmManager.shared
+    @MainActor
+    var manager: AlarmManager { AlarmManager.shared }
 
     func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>) async throws -> Set<UUID> {
         guard manager.authorizationState == .authorized else {
