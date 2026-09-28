@@ -88,26 +88,7 @@ struct AlarmEditorView: View {
                     .buttonStyle(.plain)
 
                     // Show next song for random mode
-                    if case .random(let playlistID) = selectedSound {
-                        let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })
-                        if let playlist {
-                            let nextSoundID = getNextRandomSound(for: playlist)
-                            if let nextSoundID {
-                                let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID })
-                                if let nextSound {
-                                    HStack {
-                                        Image(systemName: "shuffle")
-                                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                                            .font(.caption)
-                                        Text("Next alarm song: \(nextSound.name)")
-                                            .font(.caption)
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                    }
-                                    .padding(.leading, 4)
-                                }
-                            }
-                        }
-                    }
+                    RandomModeNextSongView(selectedSound: selectedSound)
                 }
 
                 Section("Alarm Sound Loudness") {
@@ -374,5 +355,38 @@ private enum RepeatSelection: Hashable {
         case .weekends: .weekends
         case .custom: .custom(customDays)
         }
+    }
+}
+
+struct RandomModeNextSongView: View {
+    let selectedSound: AlarmSound
+
+    var body: some View {
+        if case .random(let playlistID) = selectedSound {
+            let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })
+            if let playlist {
+                let nextSoundID = getNextRandomSound(for: playlist)
+                if let nextSoundID {
+                    let nextSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == nextSoundID })
+                    if let nextSound {
+                        HStack {
+                            Image(systemName: "shuffle")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                                .font(.caption)
+                            Text("Next alarm song: \(nextSound.name)")
+                                .font(.caption)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        }
+                        .padding(.leading, 4)
+                    }
+                }
+            }
+        }
+    }
+
+    private func getNextRandomSound(for playlist: Playlist) -> UUID? {
+        // For display purposes, just return the first sound
+        // The actual random selection happens at scheduling time
+        return playlist.soundIDs.first
     }
 }
