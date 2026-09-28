@@ -47,6 +47,54 @@ jobs:
             -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -typecheck "$RUNNER_TEMP/AlarmKitSoundProbe.swift"
 
+      - name: Verify iOS 26 Lock Screen widget and control APIs
+        run: |
+          cat > "$RUNNER_TEMP/LockScreenProbe.swift" <<'SWIFT'
+          import AppIntents
+          import SwiftUI
+          import WidgetKit
+
+          enum AlarmDestination: String, AppEnum {
+              case nextAlarm
+
+              static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Alarm Destination")
+              static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+                  .nextAlarm: "Next Alarm"
+              ]
+          }
+
+          struct OpenNextAlarmIntent: OpenIntent {
+              static let title: LocalizedStringResource = "Open Next Alarm"
+
+              @Parameter(title: "Destination")
+              var target: AlarmDestination
+
+              init() {
+                  target = .nextAlarm
+              }
+          }
+
+          struct AlarmControl: ControlWidget {
+              var body: some ControlWidgetConfiguration {
+                  StaticControlConfiguration(kind: "com.example.alarmclock.next-alarm-control") {
+                      ControlWidgetButton(action: OpenNextAlarmIntent()) {
+                          Label("Next Alarm", systemImage: "alarm")
+                      }
+                  }
+              }
+          }
+
+          let lockScreenFamilies: [WidgetFamily] = [
+              .accessoryCircular,
+              .accessoryRectangular,
+              .accessoryInline
+          ]
+          SWIFT
+          xcrun --sdk iphoneos swiftc \
+            -target arm64-apple-ios26.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -typecheck "$RUNNER_TEMP/LockScreenProbe.swift"
+
       - name: Run unit tests
         run: |
           set -o pipefail
