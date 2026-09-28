@@ -304,6 +304,30 @@ final class AlarmCoordinator {
         } else {
             nextAlarmSnapshot = nil
         }
+        
+        // Write to App Group for widget extension
+        writeNextAlarmSnapshotToAppGroup()
+    }
+    
+    private func writeNextAlarmSnapshotToAppGroup() {
+        guard let appGroupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.example.alarmclock"
+        ) else {
+            print("Failed to get App Group container URL")
+            return
+        }
+        
+        let snapshotURL = appGroupURL.appendingPathComponent("nextAlarmSnapshot.json")
+        
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        
+        do {
+            let data = try encoder.encode(nextAlarmSnapshot)
+            try data.write(to: snapshotURL, options: .atomic)
+        } catch {
+            print("Failed to write next alarm snapshot to App Group: \(error)")
+        }
     }
 
     /// Schedule a test alarm using the actual alarm configuration

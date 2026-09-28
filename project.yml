@@ -34,6 +34,8 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
+    entitlements:
+      path: AlarmClock/AlarmClock.entitlements
     scheme:
       testTargets:
         - AlarmClockTests
@@ -48,3 +50,21 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.tests
         GENERATE_INFOPLIST_FILE: true
+
+  AlarmClockWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AlarmClockWidgetExtension
+    dependencies:
+      - target: AlarmClock
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.widget
+        INFOPLIST_FILE: AlarmClockWidgetExtension/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: true
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: ""
+    entitlements:
+      path: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements
