@@ -88,7 +88,8 @@ struct AlarmEngine {
             return (key, value, date)
         }
         let filtered = skippedCandidates.filter { $0.2 > now }
-        guard let skipped = filtered.min { $0.2 < $1.2 } else {
+        let earliestSkipped = filtered.min { $0.2 < $1.2 }
+        guard let skipped = earliestSkipped else {
             throw AlarmEngineError.noSkippedOccurrence
         }
         var restored = skipped.1
