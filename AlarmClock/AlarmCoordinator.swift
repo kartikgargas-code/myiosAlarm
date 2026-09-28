@@ -2,6 +2,7 @@ import AlarmKit
 import ActivityKit
 import Foundation
 import Observation
+import WidgetKit
 
 @MainActor
 @Observable
@@ -325,6 +326,10 @@ final class AlarmCoordinator {
         do {
             let data = try encoder.encode(nextAlarmSnapshot)
             try data.write(to: snapshotURL, options: .atomic)
+            
+            // Request widget timeline reload
+            WidgetCenter.shared.reloadTimelines(ofKind: "com.example.alarmclock.next-alarm-widget")
+            WidgetCenter.shared.reloadTimelines(ofKind: "com.example.alarmclock.next-alarm-control")
         } catch {
             print("Failed to write next alarm snapshot to App Group: \(error)")
         }

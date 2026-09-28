@@ -68,3 +68,21 @@ targets:
         DEVELOPMENT_TEAM: ""
     entitlements:
       path: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements
+
+  AlarmClockControlExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AlarmClockControlExtension
+    dependencies:
+      - target: AlarmClock
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.control
+        INFOPLIST_FILE: AlarmClockControlExtension/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: true
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: ""
+    entitlements:
+      path: AlarmClockControlExtension/AlarmClockControlExtension.entitlements
