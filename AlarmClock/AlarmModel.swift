@@ -134,7 +134,7 @@ public enum AlarmRepeatRule: Codable, Equatable, Hashable {
     }
 }
 
-struct AlarmTime: Codable, Equatable, Hashable {
+public struct AlarmTime: Codable, Equatable, Hashable {
     public var hour: Int
     public var minute: Int
 }
