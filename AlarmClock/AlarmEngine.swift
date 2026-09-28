@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 struct AlarmEngine {
     var snapshot: AlarmStoreSnapshot
     var calculator: AlarmScheduleCalculator
