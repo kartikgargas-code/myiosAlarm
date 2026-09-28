@@ -116,50 +116,50 @@ struct SoundPickerView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .fileImporter(
-                isPresented: $showingDocumentPicker,
-                allowedContentTypes: [.mp3, .audio, .movie],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else {
-                        pickerEventLog.append("[\(timestamp())] Picker returned no file")
-                        return
-                    }
-                    pickerEventLog.append("[\(timestamp())] File selected: \(url.lastPathComponent)")
-                    Task { await importSound(from: url) }
-                case .failure(let error):
-                    pickerEventLog.append("[\(timestamp())] Picker failed: \(error.localizedDescription)")
-                    importError = "Files picker failed: \(error.localizedDescription)"
+        }
+        .fileImporter(
+            isPresented: $showingDocumentPicker,
+            allowedContentTypes: [.mp3, .audio, .movie],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else {
+                    pickerEventLog.append("[\(timestamp())] Picker returned no file")
+                    return
                 }
+                pickerEventLog.append("[\(timestamp())] File selected: \(url.lastPathComponent)")
+                Task { await importSound(from: url) }
+            case .failure(let error):
+                pickerEventLog.append("[\(timestamp())] Picker failed: \(error.localizedDescription)")
+                importError = "Files picker failed: \(error.localizedDescription)"
             }
-            .fileImporter(
-                isPresented: $showingFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else {
-                        pickerEventLog.append("[\(timestamp())] Folder picker returned no folder")
-                        return
-                    }
-                    pickerEventLog.append("[\(timestamp())] Folder selected: \(url.lastPathComponent)")
-                    Task { await importFolder(from: url) }
-                case .failure(let error):
-                    pickerEventLog.append("[\(timestamp())] Folder picker failed: \(error.localizedDescription)")
-                    importError = "Folder picker failed: \(error.localizedDescription)"
+        }
+        .fileImporter(
+            isPresented: $showingFolderPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else {
+                    pickerEventLog.append("[\(timestamp())] Folder picker returned no folder")
+                    return
                 }
+                pickerEventLog.append("[\(timestamp())] Folder selected: \(url.lastPathComponent)")
+                Task { await importFolder(from: url) }
+            case .failure(let error):
+                pickerEventLog.append("[\(timestamp())] Folder picker failed: \(error.localizedDescription)")
+                importError = "Folder picker failed: \(error.localizedDescription)"
             }
-            .sheet(isPresented: $showingPlaylistPicker) {
-                PlaylistCreatorView(onSave: { name, soundIDs in
-                    let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
-                })
-            }
-            .onDisappear {
-                preview.stop()
-            }
+        }
+        .sheet(isPresented: $showingPlaylistPicker) {
+            PlaylistCreatorView(onSave: { name, soundIDs in
+                let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
+            })
+        }
+        .onDisappear {
+            preview.stop()
         }
     }
 
