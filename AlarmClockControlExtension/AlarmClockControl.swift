@@ -2,6 +2,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 import Foundation
+import AlarmClockShared
 
 /// The main control bundle for the Alarm Clock Lock Screen control
 @main
@@ -56,16 +57,4 @@ enum AlarmDestination: String, AppEnum {
             subtitle: "View and control the next scheduled alarm"
         )
     ]
-}
-
-/// Control value provider for dynamic state (optional)
-struct NextAlarmControlValueProvider: AppIntentControlValueProvider {
-    func previewValue() -> Bool {
-        true
-    }
-    
-    func currentValue() async throws -> Bool {
-        // Could check if there's a next alarm to enable/disable the button
-        return true
-    }
 }
