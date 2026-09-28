@@ -342,12 +342,6 @@ struct AlarmEditorView: View {
         }
     }
     
-    private func cancelTestAlarm() {
-        testAlarmTask?.cancel()
-        testAlarmTask = nil
-        testAlarmState = .idle
-    }
-
     private func soundDisplayName(for sound: AlarmSound) -> String {
         switch sound {
         case .systemDefault:
