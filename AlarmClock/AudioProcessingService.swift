@@ -1,11 +1,8 @@
 import Foundation
 import AVFoundation
-import Observation
 
 /// Service for non-destructive audio gain adjustment
 /// Creates modified audio files at different loudness levels without modifying the originals
-@MainActor
-@Observable
 final class AudioProcessingService {
     static let shared = AudioProcessingService()
 

@@ -103,26 +103,29 @@ final class AlarmCoordinator {
         }
     }
 
-    private func desiredSystemAlarms(from engine: AlarmEngine) -> [DesiredSystemAlarm] {
-        engine.desiredOccurrences(now: now()).compactMap { occurrence in
-            guard let alarm = engine.alarm(id: occurrence.alarmID) else { return nil }
+    private func desiredSystemAlarms(from engine: AlarmEngine) async -> [DesiredSystemAlarm] {
+        let occurrences = engine.desiredOccurrences(now: now())
+        var results: [DesiredSystemAlarm] = []
+        
+        for occurrence in occurrences {
+            guard let alarm = engine.alarm(id: occurrence.alarmID) else { continue }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
             do {
                 // For random mode, select a song for this occurrence if not already selected
                 let soundToUse = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
-                return DesiredSystemAlarm(
+                results.append(DesiredSystemAlarm(
                     id: SystemScheduleID.make(for: occurrence, label: label),
                     occurrence: occurrence,
                     label: label,
                     sound: soundToUse,
                     alarmKitSound: alarmKitSound
-                )
+                ))
             } catch {
                 commitError = error.localizedDescription
-                return nil
             }
         }
+        return results
     }
 
     /// Resolve the sound for a specific occurrence, handling random mode
