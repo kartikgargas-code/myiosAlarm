@@ -195,18 +195,21 @@ struct ContentView: View {
     private func skippedOccurrenceForAlarm(_ alarm: AlarmRecord) -> AlarmOccurrence? {
         let now = Date()
         let overrides = alarm.overrides
+        let calendar = Calendar.autoupdatingCurrent
+        
         for (key, override) in overrides where override.isSkipped {
-            let calendar = Calendar.autoupdatingCurrent
-            let components = key.split(separator: "-").compactMap { Int($0) }
-            guard components.count == 3 else { continue }
+            let keyParts = key.split(separator: "-").compactMap { Int($0) }
+            guard keyParts.count == 3 else { continue }
+            
             var dateComponents = DateComponents()
             dateComponents.calendar = calendar
             dateComponents.timeZone = calendar.timeZone
-            dateComponents.year = components[0]
-            dateComponents.month = components[1]
-            dateComponents.day = components[2]
+            dateComponents.year = keyParts[0]
+            dateComponents.month = keyParts[1]
+            dateComponents.day = keyParts[2]
             dateComponents.hour = alarm.time.hour
             dateComponents.minute = alarm.time.minute
+            
             if let baseDate = calendar.date(from: dateComponents), baseDate > now {
                 return AlarmOccurrence(
                     alarmID: alarm.id,
