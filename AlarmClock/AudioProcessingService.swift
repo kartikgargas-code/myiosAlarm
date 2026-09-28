@@ -33,8 +33,8 @@ final class AudioProcessingService {
     func processedSoundURL(for originalSound: ImportedSound, loudness: AlarmLoudness) -> URL? {
         guard let dir = processedSoundsDirectory else { return nil }
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
-        let ext = (originalSound.fileName as NSString).pathExtension
-        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.\(ext)"
+        // Processed files are always WAV
+        let processedFileName = "\(baseName)_\(loudness.rawValue)pct.wav"
         let url = dir.appendingPathComponent(processedFileName)
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
