@@ -303,22 +303,7 @@ struct AlarmEditorView: View {
         var displaySound = "Default"
         var displayLoudness = selectedLoudness
 
-        switch selectedSound {
-        case .systemDefault:
-            displaySound = "System Default"
-        case .builtIn(let name):
-            displaySound = name
-        case .imported(let id):
-            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
-                displaySound = sound.name
-            }
-        case .random(let playlistID):
-            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
-               let firstSoundID = playlist.soundIDs.first,
-               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
-                displaySound = "\(sound.name) (from \(playlist.name))"
-            }
-        }
+        displaySound = soundDisplayName(for: selectedSound)
 
         testAlarmSound = displaySound
         testAlarmLoudness = displayLoudness
@@ -331,6 +316,27 @@ struct AlarmEditorView: View {
                 testAlarmSound = nil
                 testAlarmLoudness = nil
             }
+        }
+    }
+
+    private func soundDisplayName(for sound: AlarmSound) -> String {
+        switch sound {
+        case .systemDefault:
+            return "System Default"
+        case .builtIn(let name):
+            return name
+        case .imported(let id):
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                return sound.name
+            }
+            return "Imported"
+        case .random(let playlistID):
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+               let firstSoundID = playlist.soundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return "\(sound.name) (from \(playlist.name))"
+            }
+            return "Random"
         }
     }
 
