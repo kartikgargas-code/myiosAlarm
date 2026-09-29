@@ -131,6 +131,37 @@ jobs:
           done
           echo "All 8 built-in alarm sounds are bundled."
 
+      - name: Embed production App Group entitlement metadata
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app"
+          WIDGET="$APP/PlugIns/AlarmClockWidgetExtension.appex"
+          FRAMEWORK="$APP/Frameworks/AlarmClockShared.framework"
+          ENTITLEMENTS="$RUNNER_TEMP/AlarmClock-production-entitlements.plist"
+
+          cat > "$ENTITLEMENTS" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.application-groups</key>
+            <array>
+              <string>group.com.example.alarmclock</string>
+            </array>
+          </dict>
+          </plist>
+          PLIST
+
+          codesign --force --sign - "$FRAMEWORK"
+          codesign --force --sign - --entitlements "$ENTITLEMENTS" --generate-entitlement-der "$WIDGET"
+          codesign --force --sign - --entitlements "$ENTITLEMENTS" --generate-entitlement-der "$APP"
+          codesign --verify --deep --strict "$APP"
+
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/app-entitlements.plist" 2>/dev/null
+          codesign -d --entitlements :- "$WIDGET" > "$RUNNER_TEMP/widget-entitlements.plist" 2>/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/app-entitlements.plist")" = "group.com.example.alarmclock"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/widget-entitlements.plist")" = "group.com.example.alarmclock"
+
       - name: Package unsigned IPA container
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
