@@ -69,38 +69,53 @@ public struct ExtensionAlarmSchedulingService {
 }
 
 /// Types needed for the extension scheduling service
-extension ExtensionAlarmSchedulingService {
+public extension ExtensionAlarmSchedulingService {
     struct ScheduledOccurrenceMetadata: AlarmMetadata {
         let alarmID: UUID
         let occurrenceKey: String
         let baseDate: Date
     }
     
-    struct DesiredSystemAlarm: Equatable {
-        let id: UUID
-        let occurrence: AlarmOccurrence
-        let label: String
-        let sound: AlarmSound
-        let alarmKitSound: AlertConfiguration.AlertSound
+    public struct DesiredSystemAlarm: Equatable {
+        public let id: UUID
+        public let occurrence: AlarmOccurrence
+        public let label: String
+        public let sound: AlarmSound
+        public let alarmKitSound: AlertConfiguration.AlertSound
     }
     
-    struct AlarmReconciliationPlan: Equatable {
-        let schedule: Set<UUID>
-        let cancel: Set<UUID>
+    public struct AlarmReconciliationPlan: Equatable {
+        public let schedule: Set<UUID>
+        public let cancel: Set<UUID>
         
-        init(desiredIDs: Set<UUID>, existingIDs: Set<UUID>, managedIDs: Set<UUID>) {
+        public init(desiredIDs: Set<UUID>, existingIDs: Set<UUID>, managedIDs: Set<UUID>) {
             schedule = desiredIDs.subtracting(existingIDs)
             cancel = managedIDs.subtracting(desiredIDs).intersection(existingIDs)
         }
     }
     
-    enum AlarmSynchronizationError: LocalizedError {
+    public enum AlarmSynchronizationError: LocalizedError {
         case notAuthorized
         
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .notAuthorized: "Alarm access is not authorized."
             }
+        }
+    }
+    
+    public struct SystemScheduleID {
+        public static func make(
+            for occurrence: AlarmOccurrence,
+            label: String,
+            sound: AlarmSound = .systemDefault,
+            loudness: AlarmLoudness = .defaultValue
+        ) -> UUID {
+            // Use StableOccurrenceID for stable IDs
+            StableOccurrenceID.make(
+                alarmID: occurrence.alarmID,
+                occurrenceKey: "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(sound.id)|\(loudness.percentage)"
+            )
         }
     }
 }
