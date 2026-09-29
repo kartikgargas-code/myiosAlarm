@@ -129,6 +129,7 @@ targets:
     platform: iOS
     sources:
       - path: AlarmClockWidgetExtension
+      - path: AlarmClock/NextAlarmLiveActivityView.swift
     dependencies:
       - target: AlarmClockShared
     settings:

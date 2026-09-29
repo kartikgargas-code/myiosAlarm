@@ -3,20 +3,9 @@ import ActivityKit
 import WidgetKit
 import AlarmClockShared
 
-/// Dynamic Island Live Activity for the next alarm
-struct NextAlarmLiveActivityView: View {
-    let context: ActivityViewContext<NextAlarmAttributes>
-    
-    var body: some View {
-        // This will be handled by the ActivityConfiguration
-    }
-}
-
 /// Dynamic Island presentation for the next alarm
-struct NextAlarmDynamicIsland: View {
-    let context: ActivityViewContext<NextAlarmAttributes>
-    
-    var body: some View {
+struct NextAlarmDynamicIsland {
+    static func make(context: ActivityViewContext<NextAlarmAttributes>) -> DynamicIsland {
         DynamicIsland {
             // Expanded presentation
             DynamicIslandExpandedRegion(.leading) {
@@ -45,75 +34,16 @@ struct NextAlarmDynamicIsland: View {
             }
             
             DynamicIslandExpandedRegion(.trailing) {
-                // Skip/Undo Skip button
-                if context.state.isSkipped {
-                    Button(intent: UndoSkipAlarmLiveIntent(alarmID: context.state.alarmID)) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.title3)
-                            Text("Undo")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.orange)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(intent: SkipNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "forward.end.alt")
-                                .font(.title3)
-                            Text("Skip")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.orange)
-                    }
-                    .buttonStyle(.plain)
-                }
+                Image(systemName: context.state.isAdjusted ? "clock.badge.checkmark" : "clock")
+                    .font(.title2)
+                    .foregroundStyle(context.state.isAdjusted ? .orange : .secondary)
             }
             
             DynamicIslandExpandedRegion(.bottom) {
-                HStack(spacing: 12) {
-                    // Minus adjustment button
-                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: -context.state.adjustmentStepMinutes)) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title2)
-                            Text("-\(context.state.adjustmentStepMinutes)")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Subtract \(context.state.adjustmentStepMinutes) minutes")
-                    
-                    // Plus adjustment button
-                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: context.state.adjustmentStepMinutes)) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                            Text("+\(context.state.adjustmentStepMinutes)")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Add \(context.state.adjustmentStepMinutes) minutes")
-                    
-                    // Reset button
-                    Button(intent: ResetNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
-                        VStack(spacing: 2) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.title2)
-                            Text("Reset")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
+                if let description = context.state.adjustmentDescription {
+                    Text(description)
+                        .font(.caption)
                         .foregroundStyle(.orange)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Reset to base schedule")
                 }
             }
         } compactLeading: {
@@ -136,25 +66,11 @@ struct NextAlarmDynamicIsland: View {
     }
 }
 
-/// Activity configuration for the next alarm Live Activity
-struct NextAlarmActivityConfiguration: ActivityConfiguration {
-    typealias Attributes = NextAlarmAttributes
-    
-    var body: some ActivityConfiguration<NextAlarmAttributes> {
-        ActivityConfiguration(for: NextAlarmAttributes.self) { context in
-            // Lock screen/banner presentation
-            LockScreenView(state: context.state)
-        } dynamicIsland: { context in
-            // Dynamic Island presentation
-            NextAlarmDynamicIsland(context: context)
-        }
-    }
-    
-    /// Lock screen/banner view
-    struct LockScreenView: View {
-        let state: NextAlarmAttributes.ContentState
+/// Lock screen/banner view for the next alarm Live Activity.
+struct NextAlarmLockScreenView: View {
+    let state: NextAlarmAttributes.ContentState
         
-        var body: some View {
+    var body: some View {
             HStack(spacing: 12) {
                 Image(systemName: "alarm.fill")
                     .font(.title2)

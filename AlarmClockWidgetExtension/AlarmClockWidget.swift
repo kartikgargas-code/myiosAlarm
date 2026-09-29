@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import ActivityKit
 import AlarmClockShared
 import os.log
 
@@ -12,6 +13,17 @@ struct AlarmClockWidgetBundle: WidgetBundle {
     var body: some Widget {
         NextAlarmWidget()
         NextAlarmControl()
+        NextAlarmLiveActivity()
+    }
+}
+
+struct NextAlarmLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: NextAlarmAttributes.self) { context in
+            NextAlarmLockScreenView(state: context.state)
+        } dynamicIsland: { context in
+            NextAlarmDynamicIsland.make(context: context)
+        }
     }
 }
 
