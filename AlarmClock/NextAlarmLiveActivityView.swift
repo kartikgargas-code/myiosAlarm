@@ -1,5 +1,6 @@
 import SwiftUI
 import ActivityKit
+import WidgetKit
 import AlarmClockShared
 
 /// Dynamic Island Live Activity for the next alarm
@@ -46,7 +47,7 @@ struct NextAlarmDynamicIsland: View {
             DynamicIslandExpandedRegion(.trailing) {
                 // Skip/Undo Skip button
                 if context.state.isSkipped {
-                    Button(intent: UndoSkipAlarmIntent(alarmID: context.state.alarmID)) {
+                    Button(intent: UndoSkipAlarmLiveIntent(alarmID: context.state.alarmID)) {
                         VStack(spacing: 2) {
                             Image(systemName: "arrow.uturn.backward")
                                 .font(.title3)
@@ -57,7 +58,7 @@ struct NextAlarmDynamicIsland: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Button(intent: SkipNextAlarmIntent(alarmID: context.state.alarmID)) {
+                    Button(intent: SkipNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
                         VStack(spacing: 2) {
                             Image(systemName: "forward.end.alt")
                                 .font(.title3)
@@ -73,7 +74,7 @@ struct NextAlarmDynamicIsland: View {
             DynamicIslandExpandedRegion(.bottom) {
                 HStack(spacing: 12) {
                     // Minus adjustment button
-                    Button(intent: AdjustNextAlarmIntent(alarmID: context.state.alarmID, minutes: -context.state.adjustmentStepMinutes)) {
+                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: -context.state.adjustmentStepMinutes)) {
                         VStack(spacing: 2) {
                             Image(systemName: "minus.circle.fill")
                                 .font(.title2)
@@ -87,7 +88,7 @@ struct NextAlarmDynamicIsland: View {
                     .accessibilityLabel("Subtract \(context.state.adjustmentStepMinutes) minutes")
                     
                     // Plus adjustment button
-                    Button(intent: AdjustNextAlarmIntent(alarmID: context.state.alarmID, minutes: context.state.adjustmentStepMinutes)) {
+                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: context.state.adjustmentStepMinutes)) {
                         VStack(spacing: 2) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
@@ -101,7 +102,7 @@ struct NextAlarmDynamicIsland: View {
                     .accessibilityLabel("Add \(context.state.adjustmentStepMinutes) minutes")
                     
                     // Reset button
-                    Button(intent: ResetNextAlarmIntent(alarmID: context.state.alarmID)) {
+                    Button(intent: ResetNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
                         VStack(spacing: 2) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.title2)

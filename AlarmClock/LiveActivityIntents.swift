@@ -22,6 +22,7 @@ struct AdjustNextAlarmLiveIntent: LiveActivityIntent {
         self.minutes = minutes
     }
     
+    @MainActor
     func perform() async throws -> some IntentResult {
         guard let uuid = UUID(uuidString: alarmID) else {
             return .result(dialog: "Invalid alarm ID")
@@ -57,6 +58,7 @@ struct ResetNextAlarmLiveIntent: LiveActivityIntent {
         self.alarmID = alarmID.uuidString
     }
     
+    @MainActor
     func perform() async throws -> some IntentResult {
         guard let uuid = UUID(uuidString: alarmID) else {
             return .result(dialog: "Invalid alarm ID")
@@ -92,6 +94,7 @@ struct SkipNextAlarmLiveIntent: LiveActivityIntent {
         self.alarmID = alarmID.uuidString
     }
     
+    @MainActor
     func perform() async throws -> some IntentResult {
         guard let uuid = UUID(uuidString: alarmID) else {
             return .result(dialog: "Invalid alarm ID")
@@ -127,6 +130,7 @@ struct UndoSkipAlarmLiveIntent: LiveActivityIntent {
         self.alarmID = alarmID.uuidString
     }
     
+    @MainActor
     func perform() async throws -> some IntentResult {
         guard let uuid = UUID(uuidString: alarmID) else {
             return .result(dialog: "Invalid alarm ID")

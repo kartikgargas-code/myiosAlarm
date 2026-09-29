@@ -340,8 +340,6 @@ final class AlarmCoordinator {
         }
         
         // Use the alarm's configured adjustment step minutes
-        let adjustmentStep = snapshot.repeatRule == .never && snapshot.oneTimeDate != nil ? 10 : 10
-        // Actually get from the alarm record
         let alarmRecord = engine.alarm(id: snapshot.alarmID)
         let adjustmentStepMinutes = alarmRecord?.adjustmentStepMinutes ?? 10
         
