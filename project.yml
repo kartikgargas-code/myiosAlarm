@@ -87,6 +87,9 @@ targets:
       - path: AlarmClock/NextAlarmSnapshot.swift
       - path: AlarmClock/AlarmModel.swift
       - path: AlarmClock/WidgetDiagnostics.swift
+      - path: AlarmClock/SharedAlarmService.swift
+      - path: AlarmClock/AlarmPersistence.swift
+      - path: AlarmClock/AlarmEngine.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:

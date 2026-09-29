@@ -28,5 +28,13 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <key>SupportedIntents</key>
+    <array>
+        <string>AdjustNextAlarmIntent</string>
+        <string>ResetNextAlarmIntent</string>
+        <string>SkipNextAlarmIntent</string>
+        <string>UndoSkipAlarmIntent</string>
+        <string>OpenNextAlarmIntent</string>
+    </array>
 </dict>
 </plist>

@@ -78,6 +78,169 @@ enum AlarmDestination: String, AppEnum {
     ]
 }
 
+/// App Intent to adjust the next alarm by minutes (+10/-10)
+struct AdjustNextAlarmIntent: AppIntent {
+    static let title: LocalizedStringResource = "Adjust Next Alarm"
+    static let description = IntentDescription("Adjust the next alarm time by minutes")
+    
+    @Parameter(title: "Alarm ID")
+    var alarmID: String
+    
+    @Parameter(title: "Minutes")
+    var minutes: Int
+    
+    init() {
+        self.alarmID = ""
+        self.minutes = 0
+    }
+    
+    init(alarmID: UUID, minutes: Int) {
+        self.alarmID = alarmID.uuidString
+        self.minutes = minutes
+    }
+    
+    func perform() async throws -> some IntentResult {
+        guard let uuid = UUID(uuidString: alarmID) else {
+            return .result(dialog: "Invalid alarm ID")
+        }
+        
+        let service = SharedAlarmService()
+        do {
+            let success = try service.adjustNextAlarm(alarmID: uuid, minutes: minutes)
+            if success {
+                return .result(dialog: "Adjusted alarm by \(minutes >= 0 ? "+" : "")\(minutes) minutes")
+            } else {
+                return .result(dialog: "Could not adjust alarm - alarm may have changed")
+            }
+        } catch {
+            return .result(dialog: "Failed to adjust alarm: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// App Intent to reset the next alarm to base schedule
+struct ResetNextAlarmIntent: AppIntent {
+    static let title: LocalizedStringResource = "Reset Next Alarm"
+    static let description = IntentDescription("Reset the next alarm to its base schedule")
+    
+    @Parameter(title: "Alarm ID")
+    var alarmID: String
+    
+    init() {
+        self.alarmID = ""
+    }
+    
+    init(alarmID: UUID) {
+        self.alarmID = alarmID.uuidString
+    }
+    
+    func perform() async throws -> some IntentResult {
+        guard let uuid = UUID(uuidString: alarmID) else {
+            return .result(dialog: "Invalid alarm ID")
+        }
+        
+        let service = SharedAlarmService()
+        do {
+            let success = try service.resetNextAlarm(alarmID: uuid)
+            if success {
+                return .result(dialog: "Reset alarm to base schedule")
+            } else {
+                return .result(dialog: "Could not reset alarm - alarm may have changed")
+            }
+        } catch {
+            return .result(dialog: "Failed to reset alarm: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// App Intent to skip the next occurrence
+struct SkipNextAlarmIntent: AppIntent {
+    static let title: LocalizedStringResource = "Skip Next Alarm"
+    static let description = IntentDescription("Skip the next occurrence of the alarm")
+    
+    @Parameter(title: "Alarm ID")
+    var alarmID: String
+    
+    init() {
+        self.alarmID = ""
+    }
+    
+    init(alarmID: UUID) {
+        self.alarmID = alarmID.uuidString
+    }
+    
+    func perform() async throws -> some IntentResult {
+        guard let uuid = UUID(uuidString: alarmID) else {
+            return .result(dialog: "Invalid alarm ID")
+        }
+        
+        let service = SharedAlarmService()
+        do {
+            let success = try service.skipNextAlarm(alarmID: uuid)
+            if success {
+                return .result(dialog: "Skipped next alarm")
+            } else {
+                return .result(dialog: "Could not skip alarm - alarm may have changed")
+            }
+        } catch {
+            return .result(dialog: "Failed to skip alarm: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// App Intent to undo skip for the next occurrence
+struct UndoSkipAlarmIntent: AppIntent {
+    static let title: LocalizedStringResource = "Undo Skip Alarm"
+    static let description = IntentDescription("Restore a skipped alarm occurrence")
+    
+    @Parameter(title: "Alarm ID")
+    var alarmID: String
+    
+    init() {
+        self.alarmID = ""
+    }
+    
+    init(alarmID: UUID) {
+        self.alarmID = alarmID.uuidString
+    }
+    
+    func perform() async throws -> some IntentResult {
+        guard let uuid = UUID(uuidString: alarmID) else {
+            return .result(dialog: "Invalid alarm ID")
+        }
+        
+        let service = SharedAlarmService()
+        do {
+            let success = try service.undoSkipAlarm(alarmID: uuid)
+            if success {
+                return .result(dialog: "Restored skipped alarm")
+            } else {
+                return .result(dialog: "Could not restore alarm - alarm may have changed")
+            }
+        } catch {
+            return .result(dialog: "Failed to restore alarm: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// View that shows Skip or Undo Skip button based on alarm state
+struct SkipUndoSkipButton: View {
+    let alarmID: UUID
+    @Environment(\.widgetFamily) var family
+    
+    var body: some View {
+        // Check if there's a skipped occurrence for this alarm
+        // For now, show Skip Next - the intent will handle validation
+        Button(intent: SkipNextAlarmIntent(alarmID: alarmID)) {
+            Image(systemName: "forward.end.alt.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.orange)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Skip next alarm")
+    }
+}
+
 /// Timeline provider for the next alarm widget
 struct NextAlarmWidgetProvider: TimelineProvider {
     typealias Entry = NextAlarmWidgetEntry
@@ -97,7 +260,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             alarmLabel: "Morning Alarm",
             nextTime: "7:00 AM",
             dateIndicator: "Today",
-            hasAlarm: true
+            hasAlarm: true,
+            alarmID: UUID()
         )
     }
     
@@ -137,7 +301,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 alarmLabel: "No upcoming alarm",
                 nextTime: "--:--",
                 dateIndicator: "",
-                hasAlarm: false
+                hasAlarm: false,
+                alarmID: nil
             )
         }
         
@@ -164,7 +329,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 alarmLabel: "No upcoming alarm",
                 nextTime: "--:--",
                 dateIndicator: "",
-                hasAlarm: false
+                hasAlarm: false,
+                alarmID: nil
             )
         }
         
@@ -181,7 +347,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 alarmLabel: "No upcoming alarm",
                 nextTime: "--:--",
                 dateIndicator: "",
-                hasAlarm: false
+                hasAlarm: false,
+                alarmID: nil
             )
         }
         
@@ -208,7 +375,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 alarmLabel: "No upcoming alarm",
                 nextTime: "--:--",
                 dateIndicator: "",
-                hasAlarm: false
+                hasAlarm: false,
+                alarmID: nil
             )
         }
         
@@ -247,7 +415,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             alarmLabel: snapshot.label,
             nextTime: formatter.string(from: snapshot.nextOccurrenceDate),
             dateIndicator: dateIndicator,
-            hasAlarm: true
+            hasAlarm: true,
+            alarmID: snapshot.alarmID
         )
         
         WidgetDiagnostics.widgetLogEvent("Widget entry created", 
@@ -273,6 +442,7 @@ struct NextAlarmWidgetEntry: TimelineEntry {
     let nextTime: String
     let dateIndicator: String
     let hasAlarm: Bool
+    let alarmID: UUID?
 }
 
 /// SwiftUI view for the Lock Screen widget
@@ -318,21 +488,50 @@ struct NextAlarmWidgetView: View {
     private var accessoryRectangularView: some View {
         VStack(alignment: .leading, spacing: 4) {
             if entry.hasAlarm {
-                HStack(spacing: 6) {
-                    Image(systemName: "alarm.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(entry.alarmLabel)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                        Text(entry.dateIndicator)
-                            .font(.system(size: 10, weight: .regular))
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Alarm info row
+                    HStack(spacing: 6) {
+                        Image(systemName: "alarm.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(entry.alarmLabel)
+                                .font(.system(size: 13, weight: .semibold))
+                                .lineLimit(1)
+                            Text(entry.dateIndicator)
+                                .font(.system(size: 10, weight: .regular))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(entry.nextTime)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
                     }
-                    Spacer()
-                    Text(entry.nextTime)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+                    
+                    // Interactive controls row
+                    HStack(spacing: 8) {
+                        // -10 button
+                        Button(intent: AdjustNextAlarmIntent(alarmID: entry.alarmID ?? UUID(), minutes: -10)) {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Subtract 10 minutes")
+                        
+                        // +10 button
+                        Button(intent: AdjustNextAlarmIntent(alarmID: entry.alarmID ?? UUID(), minutes: 10)) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Add 10 minutes")
+                        
+                        // Skip/Undo Skip button
+                        if let alarmID = entry.alarmID {
+                            SkipUndoSkipButton(alarmID: alarmID)
+                        }
+                    }
                 }
             } else {
                 HStack(spacing: 6) {
