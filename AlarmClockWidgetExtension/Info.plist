@@ -5,7 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Alarm Clock Widget</string>
+    <string>$(WIDGET_DISPLAY_NAME)</string>
+    <key>AlarmClockAppGroupIdentifier</key>
+    <string>$(APP_GROUP_IDENTIFIER)</string>
+    <key>AlarmClockWidgetKind</key>
+    <string>$(WIDGET_KIND)</string>
+    <key>AlarmClockControlKind</key>
+    <string>$(CONTROL_KIND)</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>

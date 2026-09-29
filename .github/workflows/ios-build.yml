@@ -143,3 +143,132 @@ jobs:
           name: AlarmClock-unsigned-ipa
           path: ${{ runner.temp }}/AlarmClock-unsigned.ipa
           if-no-files-found: error
+
+  diagnostic-ipa:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Verify diagnostic build settings
+        run: |
+          set -euo pipefail
+          SETTINGS="$RUNNER_TEMP/diagnostic-settings.txt"
+          xcodebuild -project AlarmClock.xcodeproj -target AlarmClock -configuration Diagnostic -showBuildSettings > "$SETTINGS"
+          grep -Eq 'PRODUCT_BUNDLE_IDENTIFIER = com\.example\.alarmclock\.diagnostic$' "$SETTINGS"
+          grep -Eq 'CODE_SIGN_ENTITLEMENTS = AlarmClock/AlarmClockDiagnostic\.entitlements$' "$SETTINGS"
+          grep -Eq 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = .*DIAGNOSTIC_BUILD' "$SETTINGS"
+
+      - name: Run diagnostic configuration tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project AlarmClock.xcodeproj \
+            -scheme AlarmClock \
+            -configuration Diagnostic \
+            -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build production reference and diagnostic application
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project AlarmClock.xcodeproj \
+            -scheme AlarmClock \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/ProductionDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+          xcodebuild build \
+            -project AlarmClock.xcodeproj \
+            -scheme AlarmClock \
+            -configuration Diagnostic \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/DiagnosticDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Verify diagnostic isolation and embedded structure
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DiagnosticDerivedData/Build/Products/Diagnostic-iphoneos/AlarmClock.app"
+          WIDGET="$APP/PlugIns/AlarmClockWidgetExtension.appex"
+          FRAMEWORK="$APP/Frameworks/AlarmClockShared.framework"
+
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "com.example.alarmclock.diagnostic"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$APP/Info.plist")" = "AlarmClock Diagnostic"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AlarmClockAppGroupIdentifier' "$APP/Info.plist")" = "group.com.example.alarmclock.diagnostic"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WIDGET/Info.plist")" = "com.example.alarmclock.diagnostic.widget"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$WIDGET/Info.plist")" = "AlarmClock Diagnostic"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AlarmClockAppGroupIdentifier' "$WIDGET/Info.plist")" = "group.com.example.alarmclock.diagnostic"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$FRAMEWORK/Info.plist")" = "com.example.alarmclock.diagnostic.shared"
+          test -x "$APP/AlarmClock"
+          test -x "$WIDGET/AlarmClockWidgetExtension"
+          test -x "$FRAMEWORK/AlarmClockShared"
+
+          APP_SETTINGS="$(xcodebuild -project AlarmClock.xcodeproj -target AlarmClock -configuration Diagnostic -showBuildSettings)"
+          WIDGET_SETTINGS="$(xcodebuild -project AlarmClock.xcodeproj -target AlarmClockWidgetExtension -configuration Diagnostic -showBuildSettings)"
+          grep -q 'CODE_SIGN_ENTITLEMENTS = AlarmClock/AlarmClockDiagnostic.entitlements' <<< "$APP_SETTINGS"
+          grep -q 'CODE_SIGN_ENTITLEMENTS = AlarmClockWidgetExtension/AlarmClockWidgetExtensionDiagnostic.entitlements' <<< "$WIDGET_SETTINGS"
+          ! grep -q 'com.apple.security.application-groups' AlarmClock/AlarmClockDiagnostic.entitlements
+          ! grep -q 'com.apple.security.application-groups' AlarmClockWidgetExtension/AlarmClockWidgetExtensionDiagnostic.entitlements
+          grep -q 'DiagnosticAlarmSchedulingService' AlarmClock/AlarmCoordinator.swift
+          grep -q '#if DIAGNOSTIC_BUILD' AlarmClock/AlarmKitSchedulingService.swift
+
+      - name: Verify arm64 linkage and runpaths
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DiagnosticDerivedData/Build/Products/Diagnostic-iphoneos/AlarmClock.app"
+          WIDGET_EXEC="$APP/PlugIns/AlarmClockWidgetExtension.appex/AlarmClockWidgetExtension"
+          FRAMEWORK_EXEC="$APP/Frameworks/AlarmClockShared.framework/AlarmClockShared"
+
+          test "$(lipo -archs "$APP/AlarmClock")" = "arm64"
+          test "$(lipo -archs "$WIDGET_EXEC")" = "arm64"
+          test "$(lipo -archs "$FRAMEWORK_EXEC")" = "arm64"
+          otool -L "$WIDGET_EXEC" | grep -q '@rpath/AlarmClockShared.framework/AlarmClockShared'
+          otool -l "$WIDGET_EXEC" | grep -A2 LC_RPATH | grep -q '@executable_path/../../Frameworks'
+
+      - name: Record production and diagnostic Mach-O UUIDs
+        run: |
+          set -euo pipefail
+          PROD="$RUNNER_TEMP/ProductionDerivedData/Build/Products/Release-iphoneos/AlarmClock.app"
+          DIAG="$RUNNER_TEMP/DiagnosticDerivedData/Build/Products/Diagnostic-iphoneos/AlarmClock.app"
+          {
+            echo "Production widget: $(dwarfdump --uuid "$PROD/PlugIns/AlarmClockWidgetExtension.appex/AlarmClockWidgetExtension")"
+            echo "Diagnostic widget: $(dwarfdump --uuid "$DIAG/PlugIns/AlarmClockWidgetExtension.appex/AlarmClockWidgetExtension")"
+            echo "Production framework: $(dwarfdump --uuid "$PROD/Frameworks/AlarmClockShared.framework/AlarmClockShared")"
+            echo "Diagnostic framework: $(dwarfdump --uuid "$DIAG/Frameworks/AlarmClockShared.framework/AlarmClockShared")"
+          } | tee "$RUNNER_TEMP/AlarmClock-Diagnostic-UUIDs.txt"
+
+      - name: Package and verify diagnostic IPA
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/DiagnosticPayload/Payload"
+          cp -R "$RUNNER_TEMP/DiagnosticDerivedData/Build/Products/Diagnostic-iphoneos/AlarmClock.app" "$RUNNER_TEMP/DiagnosticPayload/Payload/"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/DiagnosticPayload/Payload" "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa"
+          unzip -t "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa"
+          unzip -l "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa" | grep -q 'Payload/AlarmClock.app/PlugIns/AlarmClockWidgetExtension.appex/AlarmClockWidgetExtension'
+          unzip -l "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa" | grep -q 'Payload/AlarmClock.app/Frameworks/AlarmClockShared.framework/AlarmClockShared'
+          shasum -a 256 "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa" | tee "$RUNNER_TEMP/AlarmClock-Diagnostic-unsigned.ipa.sha256"
+
+      - name: Upload diagnostic IPA and verification metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: AlarmClock-Diagnostic-unsigned-ipa
+          path: |
+            ${{ runner.temp }}/AlarmClock-Diagnostic-unsigned.ipa
+            ${{ runner.temp }}/AlarmClock-Diagnostic-unsigned.ipa.sha256
+            ${{ runner.temp }}/AlarmClock-Diagnostic-UUIDs.txt
+          if-no-files-found: error

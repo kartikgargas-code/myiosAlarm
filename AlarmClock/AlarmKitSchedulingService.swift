@@ -94,6 +94,15 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     }
 }
 
+#if DIAGNOSTIC_BUILD
+struct DiagnosticAlarmSchedulingService: AlarmSystemScheduling {
+    func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>) async throws -> Set<UUID> {
+        []
+    }
+}
+#endif
+
+
 enum AlarmSynchronizationError: LocalizedError {
     case notAuthorized
 

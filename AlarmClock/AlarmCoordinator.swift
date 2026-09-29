@@ -33,7 +33,15 @@ final class AlarmCoordinator {
         now: @escaping () -> Date = Date.init
     ) {
         self.persistence = persistence
-        self.scheduler = scheduler ?? AlarmKitSchedulingService()
+        if let scheduler {
+            self.scheduler = scheduler
+        } else {
+            #if DIAGNOSTIC_BUILD
+            self.scheduler = DiagnosticAlarmSchedulingService()
+            #else
+            self.scheduler = AlarmKitSchedulingService()
+            #endif
+        }
         self.now = now
         do {
             engine = AlarmEngine(snapshot: try persistence.load(), calendar: calendar)
@@ -311,8 +319,16 @@ final class AlarmCoordinator {
     }
     
     private func writeNextAlarmSnapshotToAppGroup() {
+        guard let configuredAppGroup = Bundle.main.object(
+            forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
+        ) as? String else { return }
+        let resignedAppGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let appGroupIdentifier = resignedAppGroups.first {
+            $0 == configuredAppGroup || $0.hasPrefix(configuredAppGroup + ".")
+        } ?? configuredAppGroup
+
         guard let appGroupURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: "group.com.example.alarmclock"
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
         ) else {
             print("Failed to get App Group container URL")
             return
@@ -327,9 +343,12 @@ final class AlarmCoordinator {
             let data = try encoder.encode(nextAlarmSnapshot)
             try data.write(to: snapshotURL, options: .atomic)
             
-            // Request widget timeline reload
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.example.alarmclock.next-alarm-widget")
-            WidgetCenter.shared.reloadTimelines(ofKind: "com.example.alarmclock.next-alarm-control")
+            if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+            }
+            if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+            }
         } catch {
             print("Failed to write next alarm snapshot to App Group: \(error)")
         }
@@ -338,6 +357,11 @@ final class AlarmCoordinator {
     /// Schedule a test alarm using the actual alarm configuration
     /// Uses a separate temporary AlarmKit alarm ID so it doesn't interfere with real alarms
     func scheduleTestAlarm(_ alarm: AlarmRecord, delay: TimeInterval) async {
+        #if DIAGNOSTIC_BUILD
+        lastError = "Alarm scheduling is disabled in AlarmClock Diagnostic."
+        return
+        #endif
+
         let testDate = now().addingTimeInterval(delay)
         let testID = UUID() // Separate temporary ID for test alarm
 

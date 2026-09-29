@@ -4,6 +4,10 @@ options:
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+  Diagnostic: release
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -24,7 +28,10 @@ targets:
       path: AlarmClock/Info.plist
       properties:
         NSAlarmKitUsageDescription: Alarm Clock schedules alarms you explicitly create and test.
-        CFBundleDisplayName: myNextalarm
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
+        AlarmClockAppGroupIdentifier: $(APP_GROUP_IDENTIFIER)
+        AlarmClockWidgetKind: $(WIDGET_KIND)
+        AlarmClockControlKind: $(CONTROL_KIND)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -32,9 +39,22 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock
         PRODUCT_NAME: AlarmClock
+        APP_DISPLAY_NAME: myNextalarm
+        APP_GROUP_IDENTIFIER: group.com.example.alarmclock
+        WIDGET_KIND: com.example.alarmclock.next-alarm-widget
+        CONTROL_KIND: com.example.alarmclock.next-alarm-control
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
+      configs:
+        Diagnostic:
+          PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic
+          APP_DISPLAY_NAME: AlarmClock Diagnostic
+          APP_GROUP_IDENTIFIER: group.com.example.alarmclock.diagnostic
+          WIDGET_KIND: com.example.alarmclock.diagnostic.next-alarm-widget
+          CONTROL_KIND: com.example.alarmclock.diagnostic.next-alarm-control
+          CODE_SIGN_ENTITLEMENTS: AlarmClock/AlarmClockDiagnostic.entitlements
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DIAGNOSTIC_BUILD
     entitlements:
       path: AlarmClock/AlarmClock.entitlements
     dependencies:
@@ -56,6 +76,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.tests
         GENERATE_INFOPLIST_FILE: true
+      configs:
+        Diagnostic:
+          PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic.tests
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DIAGNOSTIC_BUILD
 
   AlarmClockShared:
     type: framework
@@ -72,6 +96,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.shared
         CODE_SIGN_STYLE: Automatic
         DEFINES_MODULE: true
+      configs:
+        Diagnostic:
+          PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic.shared
 
   AlarmClockWidgetExtension:
     type: app-extension
@@ -83,11 +110,24 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.widget
+        WIDGET_DISPLAY_NAME: Alarm Clock Widget
+        APP_GROUP_IDENTIFIER: group.com.example.alarmclock
+        WIDGET_KIND: com.example.alarmclock.next-alarm-widget
+        CONTROL_KIND: com.example.alarmclock.next-alarm-control
         INFOPLIST_FILE: AlarmClockWidgetExtension/Info.plist
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: true
         TARGETED_DEVICE_FAMILY: "1"
         DEVELOPMENT_TEAM: ""
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @loader_path/Frameworks @executable_path/../../Frameworks"
+      configs:
+        Diagnostic:
+          PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic.widget
+          WIDGET_DISPLAY_NAME: AlarmClock Diagnostic
+          APP_GROUP_IDENTIFIER: group.com.example.alarmclock.diagnostic
+          WIDGET_KIND: com.example.alarmclock.diagnostic.next-alarm-widget
+          CONTROL_KIND: com.example.alarmclock.diagnostic.next-alarm-control
+          CODE_SIGN_ENTITLEMENTS: AlarmClockWidgetExtension/AlarmClockWidgetExtensionDiagnostic.entitlements
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DIAGNOSTIC_BUILD
     entitlements:
       path: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements

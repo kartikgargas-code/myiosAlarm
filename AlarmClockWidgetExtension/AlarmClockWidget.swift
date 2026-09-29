@@ -16,7 +16,8 @@ struct AlarmClockWidgetBundle: WidgetBundle {
 
 /// Lock Screen widget displaying the next scheduled alarm
 struct NextAlarmWidget: Widget {
-    let kind: String = "com.example.alarmclock.next-alarm-widget"
+    let kind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String
+        ?? "com.example.alarmclock.next-alarm-widget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: NextAlarmWidgetProvider()) { entry in
@@ -31,7 +32,8 @@ struct NextAlarmWidget: Widget {
 
 /// Lock Screen bottom-area control button for the next alarm.
 struct NextAlarmControl: ControlWidget {
-    static let kind: String = "com.example.alarmclock.next-alarm-control"
+    static let kind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String
+        ?? "com.example.alarmclock.next-alarm-control"
 
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: Self.kind) {
@@ -79,7 +81,13 @@ enum AlarmDestination: String, AppEnum {
 struct NextAlarmWidgetProvider: TimelineProvider {
     typealias Entry = NextAlarmWidgetEntry
     
-    private let appGroupIdentifier = "group.com.example.alarmclock"
+    private var appGroupIdentifier: String {
+        let configured = Bundle.main.object(
+            forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
+        ) as? String ?? "group.com.example.alarmclock"
+        let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        return resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+    }
     private let snapshotFileName = "nextAlarmSnapshot.json"
     
     func placeholder(in context: Context) -> NextAlarmWidgetEntry {

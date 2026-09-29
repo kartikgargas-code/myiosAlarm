@@ -71,6 +71,12 @@ final class AlarmProofOfConceptModel {
     }
 
     func scheduleTwoMinutesAhead(now: Date = .now) async {
+        #if DIAGNOSTIC_BUILD
+        record("Diagnostic build: AlarmKit scheduling is disabled")
+        status = .failed("Alarm scheduling is disabled in AlarmClock Diagnostic.")
+        return
+        #endif
+
         record("Schedule button tapped")
         guard await ensureAuthorization() else {
             record("Alarm scheduling stopped: authorization unavailable")

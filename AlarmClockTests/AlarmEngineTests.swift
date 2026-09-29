@@ -560,3 +560,18 @@ final class AlarmEngineTests: XCTestCase {
         }
     }
 }
+
+
+#if DIAGNOSTIC_BUILD
+@MainActor
+final class DiagnosticAlarmSchedulingTests: XCTestCase {
+    func testDiagnosticSchedulerNeverReturnsManagedAlarmIDs() async throws {
+        let scheduler = DiagnosticAlarmSchedulingService()
+        let managedIDs: Set<UUID> = [UUID(), UUID()]
+
+        let result = try await scheduler.reconcile(desired: [], managedIDs: managedIDs)
+
+        XCTAssertTrue(result.isEmpty)
+    }
+}
+#endif
