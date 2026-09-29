@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-struct AlarmEngine {
+public struct AlarmEngine {
     var snapshot: AlarmStoreSnapshot
     var calculator: AlarmScheduleCalculator
 
@@ -10,11 +10,11 @@ struct AlarmEngine {
         calculator = AlarmScheduleCalculator(calendar: calendar)
     }
 
-    var alarms: [AlarmRecord] {
+    public var alarms: [AlarmRecord] {
         snapshot.alarms.sorted(by: permanentTimeOrder)
     }
 
-    func alarmsOrderedByNextOccurrence(now: Date) -> [AlarmRecord] {
+    public func alarmsOrderedByNextOccurrence(now: Date) -> [AlarmRecord] {
         snapshot.alarms.sorted { first, second in
             let firstDate = calculator.nextEffectiveOccurrence(for: first, after: now)?.effectiveDate
             let secondDate = calculator.nextEffectiveOccurrence(for: second, after: now)?.effectiveDate
@@ -31,11 +31,11 @@ struct AlarmEngine {
         }
     }
 
-    func alarm(id: UUID) -> AlarmRecord? {
+    public func alarm(id: UUID) -> AlarmRecord? {
         snapshot.alarms.first { $0.id == id }
     }
 
-    mutating func upsert(_ alarm: AlarmRecord, now: Date) throws {
+    public mutating func upsert(_ alarm: AlarmRecord, now: Date) throws {
         try validate(alarm)
         if let index = snapshot.alarms.firstIndex(where: { $0.id == alarm.id }) {
             var updated = alarm
@@ -49,15 +49,15 @@ struct AlarmEngine {
         pruneExpiredOverrides(now: now)
     }
 
-    mutating func delete(id: UUID) {
+    public mutating func delete(id: UUID) {
         snapshot.alarms.removeAll { $0.id == id }
     }
 
-    mutating func setEnabled(_ enabled: Bool, id: UUID) throws {
+    public mutating func setEnabled(_ enabled: Bool, id: UUID) throws {
         try mutateAlarm(id: id) { $0.isEnabled = enabled }
     }
 
-    mutating func adjustNext(id: UUID, byMinutes minutes: Int, now: Date) throws {
+    public mutating func adjustNext(id: UUID, byMinutes minutes: Int, now: Date) throws {
         try mutateNextOverride(id: id, now: now) { occurrence, override in
             let currentDate = override.customDate
                 ?? occurrence.baseDate.addingTimeInterval(TimeInterval((override.offsetMinutes ?? 0) * 60))
@@ -69,7 +69,7 @@ struct AlarmEngine {
         }
     }
 
-    mutating func setNextTime(id: UUID, date: Date, now: Date) throws {
+    public mutating func setNextTime(id: UUID, date: Date, now: Date) throws {
         guard date > now else { throw AlarmEngineError.occurrenceWouldBeInPast }
         try mutateNextOverride(id: id, now: now) { _, override in
             override.customDate = date
@@ -78,7 +78,7 @@ struct AlarmEngine {
         }
     }
 
-    mutating func resetNext(id: UUID, now: Date) throws {
+    public mutating func resetNext(id: UUID, now: Date) throws {
         guard let alarm = alarm(id: id),
               let occurrence = calculator.nextEffectiveOccurrence(for: alarm, after: now) else {
             throw AlarmEngineError.noUpcomingOccurrence
@@ -86,13 +86,13 @@ struct AlarmEngine {
         try mutateAlarm(id: id) { $0.overrides[occurrence.occurrenceKey] = nil }
     }
 
-    mutating func skipNext(id: UUID, now: Date) throws {
+    public mutating func skipNext(id: UUID, now: Date) throws {
         try mutateNextOverride(id: id, now: now) { _, override in
             override.isSkipped = true
         }
     }
 
-    mutating func undoSkip(id: UUID, now: Date) throws {
+    public mutating func undoSkip(id: UUID, now: Date) throws {
         guard let index = snapshot.alarms.firstIndex(where: { $0.id == id }) else {
             throw AlarmEngineError.alarmNotFound
         }
@@ -111,21 +111,21 @@ struct AlarmEngine {
         snapshot.alarms[index].overrides[skipped.0] = restored == .none ? nil : restored
     }
 
-    func nextOccurrence(for id: UUID, now: Date) -> AlarmOccurrence? {
+    public func nextOccurrence(for id: UUID, now: Date) -> AlarmOccurrence? {
         alarm(id: id).flatMap { calculator.nextEffectiveOccurrence(for: $0, after: now) }
     }
 
-    func earliestOccurrence(now: Date) -> AlarmOccurrence? {
+    public func earliestOccurrence(now: Date) -> AlarmOccurrence? {
         calculator.earliestEffectiveOccurrence(in: snapshot.alarms, after: now)
     }
 
-    func desiredOccurrences(now: Date, perAlarmLimit: Int = 7) -> [AlarmOccurrence] {
+    public func desiredOccurrences(now: Date, perAlarmLimit: Int = 7) -> [AlarmOccurrence] {
         snapshot.alarms.flatMap {
             calculator.effectiveOccurrences(for: $0, after: now, limit: perAlarmLimit)
         }
     }
 
-    mutating func pruneExpiredOverrides(now: Date) {
+    public mutating func pruneExpiredOverrides(now: Date) {
         for index in snapshot.alarms.indices {
             snapshot.alarms[index].overrides = snapshot.alarms[index].overrides.filter { key, _ in
                 guard let date = baseDate(for: key, alarm: snapshot.alarms[index]) else { return false }

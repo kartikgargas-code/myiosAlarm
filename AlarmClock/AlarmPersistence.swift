@@ -1,22 +1,22 @@
 import Foundation
 
-struct AlarmStoreSnapshot: Codable, Equatable {
-    var alarms: [AlarmRecord]
-    var playlists: [Playlist]
-    var managedSystemAlarmIDs: Set<UUID>
+public struct AlarmStoreSnapshot: Codable, Equatable {
+    public var alarms: [AlarmRecord]
+    public var playlists: [Playlist]
+    public var managedSystemAlarmIDs: Set<UUID>
 
-    static let empty = AlarmStoreSnapshot(alarms: [], playlists: [], managedSystemAlarmIDs: [])
+    public static let empty = AlarmStoreSnapshot(alarms: [], playlists: [], managedSystemAlarmIDs: [])
 }
 
-protocol AlarmPersisting {
+public protocol AlarmPersisting {
     func load() throws -> AlarmStoreSnapshot
     func save(_ snapshot: AlarmStoreSnapshot) throws
 }
 
-struct JSONAlarmPersistence: AlarmPersisting {
-    let fileURL: URL
+public struct JSONAlarmPersistence: AlarmPersisting {
+    public let fileURL: URL
 
-    init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil) {
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -25,12 +25,12 @@ struct JSONAlarmPersistence: AlarmPersisting {
         }
     }
 
-    func load() throws -> AlarmStoreSnapshot {
+    public func load() throws -> AlarmStoreSnapshot {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return .empty }
         return try JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: Data(contentsOf: fileURL))
     }
 
-    func save(_ snapshot: AlarmStoreSnapshot) throws {
+    public func save(_ snapshot: AlarmStoreSnapshot) throws {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder.alarmEncoder.encode(snapshot)
