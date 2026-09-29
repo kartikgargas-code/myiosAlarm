@@ -11,15 +11,6 @@ struct AlarmClockApp: App {
     }
 }
 
-/// App Intents declaration for the main app
-struct AlarmClockAppIntents: AppIntentsConfiguration {
-    static var intents: [AppIntent.Type] {
-        [
-            AdjustNextAlarmIntent.self,
-            ResetNextAlarmIntent.self,
-            SkipNextAlarmIntent.self,
-            UndoSkipAlarmIntent.self,
-            OpenNextAlarmIntent.self,
-        ]
-    }
-}
+/// App Intents are automatically discovered from the widget extension's Info.plist
+/// and the AppIntent protocols used in the widget bundle.
+/// No explicit configuration needed in iOS 17+.
