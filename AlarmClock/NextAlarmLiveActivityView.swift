@@ -131,8 +131,7 @@ struct NextAlarmDynamicIsland: View {
             Image(systemName: "alarm.fill")
                 .font(.title3)
                 .foregroundStyle(.orange)
-        } widgetURL: nil
-        // No widget URL - we use intents for interaction
+        }
     }
 }
 
@@ -197,4 +196,5 @@ struct NextAlarmActivityConfiguration: ActivityConfiguration {
             }
             .padding()
         }
+    }
 }
