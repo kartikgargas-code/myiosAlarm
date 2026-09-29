@@ -34,16 +34,75 @@ struct NextAlarmDynamicIsland {
             }
             
             DynamicIslandExpandedRegion(.trailing) {
-                Image(systemName: context.state.isAdjusted ? "clock.badge.checkmark" : "clock")
-                    .font(.title2)
-                    .foregroundStyle(context.state.isAdjusted ? .orange : .secondary)
+                // Skip/Undo Skip button
+                if context.state.isSkipped {
+                    Button(intent: UndoSkipAlarmLiveIntent(alarmID: context.state.alarmID)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.title3)
+                            Text("Undo")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(intent: SkipNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "forward.end.alt")
+                                .font(.title3)
+                            Text("Skip")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             
             DynamicIslandExpandedRegion(.bottom) {
-                if let description = context.state.adjustmentDescription {
-                    Text(description)
-                        .font(.caption)
+                HStack(spacing: 12) {
+                    // Minus adjustment button
+                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: -context.state.adjustmentStepMinutes)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title2)
+                            Text("-\(context.state.adjustmentStepMinutes)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Subtract \(context.state.adjustmentStepMinutes) minutes")
+                    
+                    // Plus adjustment button
+                    Button(intent: AdjustNextAlarmLiveIntent(alarmID: context.state.alarmID, minutes: context.state.adjustmentStepMinutes)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                            Text("+\(context.state.adjustmentStepMinutes)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add \(context.state.adjustmentStepMinutes) minutes")
+                    
+                    // Reset button
+                    Button(intent: ResetNextAlarmLiveIntent(alarmID: context.state.alarmID)) {
+                        VStack(spacing: 2) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.title2)
+                            Text("Reset")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                        }
                         .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Reset to base schedule")
                 }
             }
         } compactLeading: {

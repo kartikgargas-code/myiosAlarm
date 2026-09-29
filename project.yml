@@ -130,6 +130,7 @@ targets:
     sources:
       - path: AlarmClockWidgetExtension
       - path: AlarmClock/NextAlarmLiveActivityView.swift
+      - path: AlarmClockWidgetExtension/WidgetAlarmService.swift
     dependencies:
       - target: AlarmClockShared
     settings:
