@@ -177,7 +177,8 @@ jobs:
             -scheme AlarmClock \
             -configuration Diagnostic \
             -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_TESTABILITY=YES
 
       - name: Build production reference and diagnostic application
         run: |
