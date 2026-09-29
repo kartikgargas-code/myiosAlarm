@@ -488,50 +488,21 @@ struct NextAlarmWidgetView: View {
     private var accessoryRectangularView: some View {
         VStack(alignment: .leading, spacing: 4) {
             if entry.hasAlarm {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Alarm info row
-                    HStack(spacing: 6) {
-                        Image(systemName: "alarm.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(entry.alarmLabel)
-                                .font(.system(size: 13, weight: .semibold))
-                                .lineLimit(1)
-                            Text(entry.dateIndicator)
-                                .font(.system(size: 10, weight: .regular))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(entry.nextTime)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
+                HStack(spacing: 6) {
+                    Image(systemName: "alarm.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(entry.alarmLabel)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        Text(entry.dateIndicator)
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundStyle(.secondary)
                     }
-                    
-                    // Interactive controls row
-                    HStack(spacing: 8) {
-                        // -10 button
-                        Button(intent: AdjustNextAlarmIntent(alarmID: entry.alarmID ?? UUID(), minutes: -10)) {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Subtract 10 minutes")
-                        
-                        // +10 button
-                        Button(intent: AdjustNextAlarmIntent(alarmID: entry.alarmID ?? UUID(), minutes: 10)) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Add 10 minutes")
-                        
-                        // Skip/Undo Skip button
-                        if let alarmID = entry.alarmID {
-                            SkipUndoSkipButton(alarmID: alarmID)
-                        }
-                    }
+                    Spacer()
+                    Text(entry.nextTime)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
                 }
             } else {
                 HStack(spacing: 6) {

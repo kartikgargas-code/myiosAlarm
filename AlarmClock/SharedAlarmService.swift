@@ -1,6 +1,8 @@
 import Foundation
 import AlarmClockShared
 import WidgetKit
+import AlarmKit
+import ActivityKit
 
 /// Shared service for alarm operations accessible from both app and widget extension
 /// Handles persistence, AlarmKit reconciliation, and widget updates
@@ -8,6 +10,7 @@ public struct SharedAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence
     private let now: () -> Date
+    private let extensionScheduler = ExtensionAlarmSchedulingService()
     
     public init(
         appGroupIdentifier: String = "group.com.example.alarmclock",
@@ -31,7 +34,7 @@ public struct SharedAlarmService {
         try persistence.save(snapshot)
     }
     
-    /// Apply +10 minutes adjustment to the next alarm
+    /// Apply adjustment to the next alarm using the provided minutes
     public func adjustNextAlarm(alarmID: UUID, minutes: Int) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
@@ -48,6 +51,12 @@ public struct SharedAlarmService {
         }
         
         try engine.adjustNext(id: alarmID, byMinutes: minutes, now: now())
+        
+        // Reconcile with AlarmKit immediately
+        let desired = await desiredSystemAlarms(from: engine, now: now())
+        let managedIDs = engine.snapshot.managedSystemAlarmIDs
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        
         try saveSnapshot(engine.snapshot)
         
         // Write updated widget snapshot
@@ -92,6 +101,12 @@ public struct SharedAlarmService {
         }
         
         try engine.resetNext(id: alarmID, now: now())
+        
+        // Reconcile with AlarmKit immediately
+        let desired = await desiredSystemAlarms(from: engine, now: now())
+        let managedIDs = engine.snapshot.managedSystemAlarmIDs
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)
         
@@ -113,6 +128,12 @@ public struct SharedAlarmService {
         }
         
         try engine.skipNext(id: alarmID, now: now())
+        
+        // Reconcile with AlarmKit immediately
+        let desired = await desiredSystemAlarms(from: engine, now: now())
+        let managedIDs = engine.snapshot.managedSystemAlarmIDs
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)
         
@@ -134,6 +155,12 @@ public struct SharedAlarmService {
         }
         
         try engine.undoSkip(id: alarmID, now: now())
+        
+        // Reconcile with AlarmKit immediately
+        let desired = await desiredSystemAlarms(from: engine, now: now())
+        let managedIDs = engine.snapshot.managedSystemAlarmIDs
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)
         
@@ -168,6 +195,184 @@ public struct SharedAlarmService {
             }
         } catch {
             print("Failed to write widget snapshot: \(error)")
+        }
+    /// Compute desired system alarms for AlarmKit reconciliation
+    /// Mirrors AlarmCoordinator.desiredSystemAlarms for extension use
+    private func desiredSystemAlarms(from engine: AlarmEngine, now: Date) async -> [ExtensionAlarmSchedulingService.DesiredSystemAlarm] {
+        var mutableEngine = engine
+        let occurrences = mutableEngine.desiredOccurrences(now: now)
+        var results: [ExtensionAlarmSchedulingService.DesiredSystemAlarm] = []
+        
+        for occurrence in occurrences {
+            guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
+            let label = alarm.label.isEmpty ? "Alarm" : alarm.label
+            do {
+                // For random mode, select a song for this occurrence if not already selected
+                let (soundToUse, override) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: mutableEngine)
+                // Apply the override if there is one
+                if let newOverride = override {
+                    if var updatedAlarm = mutableEngine.alarm(id: alarm.id) {
+                        updatedAlarm.overrides[occurrence.occurrenceKey] = newOverride
+                        try mutableEngine.upsert(updatedAlarm, now: now)
+                    }
+                }
+                let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+                results.append(ExtensionAlarmSchedulingService.DesiredSystemAlarm(
+                    id: ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                        for: occurrence,
+                        label: label,
+                        sound: soundToUse,
+                        loudness: alarm.loudness
+                    ),
+                    occurrence: occurrence,
+                    label: label,
+                    sound: soundToUse,
+                    alarmKitSound: alarmKitSound
+                ))
+            } catch {
+                print("Error resolving sound for occurrence: \(error)")
+            }
+        }
+        return results
+    }
+    
+    /// Resolve sound for occurrence (copied from AlarmCoordinator for extension use)
+    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> (AlarmSound, AlarmOccurrenceOverride?) {
+        switch alarm.sound {
+        case .systemDefault:
+            return (.systemDefault, nil)
+        case .builtIn(let name):
+            return (.builtIn(name), nil)
+        case .imported(let id):
+            return (.imported(id), nil)
+        case .random(let playlistID):
+            // Check if we already have a precomposed playlist for this occurrence
+            if let override = alarm.overrides[occurrence.occurrenceKey],
+               let selectedSoundID = override.randomSoundID {
+                // Verify the sound still exists in the playlist
+                if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+                   playlist.soundIDs.contains(selectedSoundID) {
+                    // Check if precomposed playlist exists for this loudness
+                    let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+                    return (precomposedSound, nil)
+                }
+            }
+
+            // Need to select a new random song (but we'll use precomposed playlist)
+            // Avoid immediately repeating the previous precomposed playlist if multiple available
+            var previousPlaylistID: UUID?
+            // Find the previous occurrence's selected playlist
+            let earlierOccurrences = engine.desiredOccurrences(now: now().addingTimeInterval(-86400 * 7))
+                .filter { $0.alarmID == alarm.id && $0.effectiveDate < occurrence.effectiveDate }
+                .sorted { $0.effectiveDate > $1.effectiveDate }
+            if let prevOccurrence = earlierOccurrences.first,
+               let prevOverride = alarm.overrides[prevOccurrence.occurrenceKey],
+               let prevSoundID = prevOverride.randomSoundID {
+                // The previousSoundID was a playlist ID for precomposed
+                previousPlaylistID = prevSoundID
+            }
+            
+            let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+            // Store the selected playlist ID in the override for this occurrence
+            var newOverride = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false, randomSoundID: playlistID)
+            return (precomposedSound, newOverride)
+        case .precomposedPlaylist(let playlistID, let loudness):
+            // Generate or get the precomposed playlist file
+            let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
+                playlistID: playlistID,
+                loudness: loudness,
+                songCount: 5
+            )
+            
+            // Record diagnostics
+            // playlistDiagnostics.addPreparation(preparationEntry)
+            // playlistDiagnostics.addGeneratedFile(generatedFileEntry)
+            
+            // Copy to Library/Sounds for AlarmKit access
+            let processedFileName = precomposedURL.lastPathComponent
+            let soundsDir = SoundLibrary.shared.soundsDirectory!
+            let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+            
+            let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
+            
+            if !fileExistedAtScheduling {
+                try FileManager.default.copyItem(at: precomposedURL, to: alarmKitURL)
+            }
+            
+            // Record scheduling diagnostics
+            // let schedulingEntry = PlaylistDiagnostics.SchedulingEntry(...)
+            
+            // Store for later update after scheduling
+            // For now, we'll just return the sound
+            return .named(processedFileName)
+        }
+    }
+    
+    /// Resolve alarmKit sound (copied from AlarmCoordinator for extension use)
+    private func alarmKitSound(for sound: AlarmSound, loudness: AlarmLoudness) async throws -> AlertConfiguration.AlertSound {
+        switch sound {
+        case .systemDefault:
+            return .default
+        case .builtIn(let name):
+            return .default // Built-in sounds use default
+        case .imported(let id):
+            let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
+            
+            // If loudness is not 100%, use the processed sound file
+            if loudness != .hundred {
+                // Get the original sound info
+                let originalSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id })
+                if let originalSound {
+                    // Get or create the processed sound
+                    let processedURL = try await AudioProcessingService.shared.getOrCreateProcessedSound(
+                        for: originalSound,
+                        loudness: loudness
+                    )
+                    // The processed file is a WAV in Library/ProcessedSounds
+                    // Copy it to Library/Sounds for AlarmKit access
+                    let processedFileName = processedURL.lastPathComponent
+                    let soundsDir = SoundLibrary.shared.soundsDirectory!
+                    let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+                    
+                    if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+                        try FileManager.default.copyItem(at: processedURL, to: alarmKitURL)
+                    }
+                    return .named(processedFileName)
+                }
+            }
+            return .named(fileName)
+        case .random:
+            // This should never be reached since we resolve random before calling this
+            throw SoundLibraryError.importFailed("Random sound not resolved")
+        case .precomposedPlaylist(let playlistID, let loudness):
+            // Generate or get the precomposed playlist file
+            let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
+                playlistID: playlistID,
+                loudness: loudness,
+                songCount: 5
+            )
+            
+            // Record diagnostics
+            // playlistDiagnostics.addPreparation(preparationEntry)
+            // playlistDiagnostics.addGeneratedFile(generatedFileEntry)
+            
+            // Copy to Library/Sounds for AlarmKit access
+            let processedFileName = precomposedURL.lastPathComponent
+            let soundsDir = SoundLibrary.shared.soundsDirectory!
+            let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+            
+            let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
+            
+            if !fileExistedAtScheduling {
+                try FileManager.default.copyItem(at: precomposedURL, to: alarmKitURL)
+            }
+            
+            // Record scheduling diagnostics
+            // let schedulingEntry = PlaylistDiagnostics.SchedulingEntry(...)
+            
+            // Store for later update after scheduling
+            // For now, we'll just return the sound
+            return .named(processedFileName)
         }
     }
 }

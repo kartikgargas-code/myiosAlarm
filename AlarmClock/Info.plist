@@ -35,6 +35,10 @@
         <string>SkipNextAlarmIntent</string>
         <string>UndoSkipAlarmIntent</string>
         <string>OpenNextAlarmIntent</string>
+        <string>AdjustNextAlarmLiveIntent</string>
+        <string>ResetNextAlarmLiveIntent</string>
+        <string>SkipNextAlarmLiveIntent</string>
+        <string>UndoSkipAlarmLiveIntent</string>
     </array>
 </dict>
 </plist>

@@ -28,6 +28,9 @@ final class AlarmCoordinator {
     /// Diagnostic: last WidgetCenter reload request timestamp
     private(set) var lastWidgetReloadRequest: Date? = nil
 
+    /// Live Activity for Dynamic Island
+    private var liveActivity: Activity<NextAlarmAttributes>?
+
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
     private let scheduler: any AlarmSystemScheduling
@@ -323,6 +326,73 @@ final class AlarmCoordinator {
         
         // Write to App Group for widget extension
         writeNextAlarmSnapshotToAppGroup()
+        
+        // Update Live Activity
+        updateLiveActivity()
+    }
+    
+    /// Update or start the Live Activity for Dynamic Island
+    private func updateLiveActivity() {
+        guard let snapshot = nextAlarmSnapshot else {
+            // No upcoming alarm - end any existing activity
+            endLiveActivity()
+            return
+        }
+        
+        // Use the alarm's configured adjustment step minutes
+        let adjustmentStep = snapshot.repeatRule == .never && snapshot.oneTimeDate != nil ? 10 : 10
+        // Actually get from the alarm record
+        let alarmRecord = engine.alarm(id: snapshot.alarmID)
+        let adjustmentStepMinutes = alarmRecord?.adjustmentStepMinutes ?? 10
+        
+        let contentState = NextAlarmAttributes.ContentState(
+            alarmID: snapshot.alarmID,
+            label: snapshot.label,
+            nextOccurrenceDate: snapshot.nextOccurrenceDate,
+            adjustmentStepMinutes: adjustmentStepMinutes,
+            isAdjusted: snapshot.isAdjusted,
+            adjustmentDescription: snapshot.adjustmentDescription,
+            isSkipped: snapshot.isSkipped,
+            isEnabled: snapshot.isEnabled,
+            sound: snapshot.sound,
+            loudness: snapshot.loudness,
+            repeatRule: snapshot.repeatRule
+        )
+        
+        let attributes = NextAlarmAttributes(alarmID: snapshot.alarmID)
+        
+        Task {
+            do {
+                if let activity = liveActivity {
+                    // Update existing activity
+                    await activity.update(using: contentState)
+                } else {
+                    // Start new activity
+                    let activity = try Activity.request(
+                        attributes: attributes,
+                        content: .init(state: contentState, staleDate: nil),
+                        pushType: nil
+                    )
+                    await MainActor.run {
+                        self.liveActivity = activity
+                    }
+                }
+            } catch {
+                print("Failed to update Live Activity: \(error)")
+            }
+        }
+    }
+    
+    /// End the Live Activity
+    private func endLiveActivity() {
+        Task {
+            for activity in Activity<NextAlarmAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            await MainActor.run {
+                self.liveActivity = nil
+            }
+        }
     }
     
     private func writeNextAlarmSnapshotToAppGroup() {
