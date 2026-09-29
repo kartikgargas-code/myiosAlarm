@@ -24,6 +24,21 @@ targets:
         type: folder
         buildPhase: resources
       - path: AlarmClock/AudioProcessingService.swift
+      - path: AlarmClock/AlarmCoordinator.swift
+      - path: AlarmClock/AlarmKitSchedulingService.swift
+      - path: AlarmClock/AlarmProofOfConceptModel.swift
+      - path: AlarmClock/BuiltInSounds
+      - path: AlarmClock/ContentView.swift
+      - path: AlarmClock/NextAlarmProvider.swift
+      - path: AlarmClock/ProofAlarmPlan.swift
+      - path: AlarmClock/SoundLibrary.swift
+      - path: AlarmClock/SoundPickerView.swift
+      - path: AlarmClock/SoundPreviewService.swift
+      - path: AlarmClock/ThemeManager.swift
+      - path: AlarmClock/AppearanceView.swift
+      - path: AlarmClock/AlarmEditorView.swift
+      - path: AlarmClock/NextAlarmControlView.swift
+      - path: AlarmClock/NextOccurrenceControlsView.swift
     info:
       path: AlarmClock/Info.plist
       properties:
@@ -90,6 +105,7 @@ targets:
       - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/AlarmPersistence.swift
       - path: AlarmClock/AlarmEngine.swift
+      - path: AlarmClock/AlarmScheduleCalculator.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:
