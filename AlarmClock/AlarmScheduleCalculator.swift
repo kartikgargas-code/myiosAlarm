@@ -1,18 +1,18 @@
 import Foundation
 
-struct AlarmScheduleCalculator {
+public struct AlarmScheduleCalculator {
     var calendar: Calendar
 
     init(calendar: Calendar = .autoupdatingCurrent) {
         self.calendar = calendar
     }
 
-    func occurrenceKey(for baseDate: Date) -> String {
+    public func occurrenceKey(for baseDate: Date) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: baseDate)
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
-    func nextBaseOccurrence(for alarm: AlarmRecord, after date: Date) -> Date? {
+    public func nextBaseOccurrence(for alarm: AlarmRecord, after date: Date) -> Date? {
         guard alarm.isEnabled else { return nil }
 
         if alarm.repeatRule == .never {
@@ -33,11 +33,11 @@ struct AlarmScheduleCalculator {
         return nil
     }
 
-    func nextEffectiveOccurrence(for alarm: AlarmRecord, after date: Date) -> AlarmOccurrence? {
+    public func nextEffectiveOccurrence(for alarm: AlarmRecord, after date: Date) -> AlarmOccurrence? {
         effectiveOccurrences(for: alarm, after: date, limit: 1).first
     }
 
-    func effectiveOccurrences(for alarm: AlarmRecord, after date: Date, limit: Int) -> [AlarmOccurrence] {
+    public func effectiveOccurrences(for alarm: AlarmRecord, after date: Date, limit: Int) -> [AlarmOccurrence] {
         guard limit > 0 else { return [] }
         var occurrencesByKey: [String: AlarmOccurrence] = [:]
 
@@ -80,7 +80,7 @@ struct AlarmScheduleCalculator {
             .map { $0 }
     }
 
-    func earliestEffectiveOccurrence(in alarms: [AlarmRecord], after date: Date) -> AlarmOccurrence? {
+    public func earliestEffectiveOccurrence(in alarms: [AlarmRecord], after date: Date) -> AlarmOccurrence? {
         alarms.compactMap { nextEffectiveOccurrence(for: $0, after: date) }
             .min { $0.effectiveDate < $1.effectiveDate }
     }
