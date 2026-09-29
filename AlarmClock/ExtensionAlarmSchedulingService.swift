@@ -3,10 +3,9 @@ import ActivityKit
 import Foundation
 import AlarmClockShared
 
-/// Service for scheduling AlarmKit alarms from widget extension / Live Activity context
-/// This replicates the AlarmKitSchedulingService but can run in extension processes
+/// Service for scheduling AlarmKit alarms from a Live Activity intent.
+@MainActor
 public struct ExtensionAlarmSchedulingService {
-    @MainActor
     var manager: AlarmManager { AlarmManager.shared }
     
     /// Reconcile desired alarms with AlarmKit

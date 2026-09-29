@@ -4,8 +4,8 @@ import WidgetKit
 import AlarmKit
 import ActivityKit
 
-/// Shared service for alarm operations accessible from both app and widget extension
-/// Handles persistence, AlarmKit reconciliation, and widget updates
+/// Handles Live Activity alarm operations, AlarmKit reconciliation, and widget updates.
+@MainActor
 public struct SharedAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence
@@ -275,38 +275,15 @@ public struct SharedAlarmService {
             }
             
             let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
-            // Store the selected playlist ID in the override for this occurrence
-            var newOverride = AlarmOccurrenceOverride(offsetMinutes: nil, customDate: nil, isSkipped: false, randomSoundID: playlistID)
-            return (precomposedSound, newOverride)
-        case .precomposedPlaylist(let playlistID, let loudness):
-            // Generate or get the precomposed playlist file
-            let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
-                playlistID: playlistID,
-                loudness: loudness,
-                songCount: 5
+            let newOverride = AlarmOccurrenceOverride(
+                offsetMinutes: nil,
+                customDate: nil,
+                isSkipped: false,
+                randomSoundID: playlistID
             )
-            
-            // Record diagnostics
-            // playlistDiagnostics.addPreparation(preparationEntry)
-            // playlistDiagnostics.addGeneratedFile(generatedFileEntry)
-            
-            // Copy to Library/Sounds for AlarmKit access
-            let processedFileName = precomposedURL.lastPathComponent
-            let soundsDir = SoundLibrary.shared.soundsDirectory!
-            let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
-            
-            let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
-            
-            if !fileExistedAtScheduling {
-                try FileManager.default.copyItem(at: precomposedURL, to: alarmKitURL)
-            }
-            
-            // Record scheduling diagnostics
-            // let schedulingEntry = PlaylistDiagnostics.SchedulingEntry(...)
-            
-            // Store for later update after scheduling
-            // For now, we'll just return the sound
-            return .named(processedFileName)
+            return (precomposedSound, newOverride)
+        case .precomposedPlaylist:
+            return (alarm.sound, nil)
         }
     }
     

@@ -1,4 +1,4 @@
-﻿name: AlarmClock
+name: AlarmClock
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -43,6 +43,7 @@ targets:
       - path: AlarmClock/NextAlarmLiveActivityView.swift
       - path: AlarmClock/LiveActivityIntents.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
+      - path: AlarmClock/SharedAlarmService.swift
     info:
       path: AlarmClock/Info.plist
       properties:
@@ -106,12 +107,10 @@ targets:
       - path: AlarmClock/NextAlarmSnapshot.swift
       - path: AlarmClock/AlarmModel.swift
       - path: AlarmClock/WidgetDiagnostics.swift
-      - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/AlarmPersistence.swift
       - path: AlarmClock/AlarmEngine.swift
       - path: AlarmClock/AlarmScheduleCalculator.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
-      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:
