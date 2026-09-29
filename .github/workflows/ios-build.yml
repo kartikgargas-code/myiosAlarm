@@ -164,8 +164,9 @@ jobs:
           set -euo pipefail
           SETTINGS="$RUNNER_TEMP/diagnostic-settings.txt"
           xcodebuild -project AlarmClock.xcodeproj -target AlarmClock -configuration Diagnostic -showBuildSettings > "$SETTINGS"
-          grep -Eq 'PRODUCT_BUNDLE_IDENTIFIER = com\.example\.alarmclock\.diagnostic$' "$SETTINGS"
-          grep -Eq 'CODE_SIGN_ENTITLEMENTS = AlarmClock/AlarmClockDiagnostic\.entitlements$' "$SETTINGS"
+          grep -E 'PRODUCT_BUNDLE_IDENTIFIER|CODE_SIGN_ENTITLEMENTS|SWIFT_ACTIVE_COMPILATION_CONDITIONS' "$SETTINGS"
+          grep -Eq 'PRODUCT_BUNDLE_IDENTIFIER = com\.example\.alarmclock\.diagnostic[[:space:]]*$' "$SETTINGS"
+          grep -Eq 'CODE_SIGN_ENTITLEMENTS = AlarmClock/AlarmClockDiagnostic\.entitlements[[:space:]]*$' "$SETTINGS"
           grep -Eq 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = .*DIAGNOSTIC_BUILD' "$SETTINGS"
 
       - name: Run diagnostic configuration tests
