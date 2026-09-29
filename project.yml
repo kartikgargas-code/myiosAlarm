@@ -46,6 +46,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: AlarmClock/AlarmClock.entitlements
       configs:
         Diagnostic:
           PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic
@@ -55,8 +56,6 @@ targets:
           CONTROL_KIND: com.example.alarmclock.diagnostic.next-alarm-control
           CODE_SIGN_ENTITLEMENTS: AlarmClock/AlarmClockDiagnostic.entitlements
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DIAGNOSTIC_BUILD
-    entitlements:
-      path: AlarmClock/AlarmClock.entitlements
     dependencies:
       - target: AlarmClockShared
       - target: AlarmClockWidgetExtension
@@ -120,6 +119,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         DEVELOPMENT_TEAM: ""
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @loader_path/Frameworks @executable_path/../../Frameworks"
+        CODE_SIGN_ENTITLEMENTS: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements
       configs:
         Diagnostic:
           PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock.diagnostic.widget
@@ -129,5 +129,3 @@ targets:
           CONTROL_KIND: com.example.alarmclock.diagnostic.next-alarm-control
           CODE_SIGN_ENTITLEMENTS: AlarmClockWidgetExtension/AlarmClockWidgetExtensionDiagnostic.entitlements
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DIAGNOSTIC_BUILD
-    entitlements:
-      path: AlarmClockWidgetExtension/AlarmClockWidgetExtension.entitlements
