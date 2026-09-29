@@ -2,6 +2,7 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 import AlarmClockShared
+import os.log
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
@@ -123,9 +124,14 @@ struct NextAlarmWidgetProvider: TimelineProvider {
     }
     
     private func loadEntry() -> NextAlarmWidgetEntry {
+        WidgetDiagnostics.widgetLogEvent("Widget loadEntry started", appGroupIdentifier: appGroupIdentifier)
+        
         guard let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         ) else {
+            WidgetDiagnostics.widgetLogEvent("Failed to get App Group container URL", 
+                appGroupIdentifier: appGroupIdentifier, 
+                containerAvailable: false)
             return NextAlarmWidgetEntry(
                 date: Date(),
                 alarmLabel: "No upcoming alarm",
@@ -134,11 +140,25 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 hasAlarm: false
             )
         }
+        
+        WidgetDiagnostics.widgetLogEvent("App Group container available", 
+            appGroupIdentifier: appGroupIdentifier, 
+            containerAvailable: true)
         
         let snapshotURL = appGroupURL.appendingPathComponent(snapshotFileName)
         
-        guard let data = try? Data(contentsOf: snapshotURL),
-              let snapshot = try? JSONDecoder().decode(NextAlarmSnapshot.self, from: data) else {
+        let fileExists = FileManager.default.fileExists(atPath: snapshotURL.path)
+        WidgetDiagnostics.widgetLogEvent("Checked snapshot file existence", 
+            appGroupIdentifier: appGroupIdentifier, 
+            containerAvailable: true,
+            fileExists: fileExists)
+        
+        guard fileExists else {
+            WidgetDiagnostics.widgetLogEvent("Snapshot file does not exist, returning empty entry", 
+                appGroupIdentifier: appGroupIdentifier, 
+                containerAvailable: true,
+                fileExists: false,
+                entryHasAlarm: false)
             return NextAlarmWidgetEntry(
                 date: Date(),
                 alarmLabel: "No upcoming alarm",
@@ -147,6 +167,61 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 hasAlarm: false
             )
         }
+        
+        guard let data = try? Data(contentsOf: snapshotURL) else {
+            WidgetDiagnostics.widgetLogEvent("Failed to read snapshot file data", 
+                appGroupIdentifier: appGroupIdentifier, 
+                containerAvailable: true,
+                fileExists: true,
+                readSuccess: false,
+                readError: "Data(contentsOf:) failed",
+                entryHasAlarm: false)
+            return NextAlarmWidgetEntry(
+                date: Date(),
+                alarmLabel: "No upcoming alarm",
+                nextTime: "--:--",
+                dateIndicator: "",
+                hasAlarm: false
+            )
+        }
+        
+        WidgetDiagnostics.widgetLogEvent("Snapshot file read successfully", 
+            appGroupIdentifier: appGroupIdentifier, 
+            containerAvailable: true,
+            fileExists: true,
+            readSuccess: true)
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        guard let snapshot = try? decoder.decode(NextAlarmSnapshot.self, from: data) else {
+            WidgetDiagnostics.widgetLogEvent("Failed to decode snapshot JSON", 
+                appGroupIdentifier: appGroupIdentifier, 
+                containerAvailable: true,
+                fileExists: true,
+                readSuccess: true,
+                decodeSuccess: false,
+                decodeError: "JSONDecoder.decode failed",
+                entryHasAlarm: false)
+            return NextAlarmWidgetEntry(
+                date: Date(),
+                alarmLabel: "No upcoming alarm",
+                nextTime: "--:--",
+                dateIndicator: "",
+                hasAlarm: false
+            )
+        }
+        
+        WidgetDiagnostics.widgetLogEvent("Snapshot decoded successfully", 
+            appGroupIdentifier: appGroupIdentifier, 
+            containerAvailable: true,
+            fileExists: true,
+            readSuccess: true,
+            decodeSuccess: true,
+            snapshotAlarmID: snapshot.alarmID,
+            snapshotLabel: snapshot.label,
+            snapshotNextOccurrence: snapshot.nextOccurrenceDate,
+            snapshotIsEnabled: snapshot.isEnabled)
         
         // Convert snapshot to widget entry
         let formatter = DateFormatter()
@@ -167,13 +242,27 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator = dateFormatter.string(from: snapshot.nextOccurrenceDate)
         }
         
-        return NextAlarmWidgetEntry(
+        let entry = NextAlarmWidgetEntry(
             date: Date(),
             alarmLabel: snapshot.label,
             nextTime: formatter.string(from: snapshot.nextOccurrenceDate),
             dateIndicator: dateIndicator,
             hasAlarm: true
         )
+        
+        WidgetDiagnostics.widgetLogEvent("Widget entry created", 
+            appGroupIdentifier: appGroupIdentifier, 
+            containerAvailable: true,
+            fileExists: true,
+            readSuccess: true,
+            decodeSuccess: true,
+            snapshotAlarmID: snapshot.alarmID,
+            snapshotLabel: snapshot.label,
+            snapshotNextOccurrence: snapshot.nextOccurrenceDate,
+            snapshotIsEnabled: snapshot.isEnabled,
+            entryHasAlarm: entry.hasAlarm)
+        
+        return entry
     }
 }
 

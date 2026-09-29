@@ -3,6 +3,7 @@ import ActivityKit
 import Foundation
 import Observation
 import WidgetKit
+import os.log
 
 @MainActor
 @Observable
@@ -20,6 +21,12 @@ final class AlarmCoordinator {
 
     /// The computed next alarm snapshot for widgets and Lock Screen controls
     private(set) var nextAlarmSnapshot: NextAlarmSnapshot? = nil
+
+    /// Diagnostic: last snapshot write result
+    private(set) var lastSnapshotWriteResult: (success: Bool, error: String?, timestamp: Date?) = (true, nil, nil)
+
+    /// Diagnostic: last WidgetCenter reload request timestamp
+    private(set) var lastWidgetReloadRequest: Date? = nil
 
     private var engine: AlarmEngine
     private let persistence: any AlarmPersisting
@@ -319,20 +326,31 @@ final class AlarmCoordinator {
     }
     
     private func writeNextAlarmSnapshotToAppGroup() {
+        let timestamp = Date()
+        
         guard let configuredAppGroup = Bundle.main.object(
             forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
-        ) as? String else { return }
+        ) as? String else {
+            WidgetDiagnostics.appLogEvent("Missing configured App Group identifier in Info.plist", appGroupIdentifier: nil, containerAvailable: false)
+            lastSnapshotWriteResult = (false, "Missing configured App Group identifier", timestamp)
+            return
+        }
         let resignedAppGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
         let appGroupIdentifier = resignedAppGroups.first {
             $0 == configuredAppGroup || $0.hasPrefix(configuredAppGroup + ".")
         } ?? configuredAppGroup
 
+        WidgetDiagnostics.appLogEvent("Resolved App Group identifier", appGroupIdentifier: appGroupIdentifier)
+        
         guard let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         ) else {
-            print("Failed to get App Group container URL")
+            WidgetDiagnostics.appLogEvent("Failed to get App Group container URL", appGroupIdentifier: appGroupIdentifier, containerAvailable: false)
+            lastSnapshotWriteResult = (false, "Failed to get App Group container URL", timestamp)
             return
         }
+        
+        WidgetDiagnostics.appLogEvent("App Group container available", appGroupIdentifier: appGroupIdentifier, containerAvailable: true)
         
         let snapshotURL = appGroupURL.appendingPathComponent("nextAlarmSnapshot.json")
         
@@ -343,14 +361,49 @@ final class AlarmCoordinator {
             let data = try encoder.encode(nextAlarmSnapshot)
             try data.write(to: snapshotURL, options: .atomic)
             
+            // Verify write
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: snapshotURL.path)
+            let fileSize = (fileAttributes[.size] as? Int) ?? 0
+            let fileModDate = (fileAttributes[.modificationDate] as? Date) ?? timestamp
+            
+            WidgetDiagnostics.appLogEvent("Snapshot written successfully", 
+                appGroupIdentifier: appGroupIdentifier, 
+                containerAvailable: true,
+                fileExists: true,
+                fileSize: fileSize,
+                fileModificationDate: fileModDate,
+                writeSuccess: true,
+                snapshotAlarmID: nextAlarmSnapshot?.alarmID,
+                snapshotLabel: nextAlarmSnapshot?.label,
+                snapshotNextOccurrence: nextAlarmSnapshot?.nextOccurrenceDate,
+                snapshotIsEnabled: nextAlarmSnapshot?.isEnabled)
+            
+            var reloadRequested = false
             if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
                 WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                reloadRequested = true
             }
             if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
                 WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                reloadRequested = true
             }
+            
+            lastSnapshotWriteResult = (true, nil, timestamp)
+            lastWidgetReloadRequest = timestamp
+            
+            WidgetDiagnostics.appLogEvent("WidgetCenter reload requested", 
+                appGroupIdentifier: appGroupIdentifier,
+                widgetReloadRequested: reloadRequested)
+            
         } catch {
-            print("Failed to write next alarm snapshot to App Group: \(error)")
+            WidgetDiagnostics.appLogEvent("Failed to write snapshot", 
+                appGroupIdentifier: appGroupIdentifier,
+                containerAvailable: true,
+                fileExists: false,
+                writeSuccess: false,
+                writeError: error.localizedDescription)
+            
+            lastSnapshotWriteResult = (false, error.localizedDescription, timestamp)
         }
     }
 

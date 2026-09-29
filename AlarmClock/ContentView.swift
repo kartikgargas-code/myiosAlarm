@@ -1,5 +1,6 @@
 ﻿import SwiftUI
 import UIKit
+import AlarmClockShared
 
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
@@ -315,6 +316,13 @@ struct ContentView: View {
                     
                     Divider()
                     
+                    Text("Widget Pipeline Diagnostics")
+                        .font(.headline)
+                    
+                    widgetDiagnosticsSection
+                    
+                    Divider()
+                    
                     Text("Playlist Diagnostics")
                         .font(.headline)
                     
@@ -340,6 +348,100 @@ struct ContentView: View {
                     Button("Done") { showingDiagnostics = false }
                 }
             }
+        }
+    }
+    
+    private var widgetDiagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Current snapshot in memory
+            if let snapshot = coordinator.nextAlarmSnapshot {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Current In-Memory Snapshot")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Alarm ID: \(snapshot.alarmID.uuidString)")
+                    Text("Label: \(snapshot.label)")
+                    Text("Next Occurrence: \(snapshot.nextOccurrenceDate.formatted(date: .complete, time: .standard))")
+                    Text("Enabled: \(snapshot.isEnabled ? "Yes" : "No")")
+                    Text("Adjusted: \(snapshot.isAdjusted ? "Yes" : "No")")
+                    if let adj = snapshot.adjustmentDescription {
+                        Text("Adjustment: \(adj)")
+                    }
+                    Text("Sound: \(snapshot.sound.displayName)")
+                    Text("Loudness: \(snapshot.loudness.percentage)%")
+                }
+                .font(.caption.monospaced())
+            } else {
+                Text("Current In-Memory Snapshot: NONE (no upcoming alarm)")
+                    .font(.caption.monospaced())
+            }
+            
+            Divider()
+            
+            // Last write result
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Last Snapshot Write")
+                    .font(.subheadline.weight(.semibold))
+                let result = coordinator.lastSnapshotWriteResult
+                Text("Success: \(result.success ? "YES" : "NO")")
+                if let error = result.error {
+                    Text("Error: \(error)")
+                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                }
+                if let timestamp = result.timestamp {
+                    Text("Timestamp: \(timestamp.formatted(date: .complete, time: .standard))")
+                }
+            }
+            .font(.caption.monospaced())
+            
+            Divider()
+            
+            // Last widget reload request
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Last WidgetCenter Reload Request")
+                    .font(.subheadline.weight(.semibold))
+                if let timestamp = coordinator.lastWidgetReloadRequest {
+                    Text("Timestamp: \(timestamp.formatted(date: .complete, time: .standard))")
+                    Text("Age: \(Int(Date().timeIntervalSince(timestamp))) seconds ago")
+                } else {
+                    Text("Never requested")
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+            }
+            .font(.caption.monospaced())
+            
+            Divider()
+            
+            // App Group configuration
+            VStack(alignment: .leading, spacing: 4) {
+                Text("App Group Configuration")
+                    .font(.subheadline.weight(.semibold))
+                if let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String {
+                    Text("Configured: \(configured)")
+                }
+                if let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String], !resigned.isEmpty {
+                    Text("ALTAppGroups: \(resigned.joined(separator: ", "))")
+                } else {
+                    Text("ALTAppGroups: (none)")
+                }
+            }
+            .font(.caption.monospaced())
+            
+            Divider()
+            
+            // Instructions for device log access
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Device Log Access")
+                    .font(.subheadline.weight(.semibold))
+                Text("Filter Console.app / Console on macOS or Xcode device log with:")
+                    .font(.caption)
+                Text("subsystem:com.example.alarmclock.widget-diagnostics")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                Text("Or grep for: MYNEXTALARM_APP_DIAG or MYNEXTALARM_WIDGET_DIAG")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+            }
+            .font(.caption.monospaced())
         }
     }
 
