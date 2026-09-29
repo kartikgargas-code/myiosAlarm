@@ -4,6 +4,7 @@ import WidgetKit
 
 /// Shared service for alarm operations accessible from both app and widget extension
 /// Handles persistence, AlarmKit reconciliation, and widget updates
+@MainActor
 public struct SharedAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence

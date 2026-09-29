@@ -2,12 +2,12 @@ import Foundation
 
 @MainActor
 public struct AlarmEngine {
-    var snapshot: AlarmStoreSnapshot
-    var calculator: AlarmScheduleCalculator
+    public var snapshot: AlarmStoreSnapshot
+    public var calculator: AlarmScheduleCalculator
 
-    init(snapshot: AlarmStoreSnapshot = .empty, calendar: Calendar = .autoupdatingCurrent) {
+    public init(snapshot: AlarmStoreSnapshot = .empty, calendar: Calendar = .autoupdatingCurrent) {
         self.snapshot = snapshot
-        calculator = AlarmScheduleCalculator(calendar: calendar)
+        self.calculator = AlarmScheduleCalculator(calendar: calendar)
     }
 
     public var alarms: [AlarmRecord] {
