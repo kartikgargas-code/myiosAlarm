@@ -106,7 +106,7 @@ struct AdjustNextAlarmIntent: AppIntent {
         
         let service = SharedAlarmService()
         do {
-            let success = try service.adjustNextAlarm(alarmID: uuid, minutes: minutes)
+            let success = try await service.adjustNextAlarm(alarmID: uuid, minutes: minutes)
             if success {
                 return .result(dialog: "Adjusted alarm by \(minutes >= 0 ? "+" : "")\(minutes) minutes")
             } else {
@@ -141,7 +141,7 @@ struct ResetNextAlarmIntent: AppIntent {
         
         let service = SharedAlarmService()
         do {
-            let success = try service.resetNextAlarm(alarmID: uuid)
+            let success = try await service.resetNextAlarm(alarmID: uuid)
             if success {
                 return .result(dialog: "Reset alarm to base schedule")
             } else {
@@ -176,7 +176,7 @@ struct SkipNextAlarmIntent: AppIntent {
         
         let service = SharedAlarmService()
         do {
-            let success = try service.skipNextAlarm(alarmID: uuid)
+            let success = try await service.skipNextAlarm(alarmID: uuid)
             if success {
                 return .result(dialog: "Skipped next alarm")
             } else {
@@ -211,7 +211,7 @@ struct UndoSkipAlarmIntent: AppIntent {
         
         let service = SharedAlarmService()
         do {
-            let success = try service.undoSkipAlarm(alarmID: uuid)
+            let success = try await service.undoSkipAlarm(alarmID: uuid)
             if success {
                 return .result(dialog: "Restored skipped alarm")
             } else {

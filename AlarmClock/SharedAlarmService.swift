@@ -4,7 +4,6 @@ import WidgetKit
 
 /// Shared service for alarm operations accessible from both app and widget extension
 /// Handles persistence, AlarmKit reconciliation, and widget updates
-@MainActor
 public struct SharedAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence
@@ -33,7 +32,7 @@ public struct SharedAlarmService {
     }
     
     /// Apply +10 minutes adjustment to the next alarm
-    public func adjustNextAlarm(alarmID: UUID, minutes: Int) throws -> Bool {
+    public func adjustNextAlarm(alarmID: UUID, minutes: Int) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         
@@ -58,7 +57,7 @@ public struct SharedAlarmService {
     }
     
     /// Set custom next time for alarm
-    public func setNextAlarmTime(alarmID: UUID, date: Date) throws -> Bool {
+    public func setNextAlarmTime(alarmID: UUID, date: Date) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         
@@ -79,7 +78,7 @@ public struct SharedAlarmService {
     }
     
     /// Reset next alarm to base schedule
-    public func resetNextAlarm(alarmID: UUID) throws -> Bool {
+    public func resetNextAlarm(alarmID: UUID) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         
@@ -100,7 +99,7 @@ public struct SharedAlarmService {
     }
     
     /// Skip next occurrence
-    public func skipNextAlarm(alarmID: UUID) throws -> Bool {
+    public func skipNextAlarm(alarmID: UUID) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         
@@ -121,7 +120,7 @@ public struct SharedAlarmService {
     }
     
     /// Undo skip for next occurrence
-    public func undoSkipAlarm(alarmID: UUID) throws -> Bool {
+    public func undoSkipAlarm(alarmID: UUID) async throws -> Bool {
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         
