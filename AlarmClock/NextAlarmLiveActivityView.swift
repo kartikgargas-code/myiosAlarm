@@ -114,4 +114,3 @@ struct NextAlarmLockScreenView: View {
             .padding()
         }
     }
-}
