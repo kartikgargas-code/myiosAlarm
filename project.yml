@@ -24,6 +24,7 @@ targets:
       path: AlarmClock/Info.plist
       properties:
         NSAlarmKitUsageDescription: Alarm Clock schedules alarms you explicitly create and test.
+        CFBundleDisplayName: myNextalarm
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
