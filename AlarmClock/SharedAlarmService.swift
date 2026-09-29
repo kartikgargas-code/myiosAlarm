@@ -196,6 +196,8 @@ public struct SharedAlarmService {
         } catch {
             print("Failed to write widget snapshot: \(error)")
         }
+    }
+    
     /// Compute desired system alarms for AlarmKit reconciliation
     /// Mirrors AlarmCoordinator.desiredSystemAlarms for extension use
     private func desiredSystemAlarms(from engine: AlarmEngine, now: Date) async -> [ExtensionAlarmSchedulingService.DesiredSystemAlarm] {
