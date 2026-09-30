@@ -5,7 +5,6 @@ import AlarmKit
 import ActivityKit
 
 /// Handles Live Activity alarm operations, AlarmKit reconciliation, and widget updates.
-@MainActor
 public struct SharedAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence
