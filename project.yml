@@ -112,6 +112,7 @@ targets:
       - path: AlarmClock/AlarmEngine.swift
       - path: AlarmClock/AlarmScheduleCalculator.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
+      - path: AlarmClock/LiveActivityIntents.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:
