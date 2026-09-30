@@ -22,6 +22,8 @@
     <string>1</string>
     <key>NSAlarmKitUsageDescription</key>
     <string>Alarm Clock schedules alarms you explicitly create and test.</string>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UISupportedInterfaceOrientations</key>

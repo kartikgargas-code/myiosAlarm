@@ -148,6 +148,8 @@ jobs:
             <array>
               <string>group.com.example.alarmclock</string>
             </array>
+            <key>com.apple.developer.live-activity</key>
+            <true/>
           </dict>
           </plist>
           PLIST
@@ -161,6 +163,7 @@ jobs:
           codesign -d --entitlements :- "$WIDGET" > "$RUNNER_TEMP/widget-entitlements.plist" 2>/dev/null
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/app-entitlements.plist")" = "group.com.example.alarmclock"
           test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$RUNNER_TEMP/widget-entitlements.plist")" = "group.com.example.alarmclock"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.live-activity' "$RUNNER_TEMP/app-entitlements.plist")" = "true"
 
       - name: Package unsigned IPA container
         run: |
