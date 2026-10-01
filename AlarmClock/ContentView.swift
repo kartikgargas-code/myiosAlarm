@@ -541,7 +541,7 @@ struct ContentView: View {
             text += "Configured: \(configured)\n"
         }
         if let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String], !resigned.isEmpty {
-            text += "ALTAppGroups: \(resigned.joined(separator: \", \"))\n"
+            text += "ALTAppGroups: \(resigned.joined(separator: ", "))\n"
         } else {
             text += "ALTAppGroups: (none)\n"
         }
