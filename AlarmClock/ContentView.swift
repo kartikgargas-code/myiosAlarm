@@ -261,6 +261,17 @@ struct ContentView: View {
         return nil
     }
 
+    private func timeText(_ time: AlarmTime) -> String {
+        let date = Calendar.current.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+
+    private func adjustmentDescription(_ occurrence: AlarmOccurrence) -> String {
+        let minutes = Int(occurrence.effectiveDate.timeIntervalSince(occurrence.baseDate) / 60)
+        if minutes == 0 { return "No adjustment" }
+        return minutes > 0 ? "Adjusted +\(minutes) min" : "Adjusted \(minutes) min"
+    }
+
     private var diagnosticsView: some View {
         NavigationStack {
             ScrollView {
