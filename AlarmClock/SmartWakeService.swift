@@ -207,22 +207,6 @@ final class SmartWakeService {
         NotificationCenter.default.removeObserver(notificationHandler, name: AVAudioSession.routeChangeNotification, object: nil)
     }
 
-    fileprivate func handleInterruptionEnded(shouldResume: Bool) {
-        if shouldResume {
-            Task { @MainActor in
-                try? AVAudioSession.sharedInstance().setActive(true)
-                player?.play()
-            }
-        }
-    }
-
-    fileprivate func handleRouteChange(oldDeviceUnavailable: Bool) {
-        if oldDeviceUnavailable {
-            player?.pause()
-        }
-    }
-}
-
 /// Separate NSObject subclass to handle @objc notification callbacks without actor isolation issues
 private final class NotificationHandler: NSObject {
     weak var owner: SmartWakeService?
@@ -292,4 +276,5 @@ extension SmartWakeService {
             player?.pause()
         }
     }
+}
 }
