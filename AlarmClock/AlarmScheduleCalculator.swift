@@ -39,6 +39,7 @@ public struct AlarmScheduleCalculator {
 
     public func effectiveOccurrences(for alarm: AlarmRecord, after date: Date, limit: Int) -> [AlarmOccurrence] {
         guard limit > 0 else { return [] }
+        guard alarm.isEnabled else { return [] }
         var occurrencesByKey: [String: AlarmOccurrence] = [:]
 
         for (key, override) in alarm.overrides where !override.isSkipped {
