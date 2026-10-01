@@ -17,7 +17,6 @@ final class SmartWakeService {
     private var isSessionActive = false
     private var isEnabled = false
     private var silentLoopURL: URL?
-    private let notificationHandler = NotificationHandler()
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -29,7 +28,6 @@ final class SmartWakeService {
     init() {
         loadPreference()
         prepareSilentLoop()
-        notificationHandler.owner = self
     }
 
     private func loadPreference() {
