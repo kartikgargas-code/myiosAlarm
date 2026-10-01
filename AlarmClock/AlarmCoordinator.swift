@@ -8,6 +8,8 @@ import os.log
 @MainActor
 @Observable
 final class AlarmCoordinator {
+    static var sharedInstance: AlarmCoordinator?
+
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
     private(set) var lastError: String?

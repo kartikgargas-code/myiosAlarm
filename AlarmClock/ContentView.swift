@@ -16,12 +16,13 @@ struct ContentView: View {
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
+    @State private var alarmPlaybackService = AlarmPlaybackService.shared
 
     var body: some View {
         NavigationStack {
             List {
                 // Show currently ringing song banner if active
-                if let songName = currentRingSongName {
+                if let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName {
                     Section {
                         HStack {
                             Image(systemName: "speaker.wave.3.fill")
@@ -140,6 +141,8 @@ struct ContentView: View {
                 if authorizationModel.authorizationDescription == "Authorized" {
                     await coordinator.synchronize()
                 }
+                // Set shared instance for AlarmPlaybackService access
+                AlarmCoordinator.sharedInstance = coordinator
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {

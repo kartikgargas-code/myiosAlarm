@@ -2,6 +2,7 @@ import AVFoundation
 import Observation
 import Foundation
 import os.log
+import AlarmClockShared
 
 /// Background audio session manager for "Smart Wake" feature
 /// Keeps a silent/near-silent loop running overnight so the app stays alive
@@ -18,6 +19,10 @@ final class SmartWakeService {
     private var isEnabled = false
     private var silentLoopURL: URL?
     private weak var coordinator: AlarmCoordinator?
+    
+    // Transition arming
+    private var transitionCheckTask: Task<Void, Never>?
+    private var armedOccurrences: Set<String> = []
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -167,6 +172,9 @@ final class SmartWakeService {
 
             // Register for interruption notifications
             registerForInterruptions()
+            
+            // Start transition arming task
+            startTransitionArming()
         } catch {
             os_log(.error, log: log, "Failed to start background audio: %{public}s", error.localizedDescription)
         }
@@ -191,7 +199,19 @@ final class SmartWakeService {
         }
 
         unregisterForInterruptions()
+        stopTransitionArming()
         os_log(.info, log: log, "Smart Wake stopped")
+    }
+
+    /// Stop only the silent player, keeping the audio session active and observers registered
+    /// Used when transitioning to real alarm playback
+    func stopSilentPlayerOnly() {
+        os_log(.info, log: log, "stopSilentPlayerOnly() called - stopping silent loop, keeping session active")
+        player?.stop()
+        player = nil
+        isSessionActive = false
+        // Do NOT deactivate audio session
+        // Do NOT unregister for interruptions/route changes
     }
 
     @MainActor private func logInterruptionBegan() {
@@ -267,6 +287,245 @@ final class SmartWakeService {
         logRouteChange(reason: reason)
         if reason == .oldDeviceUnavailable {
             handleRouteChange(oldDeviceUnavailable: true)
+        }
+    }
+
+    // MARK: - Transition Arming
+    
+    /// Start the background task that checks for upcoming alarms and arms transition
+    private func startTransitionArming() {
+        // Cancel any existing task
+        transitionCheckTask?.cancel()
+        
+        transitionCheckTask = Task { @MainActor in
+            os_log(.info, log: log, "Starting transition arming task")
+            
+            while !Task.isCancelled {
+                // Check every 30 seconds
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+                
+                guard !Task.isCancelled else { break }
+                
+                await checkAndArmUpcomingAlarms()
+            }
+            
+            os_log(.info, log: log, "Transition arming task ended")
+        }
+    }
+    
+    /// Stop the transition arming task
+    private func stopTransitionArming() {
+        transitionCheckTask?.cancel()
+        transitionCheckTask = nil
+        armedOccurrences.removeAll()
+    }
+    
+    /// Check App Group alarms.json for upcoming occurrences and arm if within 60 seconds
+    private func checkAndArmUpcomingAlarms() async {
+        guard let coordinator = self.coordinator else {
+            os_log(.error, log: log, "No coordinator available for transition arming")
+            return
+        }
+        
+        // Read fresh snapshot from App Group
+        let appGroupIdentifier = "group.com.example.alarmclock"
+        #if DIAGNOSTIC_BUILD
+        let appGroupIdentifier = "group.com.example.alarmclock.diagnostic"
+        #endif
+        
+        guard let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            os_log(.error, log: log, "App Group container not available")
+            return
+        }
+        
+        let alarmsURL = appGroupURL.appendingPathComponent("alarms.json")
+        guard FileManager.default.fileExists(atPath: alarmsURL.path) else {
+            os_log(.info, log: log, "No alarms.json in App Group")
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: alarmsURL)
+            let snapshot = try JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: data)
+            
+            // Create engine from snapshot to evaluate occurrences
+            let engine = AlarmEngine(snapshot: snapshot, calendar: Calendar.current)
+            let now = Date()
+            let ringWindowEnd = now.addingTimeInterval(8 * 3600) // 8 hours
+            
+            // Find all unskipped occurrences within the ring window
+            let desiredOccurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 5)
+            let upcomingOccurrences = desiredOccurrences.filter { occ in
+                occ.effectiveDate > now && occ.effectiveDate <= ringWindowEnd
+            }
+            
+            guard !upcomingOccurrences.isEmpty else {
+                os_log(.info, log: log, "No upcoming occurrences in ring window")
+                return
+            }
+            
+            // Find the earliest unskipped occurrence
+            let earliestOccurrence = upcomingOccurrences.min { $0.effectiveDate < $1.effectiveDate }
+            guard let earliest = earliestOccurrence else { return }
+            
+            let timeToFire = earliest.effectiveDate.timeIntervalSince(now)
+            let occurrenceKey = earliest.occurrenceKey
+            
+            os_log(.info, log: log, "Next occurrence: %{public}s in %{public}.1fs (armed: %{public}d)", 
+                   occurrenceKey, timeToFire, armedOccurrences.contains(occurrenceKey) ? 1 : 0)
+            
+            // If within 60 seconds and not yet armed, arm it
+            if timeToFire <= 60 && timeToFire > 0 && !armedOccurrences.contains(occurrenceKey) {
+                armedOccurrences.insert(occurrenceKey)
+                os_log(.info, log: log, "ARMING transition for occurrence %{public}s (fire in %{public}.1fs)", 
+                       occurrenceKey, timeToFire)
+                
+                // Schedule precise wake at fire time
+                scheduleTransitionWake(for: earliest, snapshot: snapshot, engine: engine)
+            }
+            
+            // Clean up old armed occurrences (past fire time + tolerance)
+            let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
+            armedOccurrences.removeAll { key in
+                // Find the occurrence for this key and check if it's past
+                if let occ = desiredOccurrences.first(where: { $0.occurrenceKey == key }) {
+                    return occ.effectiveDate < cleanupThreshold
+                }
+                return true // Remove if not found
+            }
+            
+        } catch {
+            os_log(.error, log: log, "Failed to check upcoming alarms: %{public}s", error.localizedDescription)
+        }
+    }
+    
+    /// Schedule a precise wake at the exact fire time
+    private func scheduleTransitionWake(
+        for occurrence: AlarmOccurrence,
+        snapshot: AlarmStoreSnapshot,
+        engine: AlarmEngine
+    ) {
+        let occurrenceKey = occurrence.occurrenceKey
+        let fireDate = occurrence.effectiveDate
+        let now = Date()
+        let timeUntilFire = fireDate.timeIntervalSince(now)
+        
+        guard timeUntilFire > 0 else { return }
+        
+        Task { @MainActor in
+            // Sleep until the exact fire time
+            do {
+                try await Task.sleep(nanoseconds: UInt64(timeUntilFire * 1_000_000_000))
+            } catch {
+                os_log(.error, log: log, "Transition wake sleep cancelled: %{public}s", error.localizedDescription)
+                return
+            }
+            
+            // Verify it's still the right time (±5s tolerance)
+            let actualNow = Date()
+            let tolerance: TimeInterval = 5.0
+            if abs(actualNow.timeIntervalSince(fireDate)) > tolerance {
+                os_log(.info, log: log, "Missed fire window for %{public}s (diff: %{public}.1fs)", 
+                       occurrenceKey, actualNow.timeIntervalSince(fireDate))
+                return
+            }
+            
+            os_log(.info, log: log, "TRANSITION WAKE: Firing for occurrence %{public}s at %{public}s", 
+                   occurrenceKey, actualNow.formatted(date: .omitted, time: .standard))
+            
+            // Find the alarm for this occurrence
+            guard let alarm = engine.alarm(id: occurrence.alarmID) else {
+                os_log(.error, log: log, "Alarm not found for occurrence %{public}s", occurrenceKey)
+                return
+            }
+            
+            // Resolve the sound for this occurrence using the same logic as scheduling
+            do {
+                let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
+                
+                // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
+                if case .precomposedPlaylist(let playlistID, _) = soundToUse,
+                   case .random(let playlistID) = alarm.sound {
+                    // Both resolve to precomposed playlist - start playlist playback
+                    os_log(.info, log: log, "Starting playlist playback for playlist %{public}s", playlistID.uuidString)
+                    AlarmPlaybackService.shared.start(
+                        playlistID: playlistID,
+                        loudness: alarm.loudness,
+                        alarm: alarm,
+                        occurrence: occurrence
+                    )
+                    stopSilentPlayerOnly()
+                } else if case .precomposedPlaylist(let playlistID, _) = soundToUse {
+                    // Precomposed playlist directly
+                    os_log(.info, log: log, "Starting precomposed playlist playback for playlist %{public}s", playlistID.uuidString)
+                    AlarmPlaybackService.shared.start(
+                        playlistID: playlistID,
+                        loudness: alarm.loudness,
+                        alarm: alarm,
+                        occurrence: occurrence
+                    )
+                    stopSilentPlayerOnly()
+                } else if case .imported(_) = soundToUse {
+                    // Single imported track - create a temporary single-track playlist behavior
+                    // For now, we'll need to handle this case - could create a single-track playlist
+                    os_log(.info, log: log, "Single imported sound - AlarmKit will handle playback")
+                    // For imported sounds, AlarmKit handles the playback directly
+                } else {
+                    os_log(.info, log: log, "Sound type %{public}s - AlarmKit handles playback", String(describing: soundToUse))
+                }
+                
+            } catch {
+                os_log(.error, log: log, "Failed to resolve sound for occurrence: %{public}s", error.localizedDescription)
+            }
+        }
+    }
+    
+    /// Resolve sound for occurrence (mirrors AlarmCoordinator logic)
+    private func resolveSoundForOccurrence(alarm: AlarmRecord, occurrence: AlarmOccurrence, engine: AlarmEngine) throws -> (AlarmSound, AlarmOccurrenceOverride?) {
+        switch alarm.sound {
+        case .systemDefault:
+            return (.systemDefault, nil)
+        case .builtIn(let name):
+            return (.builtIn(name), nil)
+        case .imported(let id):
+            return (.imported(id), nil)
+        case .random(let playlistID):
+            // Check if we already have a precomposed playlist for this occurrence
+            if let override = alarm.overrides[occurrence.occurrenceKey],
+               let selectedSoundID = override.randomSoundID {
+                // Verify the sound still exists in the playlist
+                if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+                   playlist.soundIDs.contains(selectedSoundID) {
+                    // Check if precomposed playlist exists for this loudness
+                    let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+                    return (precomposedSound, nil)
+                }
+            }
+
+            // Need to select a new random song (but we'll use precomposed playlist)
+            // Avoid immediately repeating the previous precomposed playlist if multiple available
+            var previousPlaylistID: UUID?
+            // Find the previous occurrence's selected playlist
+            let earlierOccurrences = engine.desiredOccurrences(now: Date().addingTimeInterval(-86400 * 7))
+                .filter { $0.alarmID == alarm.id && $0.effectiveDate < occurrence.effectiveDate }
+                .sorted { $0.effectiveDate > $1.effectiveDate }
+            if let prevOccurrence = earlierOccurrences.first,
+               let prevOverride = alarm.overrides[prevOccurrence.occurrenceKey],
+               let prevSoundID = prevOverride.randomSoundID {
+                // The previousSoundID was a playlist ID for precomposed
+                previousPlaylistID = prevSoundID
+            }
+            
+            let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
+            let newOverride = AlarmOccurrenceOverride(
+                offsetMinutes: nil,
+                customDate: nil,
+                isSkipped: false,
+                randomSoundID: playlistID
+            )
+            return (precomposedSound, newOverride)
+        case .precomposedPlaylist:
+            return (alarm.sound, nil)
         }
     }
 }
