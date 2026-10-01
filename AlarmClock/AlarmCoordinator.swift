@@ -110,6 +110,74 @@ final class AlarmCoordinator {
         engine.nextOccurrence(for: alarmID, now: now())
     }
 
+    /// Resolve the display name of the song for the currently/next ringing alarm
+    /// Returns nil if no alarm is due or currently ringing
+    func currentRingSongName() -> String? {
+        let currentDate = now()
+        guard let occurrence = nextOccurrence else { return nil }
+        
+        // Check if this occurrence is currently due (within a reasonable window)
+        // AlarmKit rings at the scheduled time and continues until stopped
+        // We consider it "ringing" if the effective date has passed and it's not skipped
+        guard occurrence.effectiveDate <= currentDate,
+              !occurrence.isAdjusted || occurrence.effectiveDate > occurrence.baseDate else {
+            return nil
+        }
+        
+        guard let alarm = engine.alarm(id: occurrence.alarmID) else { return nil }
+        
+        // Resolve the sound for this specific occurrence using the same logic as scheduling
+        do {
+            let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
+            return displayNameForSound(soundToUse, alarm: alarm)
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Get display name for a sound
+    private func displayNameForSound(_ sound: AlarmSound, alarm: AlarmRecord) -> String {
+        switch sound {
+        case .systemDefault:
+            return "Default Alarm"
+        case .builtIn(let name):
+            return name
+        case .imported(let id):
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                return sound.name
+            }
+            return "Imported Sound"
+        case .random(let playlistID):
+            // For random, we need to check if there's an override with a specific song
+            if let occurrence = nextOccurrence,
+               let override = alarm.overrides[occurrence.occurrenceKey],
+               let selectedSoundID = override.randomSoundID {
+                // The selectedSoundID is actually the playlist ID for precomposed
+                if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == selectedSoundID }),
+                   let firstSoundID = playlist.selectedSoundIDs.first,
+                   let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                    return sound.name
+                }
+            }
+            // Fallback: show playlist name
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }) {
+                return "Random: \(playlist.name)"
+            }
+            return "Random Playlist"
+        case .precomposedPlaylist(let playlistID, _):
+            // For precomposed, get the first selected song from the playlist
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+               let firstSoundID = playlist.selectedSoundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return sound.name
+            }
+            if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }) {
+                return "Precomposed: \(playlist.name)"
+            }
+            return "Precomposed Playlist"
+        }
+    }
+
     private func commit(_ mutation: (inout AlarmEngine) throws -> Void) async {
         guard !isSynchronizing else { return }
         isSynchronizing = true

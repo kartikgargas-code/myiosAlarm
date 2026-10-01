@@ -12,10 +12,29 @@ struct ContentView: View {
     @State private var showingAppearance = false
     @State private var showingNextAlarmControl = false
     @State private var showingHistory = false
+    @State private var currentRingSongName: String? = nil
+    
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
             List {
+                // Show currently ringing song banner if active
+                if let songName = currentRingSongName {
+                    Section {
+                        HStack {
+                            Image(systemName: "speaker.wave.3.fill")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Now Ringing: \(songName)")
+                                .font(.subheadline)
+                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .listRowBackground(ThemeManager.shared.colors.accent.opacity(0.15))
+                    }
+                }
+                
                 if authorizationModel.authorizationDescription != "Authorized" {
                     authorizationSection
                 }
@@ -103,8 +122,34 @@ struct ContentView: View {
                     await coordinator.synchronize()
                 }
             }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                if newPhase == .active {
+                    checkForActiveRing()
+                }
+            }
         }
         .tint(ThemeManager.shared.colors.accent)
+    }
+    
+    /// Check if an alarm is currently ringing and record play history
+    private func checkForActiveRing() {
+        // Get the currently resolved song name for the active ring
+        if let songName = coordinator.currentRingSongName() {
+            currentRingSongName = songName
+            
+            // Record in play history if we have an active occurrence
+            if let occurrence = coordinator.nextOccurrence,
+               occurrence.effectiveDate <= Date(),
+               let alarm = coordinator.alarms.first(where: { $0.id == occurrence.alarmID }) {
+                coordinator.recordPlayHistory(
+                    songName: songName,
+                    alarmID: alarm.id,
+                    alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
+                )
+            }
+        } else {
+            currentRingSongName = nil
+        }
     }
 
     private var authorizationSection: some View {
