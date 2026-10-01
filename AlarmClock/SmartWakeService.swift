@@ -386,13 +386,14 @@ final class SmartWakeService {
             
             // Clean up old armed occurrences (past fire time + tolerance)
             let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
-            armedOccurrences.removeAll { key in
+            let keysToRemove = armedOccurrences.filter { key in
                 // Find the occurrence for this key and check if it's past
                 if let occ = desiredOccurrences.first(where: { $0.occurrenceKey == key }) {
                     return occ.effectiveDate < cleanupThreshold
                 }
                 return true // Remove if not found
             }
+            armedOccurrences.subtract(keysToRemove)
             
         } catch {
             os_log(.error, log: log, "Failed to check upcoming alarms: %{public}s", error.localizedDescription)
@@ -504,7 +505,7 @@ final class SmartWakeService {
 
             // Need to select a new random song (but we'll use precomposed playlist)
             // Avoid immediately repeating the previous precomposed playlist if multiple available
-            var previousPlaylistID: UUID?
+            var _previousPlaylistID: UUID?
             // Find the previous occurrence's selected playlist
             let earlierOccurrences = engine.desiredOccurrences(now: Date().addingTimeInterval(-86400 * 7))
                 .filter { $0.alarmID == alarm.id && $0.effectiveDate < occurrence.effectiveDate }
@@ -513,7 +514,7 @@ final class SmartWakeService {
                let prevOverride = alarm.overrides[prevOccurrence.occurrenceKey],
                let prevSoundID = prevOverride.randomSoundID {
                 // The previousSoundID was a playlist ID for precomposed
-                previousPlaylistID = prevSoundID
+                _previousPlaylistID = prevSoundID
             }
             
             let precomposedSound = AlarmSound.precomposedPlaylist(playlistID, alarm.loudness)
