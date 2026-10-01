@@ -4,8 +4,9 @@ public struct AlarmStoreSnapshot: Codable, Equatable {
     public var alarms: [AlarmRecord]
     public var playlists: [Playlist]
     public var managedSystemAlarmIDs: Set<UUID>
+    public var playHistory: [PlayHistoryEntry]
 
-    public static let empty = AlarmStoreSnapshot(alarms: [], playlists: [], managedSystemAlarmIDs: [])
+    public static let empty = AlarmStoreSnapshot(alarms: [], playlists: [], managedSystemAlarmIDs: [], playHistory: [])
 }
 
 public protocol AlarmPersisting {

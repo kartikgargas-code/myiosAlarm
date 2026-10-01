@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var showingDiagnostics = false
     @State private var showingAppearance = false
     @State private var showingNextAlarmControl = false
+    @State private var showingHistory = false
 
     var body: some View {
         NavigationStack {
@@ -43,6 +44,7 @@ struct ContentView: View {
                 Section {
                     Button("AlarmKit Diagnostics") { showingDiagnostics = true }
                     Button("Appearance") { showingAppearance = true }
+                    Button("Play History") { showingHistory = true }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -92,6 +94,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingAppearance) {
                 AppearanceView()
+            }
+            .sheet(isPresented: $showingHistory) {
+                HistoryView(coordinator: coordinator)
             }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {

@@ -191,6 +191,37 @@ public struct AlarmOccurrence: Codable, Identifiable, Equatable {
     }
 }
 
+/// A record of a song that finished playing during an alarm ring
+public struct PlayHistoryEntry: Codable, Identifiable, Equatable {
+    public let id: UUID
+    public let songName: String
+    public let alarmLabel: String
+    public let alarmID: UUID
+    public let timestamp: Date
+
+    public init(
+        id: UUID = UUID(),
+        songName: String,
+        alarmLabel: String,
+        alarmID: UUID,
+        timestamp: Date = Date()
+    ) {
+        self.id = id
+        self.songName = songName
+        self.alarmLabel = alarmLabel
+        self.alarmID = alarmID
+        self.timestamp = timestamp
+    }
+
+    /// Display name for the alarm (label or "Alarm at HH:MM")
+    public var alarmDisplayName: String {
+        if !alarmLabel.isEmpty {
+            return alarmLabel
+        }
+        return "Alarm"
+    }
+}
+
 public enum StableOccurrenceID {
     public static func make(alarmID: UUID, occurrenceKey: String) -> UUID {
         var bytes = withUnsafeBytes(of: alarmID.uuid) { Array($0) }

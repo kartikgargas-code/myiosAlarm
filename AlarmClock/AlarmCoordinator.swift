@@ -19,6 +19,9 @@ final class AlarmCoordinator {
     // Playlist diagnostics
     var playlistDiagnostics = PlaylistDiagnostics()
 
+    /// Play history - tracks songs that finished playing during alarm rings
+    private(set) var playHistory: [PlayHistoryEntry] = []
+
     /// The computed next alarm snapshot for widgets and Lock Screen controls
     private(set) var nextAlarmSnapshot: NextAlarmSnapshot? = nil
 
@@ -35,6 +38,7 @@ final class AlarmCoordinator {
     private let persistence: any AlarmPersisting
     private let scheduler: any AlarmSystemScheduling
     private let now: () -> Date
+    private let maxHistoryEntries = 200
 
     init(
         persistence: any AlarmPersisting = JSONAlarmPersistence(),
@@ -55,6 +59,10 @@ final class AlarmCoordinator {
         self.now = now
         do {
             engine = AlarmEngine(snapshot: try persistence.load(), calendar: calendar)
+            // Load play history from snapshot
+            if let snapshot = try? persistence.load() {
+                self.playHistory = snapshot.playHistory
+            }
         } catch {
             engine = AlarmEngine(calendar: calendar)
             lastError = "Could not load alarms: \(error.localizedDescription)"
@@ -125,6 +133,8 @@ final class AlarmCoordinator {
                 desired: desired,
                 managedIDs: engine.snapshot.managedSystemAlarmIDs
             )
+            // Include play history in the snapshot
+            candidate.snapshot.playHistory = playHistory
             try persistence.save(candidate.snapshot)
             engine = candidate
             lastError = nil
@@ -552,5 +562,77 @@ final class AlarmCoordinator {
     /// Cancel a pending test alarm
     func cancelTestAlarm(testID: UUID) async {
         try? (scheduler as? AlarmKitSchedulingService)?.manager.cancel(id: testID)
+    }
+
+    /// Record a song that finished playing during an alarm ring
+    /// Call this when a song completes playback (not when skipped/cut off)
+    func recordPlayHistory(songName: String, alarmID: UUID, alarmLabel: String) {
+        let entry = PlayHistoryEntry(
+            songName: songName,
+            alarmLabel: alarmLabel,
+            alarmID: alarmID,
+            timestamp: now()
+        )
+        playHistory.insert(entry, at: 0) // Newest first
+        
+        // Prune to max entries
+        if playHistory.count > maxHistoryEntries {
+            playHistory = Array(playHistory.prefix(maxHistoryEntries))
+        }
+        
+        // Persist immediately
+        Task {
+            await saveHistory()
+        }
+    }
+
+    /// Save play history to persistence
+    private func saveHistory() async {
+        var candidate = engine
+        candidate.snapshot.playHistory = playHistory
+        try? persistence.save(candidate.snapshot)
+    }
+
+    /// Delete a history entry
+    func deleteHistoryEntry(id: UUID) {
+        playHistory.removeAll { $0.id == id }
+        Task {
+            await saveHistory()
+        }
+    }
+
+    /// Play a song by ID (for history playback)
+    func playHistoryEntry(_ entry: PlayHistoryEntry) {
+        // Find the sound in the library
+        let soundName = entry.songName
+        var soundURL: URL?
+        var soundID: String?
+        
+        // Check imported sounds
+        if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == soundName }) {
+            soundURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+            soundID = sound.fileName
+        }
+        
+        // If not found in imported, check built-in sounds
+        if soundURL == nil, let url = SoundPreviewService.bundledSoundURL(for: soundName) {
+            soundURL = url
+            soundID = soundName
+        }
+        
+        // If still not found, try to find by file name (imported sounds use fileName)
+        if soundURL == nil {
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.fileName.hasPrefix(soundName) || $0.name == soundName }) {
+                soundURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                soundID = sound.fileName
+            }
+        }
+        
+        guard let url = soundURL, let id = soundID else {
+            lastError = "Could not find sound file for: \(soundName)"
+            return
+        }
+        
+        SoundPreviewService.shared.play(url: url, id: id)
     }
 }
