@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var currentRingSongName: String? = nil
     
     @Environment(\.scenePhase) private var scenePhase
+    @State private var smartWakeService = SmartWakeService.shared
 
     var body: some View {
         NavigationStack {
@@ -64,6 +65,24 @@ struct ContentView: View {
                     Button("AlarmKit Diagnostics") { showingDiagnostics = true }
                     Button("Appearance") { showingAppearance = true }
                     Button("Play History") { showingHistory = true }
+                }
+
+                Section("Smart Wake") {
+                    Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
+                    if smartWakeService.isSmartWakeEnabled {
+                        Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        if smartWakeService.isRunning {
+                            Label("Active", systemImage: "waveform.badge.checkmark")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Waiting for armed alarm...", systemImage: "clock.badge.questionmark")
+                                .font(.caption)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -125,6 +144,13 @@ struct ContentView: View {
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
                     checkForActiveRing()
+                } else if newPhase == .background {
+                    // Start Smart Wake when app backgrounds if enabled and alarm armed
+                    if smartWakeService.isSmartWakeEnabled {
+                        Task {
+                            await smartWakeService.startIfAlarmArmed(coordinator: coordinator)
+                        }
+                    }
                 }
             }
         }
