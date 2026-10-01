@@ -5,7 +5,7 @@ import WidgetKit
 /// Lightweight alarm service for widget extension App Intents
 /// Does NOT depend on SoundLibrary, AudioProcessingService, or AlarmKit
 /// Only handles persistence, AlarmEngine operations, and widget snapshots
-public struct WidgetAlarmService {
+public struct WidgetAlarmService: LiveActivityAlarmService {
     private let appGroupIdentifier: String
     private let persistence: JSONAlarmPersistence
     private let now: () -> Date
