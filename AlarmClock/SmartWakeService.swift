@@ -386,13 +386,13 @@ final class SmartWakeService {
             
             // Clean up old armed occurrences (past fire time + tolerance)
             let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
-            armedOccurrences.removeAll(where: { key in
+            armedOccurrences.removeAll { key in
                 // Find the occurrence for this key and check if it's past
                 if let occ = desiredOccurrences.first(where: { $0.occurrenceKey == key }) {
                     return occ.effectiveDate < cleanupThreshold
                 }
                 return true // Remove if not found
-            })
+            }
             
         } catch {
             os_log(.error, log: log, "Failed to check upcoming alarms: %{public}s", error.localizedDescription)
@@ -444,12 +444,12 @@ final class SmartWakeService {
                 let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
-                if case .precomposedPlaylist(let playlistID, _) = soundToUse,
-                   case .random(let playlistID) = alarm.sound {
+                if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse,
+                   case .random(_) = alarm.sound {
                     // Both resolve to precomposed playlist - start playlist playback
-                    os_log(.info, log: log, "Starting playlist playback for playlist %{public}s", playlistID.uuidString)
+                    os_log(.info, log: log, "Starting playlist playback for playlist %{public}s", resolvedPlaylistID.uuidString)
                     AlarmPlaybackService.shared.start(
-                        playlistID: playlistID,
+                        playlistID: resolvedPlaylistID,
                         loudness: alarm.loudness,
                         alarm: alarm,
                         occurrence: occurrence
