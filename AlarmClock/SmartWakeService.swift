@@ -8,7 +8,7 @@ import os.log
 /// and can play the real song at alarm time with Now Playing info
 @MainActor
 @Observable
-final class SmartWakeService: NSObject {
+final class SmartWakeService {
     static let shared = SmartWakeService()
 
     private let log = OSLog(subsystem: "com.example.alarmclock", category: "SmartWake")
@@ -17,6 +17,7 @@ final class SmartWakeService: NSObject {
     private var isSessionActive = false
     private var isEnabled = false
     private var silentLoopURL: URL?
+    private let notificationHandler = NotificationHandler()
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -25,10 +26,10 @@ final class SmartWakeService: NSObject {
         isSessionActive && player?.isPlaying == true
     }
 
-    override init() {
-        super.init()
+    init() {
         loadPreference()
         prepareSilentLoop()
+        notificationHandler.owner = self
     }
 
     private func loadPreference() {
@@ -186,72 +187,88 @@ final class SmartWakeService: NSObject {
         os_log(.info, log: log, "Smart Wake stopped")
     }
 
-    /// Handle interruption (phone call, Siri, other app audio)
-    nonisolated @objc private func handleInterruption(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-
-        switch type {
-        case .began:
-            os_log(.info, log: log, "Audio interruption began")
-            // Player is paused automatically by system
-        case .ended:
-            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            os_log(.info, log: log, "Audio interruption ended, shouldResume: %{public}d", options.contains(.shouldResume) ? 1 : 0)
-
-            if options.contains(.shouldResume) {
-                // Resume silent loop
-                Task { @MainActor in
-                    try? AVAudioSession.sharedInstance().setActive(true)
-                    player?.play()
-                }
-            }
-        @unknown default:
-            break
-        }
-    }
-
-    /// Handle route changes (headphones unplugged, etc.)
-    nonisolated @objc private func handleRouteChange(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
-
-        os_log(.info, log: log, "Audio route changed: %{public}d", reason.rawValue)
-
-        if reason == .oldDeviceUnavailable {
-            // Headphones unplugged - pause and let system handle
-            Task { @MainActor in
-                player?.pause()
-            }
-        }
-    }
-
     private func registerForInterruptions() {
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleInterruption(_:)),
+            notificationHandler,
+            selector: #selector(NotificationHandler.handleInterruption(_:)),
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleRouteChange(_:)),
+            notificationHandler,
+            selector: #selector(NotificationHandler.handleRouteChange(_:)),
             name: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance()
         )
     }
 
     private func unregisterForInterruptions() {
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(notificationHandler, name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.removeObserver(notificationHandler, name: AVAudioSession.routeChangeNotification, object: nil)
     }
 
-    deinit {
-        Task { @MainActor in
-            unregisterForInterruptions()
+    fileprivate func handleInterruptionEnded(shouldResume: Bool) {
+        if shouldResume {
+            Task { @MainActor in
+                try? AVAudioSession.sharedInstance().setActive(true)
+                player?.play()
+            }
         }
+    }
+
+    fileprivate func handleRouteChange(oldDeviceUnavailable: Bool) {
+        if oldDeviceUnavailable {
+            player?.pause()
+        }
+    }
+}
+
+/// Separate NSObject subclass to handle @objc notification callbacks without actor isolation issues
+private final class NotificationHandler: NSObject {
+    weak var owner: SmartWakeService?
+
+    @objc func handleInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            owner?.logInterruptionBegan()
+        case .ended:
+            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            owner?.logInterruptionEnded(options: options)
+            if options.contains(.shouldResume) {
+                owner?.handleInterruptionEnded(shouldResume: true)
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    @objc func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        owner?.logRouteChange(reason: reason)
+        if reason == .oldDeviceUnavailable {
+            owner?.handleRouteChange(oldDeviceUnavailable: true)
+        }
+    }
+}
+
+extension SmartWakeService {
+    func logInterruptionBegan() {
+        os_log(.info, log: log, "Audio interruption began")
+    }
+
+    func logInterruptionEnded(options: AVAudioSession.InterruptionOptions) {
+        os_log(.info, log: log, "Audio interruption ended, shouldResume: %{public}d", options.contains(.shouldResume) ? 1 : 0)
+    }
+
+    func logRouteChange(reason: AVAudioSession.RouteChangeReason) {
+        os_log(.info, log: log, "Audio route changed: %{public}d", reason.rawValue)
     }
 }
