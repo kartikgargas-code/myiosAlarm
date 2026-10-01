@@ -43,6 +43,7 @@ targets:
       - path: AlarmClock/NextAlarmLiveActivityView.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
       - path: AlarmClock/SharedAlarmService.swift
+      - path: AlarmClock/SmartWakeService.swift
     info:
       path: AlarmClock/Info.plist
       properties:
