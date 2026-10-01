@@ -1,8 +1,14 @@
 ﻿import SwiftUI
 import AppIntents
+import AlarmClockShared
 
 @main
 struct AlarmClockApp: App {
+    init() {
+        // Register the Live Activity alarm service for the main app
+        LiveActivityAlarmServiceProvider.shared = SharedAlarmService()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()

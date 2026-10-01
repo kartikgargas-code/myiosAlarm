@@ -5,11 +5,23 @@ import ActivityKit
 import AlarmClockShared
 import os.log
 
+/// Register the Live Activity alarm service for the widget extension
+struct WidgetAlarmServiceRegistrar {
+    static func register() {
+        LiveActivityAlarmServiceProvider.shared = WidgetAlarmService()
+    }
+}
+
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
 /// WidgetBundle inside the widget extension.
 @main
 struct AlarmClockWidgetBundle: WidgetBundle {
+    init() {
+        // Register the Live Activity alarm service for the widget extension
+        WidgetAlarmServiceRegistrar.register()
+    }
+    
     var body: some Widget {
         NextAlarmWidget()
         NextAlarmControl()
