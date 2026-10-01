@@ -7,6 +7,7 @@ import os.log
 
 /// Register the Live Activity alarm service for the widget extension
 struct WidgetAlarmServiceRegistrar {
+    @MainActor
     static func register() {
         LiveActivityAlarmServiceProvider.shared = WidgetAlarmService()
     }
@@ -19,7 +20,9 @@ struct WidgetAlarmServiceRegistrar {
 struct AlarmClockWidgetBundle: WidgetBundle {
     init() {
         // Register the Live Activity alarm service for the widget extension
-        WidgetAlarmServiceRegistrar.register()
+        Task { @MainActor in
+            WidgetAlarmServiceRegistrar.register()
+        }
     }
     
     var body: some Widget {

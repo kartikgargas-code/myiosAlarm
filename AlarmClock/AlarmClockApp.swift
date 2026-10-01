@@ -6,7 +6,9 @@ import AlarmClockShared
 struct AlarmClockApp: App {
     init() {
         // Register the Live Activity alarm service for the main app
-        LiveActivityAlarmServiceProvider.shared = SharedAlarmService()
+        Task { @MainActor in
+            LiveActivityAlarmServiceProvider.shared = SharedAlarmService()
+        }
     }
     
     var body: some Scene {
