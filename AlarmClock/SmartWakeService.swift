@@ -17,6 +17,7 @@ final class SmartWakeService {
     private var isSessionActive = false
     private var isEnabled = false
     private var silentLoopURL: URL?
+    private weak var coordinator: AlarmCoordinator?
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -41,7 +42,7 @@ final class SmartWakeService {
             isEnabled = newValue
             UserDefaults.standard.set(newValue, forKey: enabledKey)
             if newValue {
-                Task { await startIfAlarmArmed() }
+                Task { await startIfAlarmArmedInternal() }
             } else {
                 stop()
             }
@@ -111,8 +112,16 @@ final class SmartWakeService {
 
     /// Start the background audio session if an alarm is armed for the near future
     func startIfAlarmArmed(coordinator: AlarmCoordinator) async {
-        guard isEnabled else { return }
-        guard !isRunning else { return }
+        self.coordinator = coordinator
+        await startIfAlarmArmedInternal()
+    }
+
+    /// Internal version that uses the stored coordinator reference
+    private func startIfAlarmArmedInternal() async {
+        guard let coordinator = self.coordinator else {
+            os_log(.error, log: log, "No coordinator available for Smart Wake")
+            return
+        }
 
         let now = Date()
         let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
