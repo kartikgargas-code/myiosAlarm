@@ -41,6 +41,8 @@ targets:
       - path: AlarmClock/NextOccurrenceControlsView.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
       - path: AlarmClock/NextAlarmLiveActivityView.swift
+      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
+      - path: AlarmClock/SharedAlarmService.swift
     info:
       path: AlarmClock/Info.plist
       properties:
@@ -109,8 +111,6 @@ targets:
       - path: AlarmClock/AlarmEngine.swift
       - path: AlarmClock/AlarmScheduleCalculator.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
-      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
-      - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/LiveActivityIntentProtocol.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist

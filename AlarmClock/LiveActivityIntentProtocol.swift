@@ -2,10 +2,8 @@ import AppIntents
 import AlarmClockShared
 import os.log
 
-private let liveActivityLog = OSLog(subsystem: "com.example.alarmclock", category: "LiveActivityIntent")
-
 /// Protocol for Live Activity alarm operations - implemented by each target
-public protocol LiveActivityAlarmService: Sendable {
+public protocol LiveActivityAlarmService {
     func adjustNextAlarm(alarmID: UUID, minutes: Int) async throws -> Bool
     func resetNextAlarm(alarmID: UUID) async throws -> Bool
     func skipNextAlarm(alarmID: UUID) async throws -> Bool
@@ -14,8 +12,11 @@ public protocol LiveActivityAlarmService: Sendable {
 
 /// Global service provider - each target sets its implementation
 public struct LiveActivityAlarmServiceProvider {
-    public static var shared: LiveActivityAlarmService?
+    public static var shared: (any LiveActivityAlarmService)?
 }
+
+/// Private logger for Live Activity intents
+private let liveActivityLog = OSLog(subsystem: "com.example.alarmclock", category: "LiveActivityIntent")
 
 /// Live Activity Intent to adjust the next alarm by minutes
 public struct AdjustNextAlarmLiveIntent: LiveActivityIntent {
@@ -39,27 +40,27 @@ public struct AdjustNextAlarmLiveIntent: LiveActivityIntent {
     }
     
     public func perform() async throws -> some IntentResult {
-        os_log(.info, liveActivityLog, "AdjustNextAlarmLiveIntent.perform() started - alarmID: %{public}s, minutes: %{public}d", alarmID, minutes)
+        os_log(.info, log: liveActivityLog, "AdjustNextAlarmLiveIntent.perform() started - alarmID: %{public}s, minutes: %{public}d", alarmID, minutes)
         guard let uuid = UUID(uuidString: alarmID) else {
-            os_log(.error, liveActivityLog, "AdjustNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
+            os_log(.error, log: liveActivityLog, "AdjustNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
             return .result(dialog: "Invalid alarm ID")
         }
         
         guard let service = LiveActivityAlarmServiceProvider.shared else {
-            os_log(.error, liveActivityLog, "AdjustNextAlarmLiveIntent.perform() - no service provider registered")
+            os_log(.error, log: liveActivityLog, "AdjustNextAlarmLiveIntent.perform() - no service provider registered")
             return .result(dialog: "Service not available")
         }
         
         do {
             let success = try await service.adjustNextAlarm(alarmID: uuid, minutes: minutes)
-            os_log(.info, liveActivityLog, "AdjustNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
+            os_log(.info, log: liveActivityLog, "AdjustNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
             if success {
                 return .result(dialog: "Adjusted alarm by \(minutes >= 0 ? "+" : "")\(minutes) minutes")
             } else {
                 return .result(dialog: "Could not adjust alarm - alarm may have changed")
             }
         } catch {
-            os_log(.error, liveActivityLog, "AdjustNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
+            os_log(.error, log: liveActivityLog, "AdjustNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
             return .result(dialog: "Failed to adjust alarm: \(error.localizedDescription)")
         }
     }
@@ -82,27 +83,27 @@ public struct ResetNextAlarmLiveIntent: LiveActivityIntent {
     }
     
     public func perform() async throws -> some IntentResult {
-        os_log(.info, liveActivityLog, "ResetNextAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
+        os_log(.info, log: liveActivityLog, "ResetNextAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
         guard let uuid = UUID(uuidString: alarmID) else {
-            os_log(.error, liveActivityLog, "ResetNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
+            os_log(.error, log: liveActivityLog, "ResetNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
             return .result(dialog: "Invalid alarm ID")
         }
         
         guard let service = LiveActivityAlarmServiceProvider.shared else {
-            os_log(.error, liveActivityLog, "ResetNextAlarmLiveIntent.perform() - no service provider registered")
+            os_log(.error, log: liveActivityLog, "ResetNextAlarmLiveIntent.perform() - no service provider registered")
             return .result(dialog: "Service not available")
         }
         
         do {
             let success = try await service.resetNextAlarm(alarmID: uuid)
-            os_log(.info, liveActivityLog, "ResetNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
+            os_log(.info, log: liveActivityLog, "ResetNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
             if success {
                 return .result(dialog: "Reset alarm to base schedule")
             } else {
                 return .result(dialog: "Could not reset alarm - alarm may have changed")
             }
         } catch {
-            os_log(.error, liveActivityLog, "ResetNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
+            os_log(.error, log: liveActivityLog, "ResetNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
             return .result(dialog: "Failed to reset alarm: \(error.localizedDescription)")
         }
     }
@@ -125,27 +126,27 @@ public struct SkipNextAlarmLiveIntent: LiveActivityIntent {
     }
     
     public func perform() async throws -> some IntentResult {
-        os_log(.info, liveActivityLog, "SkipNextAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
+        os_log(.info, log: liveActivityLog, "SkipNextAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
         guard let uuid = UUID(uuidString: alarmID) else {
-            os_log(.error, liveActivityLog, "SkipNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
+            os_log(.error, log: liveActivityLog, "SkipNextAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
             return .result(dialog: "Invalid alarm ID")
         }
         
         guard let service = LiveActivityAlarmServiceProvider.shared else {
-            os_log(.error, liveActivityLog, "SkipNextAlarmLiveIntent.perform() - no service provider registered")
+            os_log(.error, log: liveActivityLog, "SkipNextAlarmLiveIntent.perform() - no service provider registered")
             return .result(dialog: "Service not available")
         }
         
         do {
             let success = try await service.skipNextAlarm(alarmID: uuid)
-            os_log(.info, liveActivityLog, "SkipNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
+            os_log(.info, log: liveActivityLog, "SkipNextAlarmLiveIntent.perform() completed - success: %{public}d", success)
             if success {
                 return .result(dialog: "Skipped next alarm")
             } else {
                 return .result(dialog: "Could not skip alarm - alarm may have changed")
             }
         } catch {
-            os_log(.error, liveActivityLog, "SkipNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
+            os_log(.error, log: liveActivityLog, "SkipNextAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
             return .result(dialog: "Failed to skip alarm: \(error.localizedDescription)")
         }
     }
@@ -168,27 +169,27 @@ public struct UndoSkipAlarmLiveIntent: LiveActivityIntent {
     }
     
     public func perform() async throws -> some IntentResult {
-        os_log(.info, liveActivityLog, "UndoSkipAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
+        os_log(.info, log: liveActivityLog, "UndoSkipAlarmLiveIntent.perform() started - alarmID: %{public}s", alarmID)
         guard let uuid = UUID(uuidString: alarmID) else {
-            os_log(.error, liveActivityLog, "UndoSkipAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
+            os_log(.error, log: liveActivityLog, "UndoSkipAlarmLiveIntent.perform() - invalid alarm ID: %{public}s", alarmID)
             return .result(dialog: "Invalid alarm ID")
         }
         
         guard let service = LiveActivityAlarmServiceProvider.shared else {
-            os_log(.error, liveActivityLog, "UndoSkipAlarmLiveIntent.perform() - no service provider registered")
+            os_log(.error, log: liveActivityLog, "UndoSkipAlarmLiveIntent.perform() - no service provider registered")
             return .result(dialog: "Service not available")
         }
         
         do {
             let success = try await service.undoSkipAlarm(alarmID: uuid)
-            os_log(.info, liveActivityLog, "UndoSkipAlarmLiveIntent.perform() completed - success: %{public}d", success)
+            os_log(.info, log: liveActivityLog, "UndoSkipAlarmLiveIntent.perform() completed - success: %{public}d", success)
             if success {
                 return .result(dialog: "Restored skipped alarm")
             } else {
                 return .result(dialog: "Could not restore alarm - alarm may have changed")
             }
         } catch {
-            os_log(.error, liveActivityLog, "UndoSkipAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
+            os_log(.error, log: liveActivityLog, "UndoSkipAlarmLiveIntent.perform() error: %{public}s", error.localizedDescription)
             return .result(dialog: "Failed to restore alarm: \(error.localizedDescription)")
         }
     }
