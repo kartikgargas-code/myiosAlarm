@@ -386,13 +386,13 @@ final class SmartWakeService {
             
             // Clean up old armed occurrences (past fire time + tolerance)
             let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
-            armedOccurrences.removeAll { key in
+            armedOccurrences.removeAll(where: { key in
                 // Find the occurrence for this key and check if it's past
                 if let occ = desiredOccurrences.first(where: { $0.occurrenceKey == key }) {
                     return occ.effectiveDate < cleanupThreshold
                 }
                 return true // Remove if not found
-            }
+            })
             
         } catch {
             os_log(.error, log: log, "Failed to check upcoming alarms: %{public}s", error.localizedDescription)
