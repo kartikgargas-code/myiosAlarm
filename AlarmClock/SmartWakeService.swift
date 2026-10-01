@@ -8,7 +8,7 @@ import os.log
 /// and can play the real song at alarm time with Now Playing info
 @MainActor
 @Observable
-final class SmartWakeService {
+final class SmartWakeService: NSObject {
     static let shared = SmartWakeService()
 
     private let log = OSLog(subsystem: "com.example.alarmclock", category: "SmartWake")
@@ -25,7 +25,8 @@ final class SmartWakeService {
         isSessionActive && player?.isPlaying == true
     }
 
-    private init() {
+    override init() {
+        super.init()
         loadPreference()
         prepareSilentLoop()
     }
@@ -186,7 +187,7 @@ final class SmartWakeService {
     }
 
     /// Handle interruption (phone call, Siri, other app audio)
-    @objc private func handleInterruption(_ notification: Notification) {
+    nonisolated @objc private func handleInterruption(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
               let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
@@ -213,7 +214,7 @@ final class SmartWakeService {
     }
 
     /// Handle route changes (headphones unplugged, etc.)
-    @objc private func handleRouteChange(_ notification: Notification) {
+    nonisolated @objc private func handleRouteChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
               let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
@@ -222,7 +223,9 @@ final class SmartWakeService {
 
         if reason == .oldDeviceUnavailable {
             // Headphones unplugged - pause and let system handle
-            player?.pause()
+            Task { @MainActor in
+                player?.pause()
+            }
         }
     }
 
@@ -247,6 +250,8 @@ final class SmartWakeService {
     }
 
     deinit {
-        unregisterForInterruptions()
+        Task { @MainActor in
+            unregisterForInterruptions()
+        }
     }
 }
