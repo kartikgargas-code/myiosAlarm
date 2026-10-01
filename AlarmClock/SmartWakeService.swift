@@ -187,26 +187,6 @@ final class SmartWakeService {
         os_log(.info, log: log, "Smart Wake stopped")
     }
 
-    private func registerForInterruptions() {
-        NotificationCenter.default.addObserver(
-            notificationHandler,
-            selector: #selector(NotificationHandler.handleInterruption(_:)),
-            name: AVAudioSession.interruptionNotification,
-            object: AVAudioSession.sharedInstance()
-        )
-        NotificationCenter.default.addObserver(
-            notificationHandler,
-            selector: #selector(NotificationHandler.handleRouteChange(_:)),
-            name: AVAudioSession.routeChangeNotification,
-            object: AVAudioSession.sharedInstance()
-        )
-    }
-
-    private func unregisterForInterruptions() {
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
-    }
-
     @MainActor private func logInterruptionBegan() {
         os_log(.info, log: log, "Audio interruption began")
     }
