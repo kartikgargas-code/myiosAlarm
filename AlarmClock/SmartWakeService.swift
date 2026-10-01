@@ -234,13 +234,17 @@ private final class NotificationHandler: NSObject {
 
         switch type {
         case .began:
-            owner?.logInterruptionBegan()
+            Task { @MainActor in
+                owner?.logInterruptionBegan()
+            }
         case .ended:
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            owner?.logInterruptionEnded(options: options)
-            if options.contains(.shouldResume) {
-                owner?.handleInterruptionEnded(shouldResume: true)
+            Task { @MainActor in
+                owner?.logInterruptionEnded(options: options)
+                if options.contains(.shouldResume) {
+                    owner?.handleInterruptionEnded(shouldResume: true)
+                }
             }
         @unknown default:
             break
@@ -252,23 +256,40 @@ private final class NotificationHandler: NSObject {
               let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
-        owner?.logRouteChange(reason: reason)
-        if reason == .oldDeviceUnavailable {
-            owner?.handleRouteChange(oldDeviceUnavailable: true)
+        Task { @MainActor in
+            owner?.logRouteChange(reason: reason)
+            if reason == .oldDeviceUnavailable {
+                owner?.handleRouteChange(oldDeviceUnavailable: true)
+            }
         }
     }
 }
 
 extension SmartWakeService {
-    func logInterruptionBegan() {
+    @MainActor func logInterruptionBegan() {
         os_log(.info, log: log, "Audio interruption began")
     }
 
-    func logInterruptionEnded(options: AVAudioSession.InterruptionOptions) {
+    @MainActor func logInterruptionEnded(options: AVAudioSession.InterruptionOptions) {
         os_log(.info, log: log, "Audio interruption ended, shouldResume: %{public}d", options.contains(.shouldResume) ? 1 : 0)
     }
 
-    func logRouteChange(reason: AVAudioSession.RouteChangeReason) {
+    @MainActor func logRouteChange(reason: AVAudioSession.RouteChangeReason) {
         os_log(.info, log: log, "Audio route changed: %{public}d", reason.rawValue)
+    }
+
+    @MainActor func handleInterruptionEnded(shouldResume: Bool) {
+        if shouldResume {
+            Task { @MainActor in
+                try? AVAudioSession.sharedInstance().setActive(true)
+                player?.play()
+            }
+        }
+    }
+
+    @MainActor func handleRouteChange(oldDeviceUnavailable: Bool) {
+        if oldDeviceUnavailable {
+            player?.pause()
+        }
     }
 }
