@@ -10,7 +10,7 @@ import UIKit
 /// Integrates with system Now Playing and remote command center for lock screen control.
 @MainActor
 @Observable
-final class AlarmPlaybackService {
+final class AlarmPlaybackService: NSObject {
     static let shared = AlarmPlaybackService()
 
     private let log = OSLog(subsystem: "com.example.alarmclock", category: "AlarmPlayback")
@@ -32,7 +32,8 @@ final class AlarmPlaybackService {
     private(set) var currentTrackName: String?
     private(set) var lastError: String?
 
-    private init() {
+    private override init() {
+        super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
     }
 
