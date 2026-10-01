@@ -340,7 +340,8 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Copy All Diagnostics") { 
-                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText
+                        let widgetDiagnosticsText = generateWidgetDiagnosticsText()
+                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText + "\n\n" + widgetDiagnosticsText + "\n\n" + readLiveActivityDebugLog()
                         UIPasteboard.general.string = combined
                     }
                 }
@@ -439,15 +440,13 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .font(.caption)
                 
-                ScrollView {
-                    Text(readLiveActivityDebugLog())
-                        .font(.system(.caption2, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                .frame(maxHeight: 200)
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
+                Text(readLiveActivityDebugLog())
+                    .font(.system(.caption2, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .frame(maxHeight: 200, alignment: .top)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
             }
             .font(.caption.monospaced())
             
@@ -493,6 +492,60 @@ struct ContentView: View {
             return "Error reading log: \(error.localizedDescription)"
         }
     }
-
-}
+    
+    private func generateWidgetDiagnosticsText() -> String {
+        var text = "=== WIDGET PIPELINE DIAGNOSTICS ===\n\n"
+        
+        // Current snapshot in memory
+        if let snapshot = coordinator.nextAlarmSnapshot {
+            text += "Current In-Memory Snapshot:\n"
+            text += "Alarm ID: \(snapshot.alarmID.uuidString)\n"
+            text += "Label: \(snapshot.label)\n"
+            text += "Next Occurrence: \(snapshot.nextOccurrenceDate.formatted(date: .complete, time: .standard))\n"
+            text += "Enabled: \(snapshot.isEnabled ? "Yes" : "No")\n"
+            text += "Adjusted: \(snapshot.isAdjusted ? "Yes" : "No")\n"
+            if let adj = snapshot.adjustmentDescription {
+                text += "Adjustment: \(adj)\n"
+            }
+            text += "Sound: \(snapshot.sound.displayName)\n"
+            text += "Loudness: \(snapshot.loudness.percentage)%\n\n"
+        } else {
+            text += "Current In-Memory Snapshot: NONE (no upcoming alarm)\n\n"
+        }
+        
+        // Last write result
+        let result = coordinator.lastSnapshotWriteResult
+        text += "Last Snapshot Write:\n"
+        text += "Success: \(result.success ? "YES" : "NO")\n"
+        if let error = result.error {
+            text += "Error: \(error)\n"
+        }
+        if let timestamp = result.timestamp {
+            text += "Timestamp: \(timestamp.formatted(date: .complete, time: .standard))\n"
+        }
+        text += "\n"
+        
+        // Last widget reload request
+        text += "Last WidgetCenter Reload Request:\n"
+        if let timestamp = coordinator.lastWidgetReloadRequest {
+            text += "Timestamp: \(timestamp.formatted(date: .complete, time: .standard))\n"
+            text += "Age: \(Int(Date().timeIntervalSince(timestamp))) seconds ago\n\n"
+        } else {
+            text += "Never requested\n\n"
+        }
+        
+        // App Group configuration
+        text += "App Group Configuration:\n"
+        if let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String {
+            text += "Configured: \(configured)\n"
+        }
+        if let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String], !resigned.isEmpty {
+            text += "ALTAppGroups: \(resigned.joined(separator: ", "))\n"
+        } else {
+            text += "ALTAppGroups: (none)\n"
+        }
+        text += "\n"
+        
+        return text
+    }
 }
