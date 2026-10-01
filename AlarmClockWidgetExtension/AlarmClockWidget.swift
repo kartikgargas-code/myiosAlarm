@@ -20,7 +20,8 @@ struct WidgetAlarmServiceRegistrar {
 struct AlarmClockWidgetBundle: WidgetBundle {
     init() {
         // Register the Live Activity alarm service for the widget extension
-        Task { @MainActor in
+        // WidgetKit extension @main entry points already run on the main thread
+        MainActor.assumeIsolated {
             WidgetAlarmServiceRegistrar.register()
         }
     }
