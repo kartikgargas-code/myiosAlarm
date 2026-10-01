@@ -4,6 +4,7 @@ import Foundation
 import AlarmClockShared
 
 /// Service for scheduling AlarmKit alarms from a Live Activity intent.
+@MainActor
 public struct ExtensionAlarmSchedulingService {
     var manager: AlarmManager { AlarmManager.shared }
     

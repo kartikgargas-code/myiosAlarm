@@ -3,6 +3,7 @@ import AlarmClockShared
 import os.log
 
 /// Protocol for Live Activity alarm operations - implemented by each target
+@MainActor
 public protocol LiveActivityAlarmService {
     func adjustNextAlarm(alarmID: UUID, minutes: Int) async throws -> Bool
     func resetNextAlarm(alarmID: UUID) async throws -> Bool
