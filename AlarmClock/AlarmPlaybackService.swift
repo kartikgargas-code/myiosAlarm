@@ -93,7 +93,7 @@ final class AlarmPlaybackService: NSObject {
     private func ensureAudioSessionActive() throws {
         let session = AVAudioSession.sharedInstance()
         // Only activate if not already active - never deactivate
-        if session.otherAudioPlaying {
+        if session.isOtherAudioPlaying {
             // Session is already active from SmartWake, just ensure category
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         } else {
@@ -138,7 +138,7 @@ final class AlarmPlaybackService: NSObject {
         do {
             let newPlayer = try AVAudioPlayer(contentsOf: localURL)
             newPlayer.numberOfLoops = 0 // Play once, we handle sequencing
-            newPlayer.volume = loudness?.gainFactor ?? 1.0
+            newPlayer.volume = currentLoudness?.gainFactor ?? 1.0
             newPlayer.delegate = self
             newPlayer.prepareToPlay()
             
@@ -180,7 +180,7 @@ final class AlarmPlaybackService: NSObject {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
         
         // Best-effort metadata from AVAsset
-        let asset = AVAsset(url: player.url!)
+        let asset = AVURLAsset(url: player.url!)
         let metadata = asset.commonMetadata
         
         // Artist
