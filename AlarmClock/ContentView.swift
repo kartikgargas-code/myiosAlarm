@@ -427,6 +427,31 @@ struct ContentView: View {
             .font(.caption.monospaced())
             
             Divider()
+
+            // Live Activity Debug Log
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Live Activity Debug Log")
+                    .font(.headline)
+                
+                Button("Refresh Log") {
+                    // Force view to refresh by toggling state
+                }
+                .buttonStyle(.bordered)
+                .font(.caption)
+                
+                ScrollView {
+                    Text(readLiveActivityDebugLog())
+                        .font(.system(.caption2, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 200)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            }
+            .font(.caption.monospaced())
+            
+            Divider()
             
             // Instructions for device log access
             VStack(alignment: .leading, spacing: 4) {
@@ -443,16 +468,31 @@ struct ContentView: View {
             }
             .font(.caption.monospaced())
         }
+    
+
+
+
+    private func readLiveActivityDebugLog() -> String {
+        let fileManager = FileManager.default
+        guard let appGroupURL = fileManager.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.example.alarmclock"
+        ) else { return "App Group not available" }
+        
+        let logURL = appGroupURL.appendingPathComponent("live_activity_debug.log")
+        
+        guard fileManager.fileExists(atPath: logURL.path) else {
+            return "No debug log file found yet.\nTap a Dynamic Island button to generate log entries."
+        }
+        
+        do {
+            let content = try String(contentsOf: logURL, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            let last50 = lines.suffix(50)
+            return last50.joined(separator: "\n")
+        } catch {
+            return "Error reading log: \(error.localizedDescription)"
+        }
     }
 
-    private func timeText(_ time: AlarmTime) -> String {
-        let date = Calendar.current.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
-        return date.formatted(date: .omitted, time: .shortened)
-    }
-
-    private func adjustmentDescription(_ occurrence: AlarmOccurrence) -> String {
-        let minutes = Int(occurrence.effectiveDate.timeIntervalSince(occurrence.baseDate) / 60)
-        if minutes == 0 { return "No adjustment" }
-        return minutes > 0 ? "Adjusted +\(minutes) min" : "Adjusted \(minutes) min"
-    }
+}
 }
