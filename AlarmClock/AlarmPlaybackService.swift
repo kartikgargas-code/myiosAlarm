@@ -84,7 +84,7 @@ final class AlarmPlaybackService: NSObject {
             // Ensure audio session is active (don't deactivate, only activate if needed)
             try ensureAudioSessionActive()
             
-            SmartWakeDebugLog.log("PLAYBACK started track 1: \(selectedSoundIDs.first.map { SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name ?? "unknown" } ?? "unknown")")
+            SmartWakeDebugLog.log("PLAYBACK started track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
             
             // Start playing the first track
             playTrack(at: 0)
@@ -178,10 +178,10 @@ final class AlarmPlaybackService: NSObject {
             SmartWakeDebugLog.log("PLAYBACK: track \(index) failed to start: \(error.localizedDescription), skipping")
             // Skip failed track, advance to next
             consecutiveFailures += 1
-            if consecutiveFailures >= selectedSoundIDs.count {
+            if consecutiveFailures >= self.selectedSoundIDs.count {
                 // All tracks failed - abort playback
-                os_log(.error, log: log, "PLAYBACK ABORT: all \(selectedSoundIDs.count) tracks failed to start")
-                SmartWakeDebugLog.log("PLAYBACK ABORT: all \(selectedSoundIDs.count) tracks failed to start")
+                os_log(.error, log: log, "PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start")
+                SmartWakeDebugLog.log("PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start")
                 isPlaying = false
                 stop()
                 return
