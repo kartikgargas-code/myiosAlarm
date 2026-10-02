@@ -41,6 +41,7 @@ final class AlarmCoordinator {
     private let scheduler: any AlarmSystemScheduling
     private let now: () -> Date
     private let maxHistoryEntries = 200
+    private let ringDetectionOSLog = OSLog(subsystem: "com.example.alarmclock", category: "RingDetection")
 
     init(
         persistence: any AlarmPersisting = JSONAlarmPersistence(),
@@ -124,28 +125,36 @@ final class AlarmCoordinator {
     func currentlyRingingAlarm() -> (songName: String, alarm: AlarmRecord)? {
         let kitManager = AlarmManager.shared
         let currentDate = now()
-        
+
         // Find the alarm that's currently in .alerting state
         // Note: AlarmKit's alarms collection access may throw
         let alertingAlarms: [Alarm]
         do {
             alertingAlarms = try kitManager.alarms.filter { $0.state == .alerting }
         } catch {
+            ringDetectionLog("alarms access threw: \(error.localizedDescription)")
             return nil
         }
-        
+
         for kitAlarm in alertingAlarms {
-            // Use the AlarmKit alarm's ID to match with our scheduled alarms
             let alarmKitID = kitAlarm.id
-            
-            // Check if this matches one of our scheduled alarms
-            guard let alarm = engine.alarm(id: alarmKitID) else { continue }
-            
+
+            // Match the AlarmKit alarm to our record. Managed alarms are scheduled
+            // under SystemScheduleID UUIDs (not alarmRecord.id), so primary matching
+            // goes through the schedule metadata we attached at schedule time.
+            let matchedAlarm = matchAppAlarm(forKitAlarmID: alarmKitID)
+
+            #if DEBUG
+            ringDetectionLog("kitAlarm \(alarmKitID.uuidString.prefix(8)) state=\(kitAlarm.state) matched=\(matchedAlarm?.id.uuidString.prefix(8) ?? "nil")")
+            #endif
+
+            guard let alarm = matchedAlarm else { continue }
+
             // Check if the occurrence is due (within reasonable window)
-            guard let occurrence = engine.nextOccurrence(for: alarmKitID, now: currentDate) else { continue }
+            guard let occurrence = engine.nextOccurrence(for: alarm.id, now: currentDate) else { continue }
             guard occurrence.effectiveDate <= currentDate,
                   !occurrence.isAdjusted || occurrence.effectiveDate > occurrence.baseDate else { continue }
-            
+
             // Resolve the sound for this occurrence
             do {
                 let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
@@ -155,9 +164,54 @@ final class AlarmCoordinator {
                 continue // Try next alerting alarm if any
             }
         }
-        
+
         return nil
     }
+
+    /// Resolve an AlarmKit alarm ID to the app's AlarmRecord.
+    /// AlarmKit echoes the UUID passed to schedule(id:configuration:) — for managed
+    /// alarms that is SystemScheduleID, for test alarms the caller-provided UUID.
+    private func matchAppAlarm(forKitAlarmID kitID: UUID) -> AlarmRecord? {
+        // Direct record id (test alarms).
+        if let direct = engine.alarm(id: kitID) {
+            return direct
+        }
+        // Managed scheduled alarms: recompute the schedule UUID candidates for
+        // each alarm's next occurrence and compare against the kit ID.
+        for alarm in engine.alarms {
+            guard alarm.isEnabled else { continue }
+            guard let occurrence = engine.nextOccurrence(for: alarm.id, now: now()) else { continue }
+            let label = alarm.label.isEmpty ? "Alarm" : alarm.label
+            let candidateIDs = candidateScheduleIDs(for: alarm, occurrence: occurrence, label: label)
+            if candidateIDs.contains(kitID) {
+                return alarm
+            }
+        }
+        return nil
+    }
+
+    /// Recompute the possible schedule UUIDs for an occurrence (sound variants).
+    private func candidateScheduleIDs(for alarm: AlarmRecord, occurrence: AlarmOccurrence, label: String) -> Set<UUID> {
+        var ids: Set<UUID> = []
+        if let (soundToUse, _) = try? resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine) {
+            ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: soundToUse, loudness: alarm.loudness))
+            if let hash = desiredSelectionHash(for: soundToUse) {
+                ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: soundToUse, loudness: alarm.loudness, selectionHash: hash))
+            }
+        }
+        ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: alarm.sound, loudness: alarm.loudness))
+        return ids
+    }
+
+    #if DEBUG
+    @MainActor
+    private func ringDetectionLog(_ message: String) {
+        os_log(.debug, log: ringDetectionOSLog, "%{public}s", message)
+    }
+    #else
+    @MainActor
+    private func ringDetectionLog(_ message: String) {}
+    #endif
     
     /// Deprecated: Use currentlyRingingAlarm() instead
     @available(*, deprecated, message: "Use currentlyRingingAlarm() instead - single source of truth")
@@ -266,7 +320,8 @@ final class AlarmCoordinator {
                         for: occurrence,
                         label: label,
                         sound: soundToUse,
-                        loudness: alarm.loudness
+                        loudness: alarm.loudness,
+                        selectionHash: desiredSelectionHash(for: soundToUse)
                     ),
                     occurrence: occurrence,
                     label: label,
@@ -281,6 +336,17 @@ final class AlarmCoordinator {
         // Store the modified engine for persistence
         desiredSystemAlarmsEngine = mutableEngine
         return results
+    }
+
+    /// Stable per-selection hash so schedule identity changes when the chosen
+    /// song set changes — reconcile then reschedules with the fresh precomposed file.
+    private func desiredSelectionHash(for sound: AlarmSound) -> String? {
+        if case .precomposedPlaylist(let playlistID, _) = sound,
+           let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
+            let key = playlist.selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
+            return SoundSelectionHash.make(from: key)
+        }
+        return nil
     }
 
     /// Resolve the sound for a specific occurrence, handling random mode
@@ -631,7 +697,7 @@ final class AlarmCoordinator {
             let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
 
             // Create the test alarm configuration
-            let snoozeDuration = alarm.snoozeDurationMinutes ?? 10
+            let snoozeInterval = TimeInterval((alarm.snoozeDurationMinutes ?? 10) * 60)
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
                 stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
@@ -639,7 +705,11 @@ final class AlarmCoordinator {
                 secondaryButtonBehavior: .countdown
             )
             let attributes = AlarmAttributes(
-                presentation: AlarmPresentation(alert: alert),
+                presentation: AlarmPresentation(
+                    alert: alert,
+                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)")),
+                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"))
+                ),
                 metadata: ScheduledOccurrenceMetadata(
                     alarmID: alarm.id,
                     occurrenceKey: "TEST-\(Int64(testDate.timeIntervalSince1970))",
@@ -648,9 +718,12 @@ final class AlarmCoordinator {
                 tintColor: .orange
             )
 
-            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
+            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
+                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeInterval),
                 schedule: .fixed(testDate),
                 attributes: attributes,
+                stopIntent: nil,
+                secondaryIntent: nil,
                 sound: alarmKitSound
             )
 

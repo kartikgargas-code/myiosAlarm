@@ -72,15 +72,21 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     }
 
     private func schedule(_ item: DesiredSystemAlarm) async throws {
-        let snoozeDuration = item.snoozeDurationMinutes ?? 10
+        let snoozeInterval = TimeInterval((item.snoozeDurationMinutes ?? 10) * 60)
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
             stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
             secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
             secondaryButtonBehavior: .countdown
         )
+        // .countdown secondary behavior re-triggers the alarm after postAlert;
+        // without countdownDuration the snooze button renders but does nothing.
         let attributes = AlarmAttributes(
-            presentation: AlarmPresentation(alert: alert),
+            presentation: AlarmPresentation(
+                alert: alert,
+                countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: item.label)),
+                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label))
+            ),
             metadata: ScheduledOccurrenceMetadata(
                 alarmID: item.occurrence.alarmID,
                 occurrenceKey: item.occurrence.occurrenceKey,
@@ -89,9 +95,12 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
             tintColor: .orange
         )
 
-        let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
+        let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeInterval),
             schedule: .fixed(item.occurrence.effectiveDate),
             attributes: attributes,
+            stopIntent: nil,
+            secondaryIntent: nil,
             sound: item.alarmKitSound
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
@@ -122,11 +131,13 @@ enum SystemScheduleID {
         for occurrence: AlarmOccurrence,
         label: String,
         sound: AlarmSound = .systemDefault,
-        loudness: AlarmLoudness = .defaultValue
+        loudness: AlarmLoudness = .defaultValue,
+        selectionHash: String? = nil
     ) -> UUID {
-        StableOccurrenceID.make(
-            alarmID: occurrence.id,
-            occurrenceKey: "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(sound.id)|\(loudness.percentage)"
-        )
+        var key = "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(sound.id)|\(loudness.percentage)"
+        if let selectionHash {
+            key += "|\(selectionHash)"
+        }
+        return StableOccurrenceID.make(alarmID: occurrence.id, occurrenceKey: key)
     }
 }

@@ -14,6 +14,17 @@ public protocol AlarmPersisting {
     func save(_ snapshot: AlarmStoreSnapshot) throws
 }
 
+public enum AlarmPersistenceError: LocalizedError {
+    case decodeFailed(String, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .decodeFailed(fileName, detail):
+            "Could not read \(fileName): \(detail)"
+        }
+    }
+}
+
 public struct JSONAlarmPersistence: AlarmPersisting {
     public let fileURL: URL
 
@@ -28,7 +39,14 @@ public struct JSONAlarmPersistence: AlarmPersisting {
 
     public func load() throws -> AlarmStoreSnapshot {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return .empty }
-        return try JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: Data(contentsOf: fileURL))
+        do {
+            return try JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: Data(contentsOf: fileURL))
+        } catch {
+            // Never destroy persisted data on a decode failure: the file is the
+            // only copy of the user's alarms. Surface the failure; recovery is
+            // a data problem, not a reason to wipe.
+            throw AlarmPersistenceError.decodeFailed(fileURL.lastPathComponent, error.localizedDescription)
+        }
     }
 
     public func save(_ snapshot: AlarmStoreSnapshot) throws {

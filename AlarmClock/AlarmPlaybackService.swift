@@ -341,6 +341,18 @@ final class AlarmPlaybackService: NSObject {
         }
         playTrack(at: currentTrackIndex)
     }
+
+    /// Record a completed song into play history via the app coordinator.
+    private func recordHistoryForCurrentTrack() {
+        guard let currentTrackName,
+              let alarm = currentAlarm,
+              let coordinator = AlarmCoordinator.sharedInstance else { return }
+        coordinator.recordPlayHistory(
+            songName: currentTrackName,
+            alarmID: alarm.id,
+            alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
+        )
+    }
 }
 
 // MARK: - AVAudioPlayerDelegate
@@ -351,20 +363,12 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
                 os_log(.info, log: self.log, "Playback finished unsuccessfully (interrupted/error)")
                 return
             }
-            
+
             os_log(.info, log: self.log, "Track finished successfully, advancing to next")
-            
-            // Record play history if we have the coordinator and alarm info
-            if let currentTrackName = self.currentTrackName,
-               let alarm = self.currentAlarm,
-               let coordinator = AlarmCoordinator.sharedInstance {
-                coordinator.recordPlayHistory(
-                    songName: currentTrackName,
-                    alarmID: alarm.id,
-                    alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
-                )
-            }
-            
+
+            // Per-song history: one entry per fully completed track.
+            self.recordHistoryForCurrentTrack()
+
             // Advance to next track
             self.advanceToNextTrack()
         }
@@ -381,6 +385,3 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
         }
     }
 }
-
-// Need to add a static accessor to AlarmCoordinator for this to work
-// We'll handle this in the AlarmCoordinator extension

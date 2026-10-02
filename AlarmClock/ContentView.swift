@@ -160,18 +160,14 @@ struct ContentView: View {
         .tint(ThemeManager.shared.colors.accent)
     }
     
-    /// Check if an alarm is currently ringing and record play history
+    /// Check if an alarm is currently ringing and refresh the banner.
+    /// History recording lives in AlarmPlaybackService.audioPlayerDidFinishPlaying
+    /// (one entry per fully completed song); recording here produced duplicates
+    /// and only fired on foreground transitions.
     private func checkForActiveRing() {
         // SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
         if let result = coordinator.currentlyRingingAlarm() {
             currentRingSongName = result.songName
-            
-            // Record in play history using the same alarm that was resolved for the song
-            coordinator.recordPlayHistory(
-                songName: result.songName,
-                alarmID: result.alarm.id,
-                alarmLabel: result.alarm.label.isEmpty ? "Alarm" : result.alarm.label
-            )
         } else {
             currentRingSongName = nil
         }

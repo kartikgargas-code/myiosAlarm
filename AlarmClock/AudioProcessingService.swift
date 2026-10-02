@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import AudioToolbox
+import CryptoKit
 
 /// Service for non-destructive audio gain adjustment
 /// Creates modified audio files at different loudness levels without modifying the originals
@@ -199,9 +200,11 @@ final class AudioProcessingService {
         let selectedSongDurations = selectedSounds.compactMap { $0.duration }
         let expectedTotalDuration = selectedSongDurations.reduce(0, +)
         
-        // Generate selection hash for cache key based on actual selected songs
+        // Generate selection hash for cache key based on actual selected songs.
+        // SHA256, not hashValue: Swift's hashValue is randomized per launch, which
+        // made cache keys unstable across launches and defeated cache reuse.
         let selectionKey = selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
-        let selectionHash = String(abs(selectionKey.hashValue))
+        let selectionHash = SoundSelectionHash.make(from: selectionKey)
         let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct.wav"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
@@ -434,6 +437,14 @@ final class AudioProcessingService {
             && file.lastPathComponent.hasSuffix("pct.wav") {
             try? fileManager.removeItem(at: file)
         }
+    }
+}
+
+/// Deterministic cache-key hash for precomposed playlist selections.
+/// Must be stable across launches and devices.
+enum SoundSelectionHash {
+    static func make(from key: String) -> String {
+        String(SHA256.hash(data: Data(key.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined())
     }
 }
 

@@ -107,26 +107,76 @@ public enum AlarmSound: Codable, Equatable, Hashable {
     }
 
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .type)
-        switch type {
-        case "systemDefault": self = .systemDefault
-        case "builtin":
-            let name = try container.decode(String.self, forKey: .name)
-            self = .builtIn(name)
-        case "imported":
-            let id = try container.decode(UUID.self, forKey: .id)
-            self = .imported(id)
-        case "random":
-            let playlistID = try container.decode(UUID.self, forKey: .playlistID)
-            self = .random(playlistID)
-        case "precomposed":
-            let playlistID = try container.decode(UUID.self, forKey: .playlistID)
-            let loudness = try container.decode(AlarmLoudness.self, forKey: .loudness)
-            self = .precomposedPlaylist(playlistID, loudness)
-        default:
-            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid alarm sound type: \(type)")
+        // Current format: {"type": "imported", "id": ...} etc.
+        do {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let type = try container.decode(String.self, forKey: .type)
+            switch type {
+            case "systemDefault": self = .systemDefault
+            case "builtin":
+                let name = try container.decode(String.self, forKey: .name)
+                self = .builtIn(name)
+            case "imported":
+                let id = try container.decode(UUID.self, forKey: .id)
+                self = .imported(id)
+            case "random":
+                let playlistID = try container.decode(UUID.self, forKey: .playlistID)
+                self = .random(playlistID)
+            case "precomposed":
+                let playlistID = try container.decode(UUID.self, forKey: .playlistID)
+                let loudness = try container.decode(AlarmLoudness.self, forKey: .loudness)
+                self = .precomposedPlaylist(playlistID, loudness)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid alarm sound type: \(type)")
+            }
+        } catch {
+            self = try AlarmSound.decodeLegacy(from: decoder)
         }
+    }
+
+    /// Accepts every encoding AlarmSound has ever produced on device:
+    /// - pre-a049a2f auto-synthesis: "systemDefault" | {"imported": "<uuid>"} |
+    ///   {"builtIn": "<name>"} | {"random": "<uuid>"} | {"precomposedPlaylist": {"_0": "<uuid>", "_1": 100}}
+    /// - current format: {"type": "precomposed", ...}
+    private static func decodeLegacy(from decoder: Decoder) throws -> AlarmSound {
+        if let string = try? decoder.singleValueContainer().decode(String.self) {
+            switch string {
+            case "systemDefault": return .systemDefault
+            default: break
+            }
+        }
+        let container = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        if let id = try? container.decode(UUID.self, forKey: .imported) {
+            return .imported(id)
+        }
+        if let name = try? container.decode(String.self, forKey: .builtIn) {
+            return .builtIn(name)
+        }
+        if let playlistID = try? container.decode(UUID.self, forKey: .random) {
+            return .random(playlistID)
+        }
+        // Synthesized associated-value payload: {"precomposedPlaylist": {"_0": uuid, "_1": pct}}
+        if let payload = try? container.nestedContainer(keyedBy: LegacyPayloadKeys.self, forKey: .precomposedPlaylist),
+           let playlistID = try? payload.decode(UUID.self, forKey: ._0),
+           let loudness = try? payload.decode(AlarmLoudness.self, forKey: ._1) {
+            return .precomposedPlaylist(playlistID, loudness)
+        }
+        throw DecodingError.dataCorrupted(DecodingError.Context(
+            codingPath: decoder.codingPath,
+            debugDescription: "Unrecognized AlarmSound encoding"))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, name, id, playlistID, loudness
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case systemDefault, builtIn, imported, random, precomposedPlaylist
+    }
+
+    private enum LegacyPayloadKeys: String, CodingKey {
+        case _0
+        case _1
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -214,24 +264,62 @@ public enum AlarmRepeatRule: Codable, Equatable, Hashable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case type, days
+    public init(from decoder: Decoder) throws {
+        // Current format: {"type": "daily"} / {"type": "custom", "days": [...]}
+        do {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let type = try container.decode(String.self, forKey: .type)
+            switch type {
+            case "never": self = .never
+            case "daily": self = .daily
+            case "weekdays": self = .weekdays
+            case "weekends": self = .weekends
+            case "custom":
+                let days = try container.decode(Set<Int>.self, forKey: .days)
+                self = .custom(days)
+            default:
+                throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid repeat rule type: \(type)")
+            }
+        } catch {
+            self = try AlarmRepeatRule.decodeLegacy(from: decoder)
+        }
     }
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .type)
-        switch type {
-        case "never": self = .never
-        case "daily": self = .daily
-        case "weekdays": self = .weekdays
-        case "weekends": self = .weekends
-        case "custom":
-            let days = try container.decode(Set<Int>.self, forKey: .days)
-            self = .custom(days)
-        default:
-            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid repeat rule type: \(type)")
+    /// Accepts every encoding AlarmRepeatRule has ever produced on device:
+    /// - pre-1f79eb4 auto-synthesis: "daily" | {"custom": {"_0": [days]}} | {"custom": [days]}
+    /// - current format: {"type": "daily"} | {"type": "custom", "days": [...]}
+    private static func decodeLegacy(from decoder: Decoder) throws -> AlarmRepeatRule {
+        // Plain string: confirmed pre-1f79eb4 encoding (commit diff shows "repeatRule": "daily").
+        if let string = try? decoder.singleValueContainer().decode(String.self) {
+            switch string {
+            case "never": return .never
+            case "daily": return .daily
+            case "weekdays": return .weekdays
+            case "weekends": return .weekends
+            case "custom": return .custom([])
+            default: break
+            }
         }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Synthesized .custom: {"custom": {"_0": [days]}} or {"custom": [days]}.
+        if let payload = try? container.nestedContainer(keyedBy: LegacyPayloadKeys.self, forKey: .custom),
+           let days = try? payload.decode(Set<Int>.self, forKey: ._0) {
+            return .custom(days)
+        }
+        if let days = try? container.decode(Set<Int>.self, forKey: .custom) {
+            return .custom(days)
+        }
+        throw DecodingError.dataCorrupted(DecodingError.Context(
+            codingPath: decoder.codingPath,
+            debugDescription: "Unrecognized AlarmRepeatRule encoding"))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, days, custom
+    }
+
+    private enum LegacyPayloadKeys: String, CodingKey {
+        case _0
     }
 
     public func encode(to encoder: Encoder) throws {

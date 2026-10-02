@@ -391,12 +391,14 @@ struct PlaylistEditorView: View {
     @State private var showingDeleteConfirmation = false
     @State private var deleteError: String?
     @State private var sortOption: PlaylistSortOption
+    @State private var playOrder: PlaylistPlayOrder
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
         self.playlist = playlist
         self.alarms = alarms
         self._selectedSoundIDs = State(initialValue: Set(playlist.selectedSoundIDs))
         self._sortOption = State(initialValue: playlist.sortOption)
+        self._playOrder = State(initialValue: playlist.playOrder)
     }
 
     private var sortedSounds: [ImportedSound] {
@@ -424,7 +426,7 @@ struct PlaylistEditorView: View {
                 }
 
                 Section {
-                    Picker("Play Order", selection: .constant(playlist.playOrder)) {
+                    Picker("Play Order", selection: $playOrder) {
                         ForEach(PlaylistPlayOrder.allCases) { mode in
                             Text(mode.displayName).tag(mode)
                         }
@@ -502,6 +504,7 @@ struct PlaylistEditorView: View {
                         var updatedPlaylist = playlist
                         updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
                         updatedPlaylist.sortOption = sortOption
+                        updatedPlaylist.playOrder = playOrder
                         SoundLibrary.shared.updatePlaylist(updatedPlaylist)
                         dismiss()
                     }

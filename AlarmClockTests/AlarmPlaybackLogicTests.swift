@@ -285,4 +285,112 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         XCTAssertEqual(alarmRecord.repeatRule, .daily)
         XCTAssertEqual(alarmRecord.snoozeDurationMinutes, 10) // Default value
     }
+
+    // MARK: - Legacy wire-format compatibility (pre-2add1a5 device data)
+
+    func testLegacyRepeatRulePlainStringDecodes() throws {
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: Data(#""daily""#.utf8)), .daily)
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: Data(#""never""#.utf8)), .never)
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: Data(#""weekdays""#.utf8)), .weekdays)
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: Data(#""weekends""#.utf8)), .weekends)
+    }
+
+    func testLegacyRepeatRuleCustomPayloadDecodes() throws {
+        // Swift synthesized associated-value encoding: {"custom": {"_0": [1, 2, 3]}}
+        let json = #"{"custom": {"_0": [1, 2, 3]}}"#.data(using: .utf8)!
+        let rule = try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: json)
+        XCTAssertEqual(rule, .custom([1, 2, 3]))
+
+        // Variant with unkeyed days array: {"custom": [1, 2, 3]}
+        let unkeyed = #"{"custom": [4, 5]}"#.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmRepeatRule.self, from: unkeyed), .custom([4, 5]))
+    }
+
+    func testLegacyAlarmSoundPlainStringDecodes() throws {
+        XCTAssertEqual(try JSONDecoder.alarmDecoder.decode(AlarmSound.self, from: Data(#""systemDefault""#.utf8)), .systemDefault)
+    }
+
+    func testLegacyAlarmSoundSynthesizedPayloadsDecode() throws {
+        let soundID = UUID()
+        let playlistID = UUID()
+
+        // Swift synthesized single-payload encodings.
+        XCTAssertEqual(
+            try JSONDecoder.alarmDecoder.decode(AlarmSound.self, from: Data("{\"imported\": \"\(soundID.uuidString)\"}".utf8)),
+            .imported(soundID))
+        XCTAssertEqual(
+            try JSONDecoder.alarmDecoder.decode(AlarmSound.self, from: Data("{\"random\": \"\(playlistID.uuidString)\"}".utf8)),
+            .random(playlistID))
+        XCTAssertEqual(
+            try JSONDecoder.alarmDecoder.decode(AlarmSound.self, from: Data(#"{"builtIn": "chime"}"#.utf8)),
+            .builtIn("chime"))
+
+        // Associated multi-value case: {"precomposedPlaylist": {"_0": uuid, "_1": 75}}
+        let precomposed = "{\"precomposedPlaylist\": {\"_0\": \"\(playlistID.uuidString)\", \"_1\": 75}}".data(using: .utf8)!
+        XCTAssertEqual(
+            try JSONDecoder.alarmDecoder.decode(AlarmSound.self, from: precomposed),
+            .precomposedPlaylist(playlistID, AlarmLoudness(75)))
+    }
+
+    func testLegacyAlarmRecordFullDocumentDecodes() throws {
+        // Full old-format document as it exists on devices before 2add1a5.
+        let soundID = UUID()
+        let json = """
+        {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "label": "Legacy Alarm",
+            "time": {"hour": 6, "minute": 30},
+            "repeatRule": "daily",
+            "oneTimeDate": null,
+            "isEnabled": true,
+            "adjustmentStepMinutes": 10,
+            "overrides": {},
+            "sound": {"imported": "\(soundID.uuidString)"},
+            "loudness": 100
+        }
+        """.data(using: .utf8)!
+
+        let record = try JSONDecoder.alarmDecoder.decode(AlarmRecord.self, from: json)
+        XCTAssertEqual(record.repeatRule, .daily)
+        XCTAssertEqual(record.sound, .imported(soundID))
+        XCTAssertEqual(record.snoozeDurationMinutes, 10)
+        XCTAssertEqual(record.label, "Legacy Alarm")
+    }
+
+    func testAlarmRecordRoundTripPersistsCurrentFormat() throws {
+        let alarm = AlarmRecord(
+            label: "RoundTrip",
+            time: AlarmTime(hour: 5, minute: 45),
+            repeatRule: .custom([2, 4]),
+            sound: .precomposedPlaylist(UUID(), AlarmLoudness(75)),
+            loudness: .fifty,
+            snoozeDurationMinutes: 15)
+        let data = try JSONEncoder.alarmEncoder.encode([alarm])
+        let decoded = try JSONDecoder.alarmDecoder.decode([AlarmRecord].self, from: data)
+        XCTAssertEqual(decoded.first, alarm)
+        // Encoding must stay in the current keyed format (one canonical output).
+        let jsonString = String(data: data, encoding: .utf8) ?? ""
+        XCTAssertTrue(jsonString.contains(#""type""#), "Encoded AlarmSound/AlarmRepeatRule should use the type-keyed format")
+    }
+
+    // MARK: - Deterministic selection hash
+
+    func testSelectionHashIsStableAcrossInvocations() {
+        let key = "aaaa-bbbb-cccc"
+        let first = SoundSelectionHash.make(from: key)
+        let second = SoundSelectionHash.make(from: key)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first.count, 16)
+        XCTAssertNotEqual(first, SoundSelectionHash.make(from: key + "-d"))
+    }
+
+    func testScheduleIdentityChangesWithSelectionHash() {
+        let occurrence = AlarmOccurrence(alarmID: UUID(), occurrenceKey: "2026-10-02", baseDate: Date(), effectiveDate: Date(), isAdjusted: false)
+        let sound = AlarmSound.precomposedPlaylist(UUID(), .hundred)
+        let withoutHash = SystemScheduleID.make(for: occurrence, label: "A", sound: sound, loudness: .hundred)
+        let withHash = SystemScheduleID.make(for: occurrence, label: "A", sound: sound, loudness: .hundred, selectionHash: "deadbeef00112233")
+        let withOtherHash = SystemScheduleID.make(for: occurrence, label: "A", sound: sound, loudness: .hundred, selectionHash: "cafebabedead4321")
+        XCTAssertNotEqual(withoutHash, withHash)
+        XCTAssertNotEqual(withHash, withOtherHash)
+    }
 }
