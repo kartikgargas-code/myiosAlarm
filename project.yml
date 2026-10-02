@@ -19,15 +19,13 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: AlarmClock
-      - path: AlarmClock/BuiltInSounds
-        type: folder
-        buildPhase: resources
       - path: AlarmClock/AudioProcessingService.swift
       - path: AlarmClock/AlarmCoordinator.swift
       - path: AlarmClock/AlarmKitSchedulingService.swift
       - path: AlarmClock/AlarmProofOfConceptModel.swift
       - path: AlarmClock/BuiltInSounds
+        type: folder
+        buildPhase: resources
       - path: AlarmClock/ContentView.swift
       - path: AlarmClock/NextAlarmProvider.swift
       - path: AlarmClock/ProofAlarmPlan.swift

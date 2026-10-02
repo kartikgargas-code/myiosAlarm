@@ -58,7 +58,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     }
 
     func testDueOccurrenceEvaluationWithDisabledAlarm() throws {
-        var engine = AlarmEngine(calendar: calendar)
+        var engine = AlarmClock.AlarmEngine(calendar: calendar)
         let alarm1 = AlarmRecord(label: "Alarm 1", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
         let alarm2 = AlarmRecord(label: "Alarm 2", time: AlarmTime(hour: 8, minute: 0), repeatRule: .daily)
         try engine.upsert(alarm1, now: now)
@@ -75,7 +75,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     func testDueOccurrenceFromAppGroupSnapshot() throws {
         // Create a snapshot with alarms
-        var engine = AlarmEngine(calendar: calendar)
+        var engine = AlarmClock.AlarmEngine(calendar: calendar)
         let alarm = AlarmRecord(label: "Test Alarm", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
         try engine.upsert(alarm, now: now)
 
@@ -91,7 +91,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         let decodedSnapshot = try decoder.decode(AlarmStoreSnapshot.self, from: data)
 
         // Recreate engine from decoded snapshot
-        let decodedEngine = AlarmEngine(snapshot: decodedSnapshot, calendar: calendar)
+        let decodedEngine = AlarmClock.AlarmEngine(snapshot: decodedSnapshot, calendar: calendar)
         let occurrences = decodedEngine.desiredOccurrences(now: now, perAlarmLimit: 2)
 
         XCTAssertEqual(occurrences.count, 2)
@@ -158,7 +158,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     }
 
     func testTrackSequenceResolutionFromSnapshotWithOverrides() throws {
-        var engine = AlarmEngine(calendar: calendar)
+        var engine = AlarmClock.AlarmEngine(calendar: calendar)
         let playlistID = UUID()
         let alarm = AlarmRecord(
             label: "Test",
@@ -233,8 +233,8 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func engineWithDailyAlarm() -> AlarmEngine {
-        var engine = AlarmEngine(calendar: calendar)
+    private func engineWithDailyAlarm() -> AlarmClock.AlarmEngine {
+        var engine = AlarmClock.AlarmEngine(calendar: calendar)
         let alarm = AlarmRecord(label: "Daily Alarm", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
         try! engine.upsert(alarm, now: now)
         return engine
