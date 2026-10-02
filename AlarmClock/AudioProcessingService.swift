@@ -311,7 +311,7 @@ final class AudioProcessingService {
                     } else {
                         // Convert to the output format so mixed sample rates and
                         // channel counts play at correct speed.
-                        let converter = try AVAudioConverter(from: sourceFormat, to: outputFormat)
+                        guard let converter = try? AVAudioConverter(from: sourceFormat, to: outputFormat) else { continue }
                         let srcChunkFrames: AVAudioFrameCount = 262_144
                         guard let srcChunk = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: srcChunkFrames) else { continue }
                         var reachedEOF = false
