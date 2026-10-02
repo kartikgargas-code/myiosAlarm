@@ -400,7 +400,9 @@ struct PlaylistEditorView: View {
     }
 
     private var sortedSounds: [ImportedSound] {
-        let sounds = playlist.soundIDs.compactMap { SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 }) }
+        let sounds = playlist.soundIDs.compactMap { soundID in
+            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })
+        }
         switch sortOption {
         case .name:
             return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

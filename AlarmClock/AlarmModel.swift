@@ -1,8 +1,10 @@
 import Foundation
 
-public enum PlaylistPlayOrder: String, Codable, CaseIterable {
+public enum PlaylistPlayOrder: String, Codable, CaseIterable, Identifiable {
     case random = "Random"
     case sequence = "Sequence"
+    
+    public var id: String { rawValue }
     
     public var displayName: String {
         switch self {
@@ -12,11 +14,13 @@ public enum PlaylistPlayOrder: String, Codable, CaseIterable {
     }
 }
 
-public enum PlaylistSortOption: String, Codable, CaseIterable {
+public enum PlaylistSortOption: String, Codable, CaseIterable, Identifiable {
     case name = "Name"
     case fileSize = "File Size"
     case dateAdded = "Date Added"
     case dateModified = "Date Modified"
+    
+    public var id: String { rawValue }
     
     public var displayName: String {
         switch self {
