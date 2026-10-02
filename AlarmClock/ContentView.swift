@@ -17,6 +17,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
     @State private var alarmPlaybackService = AlarmPlaybackService.shared
+    @State private var smartWakeStatusTick = false
 
     var body: some View {
         NavigationStack {
@@ -74,16 +75,25 @@ struct ContentView: View {
                         Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        if smartWakeService.isRunning {
-                            Label("Active", systemImage: "waveform.badge.checkmark")
+                        // Status label that updates every 2 seconds while visible
+                        let _ = smartWakeStatusTick
+                        if alarmPlaybackService.isPlaying {
+                            Label("Ringing — playing your music", systemImage: "music.note")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else if smartWakeService.isRunning {
+                            Label("Active — silent loop running", systemImage: "waveform.badge.checkmark")
                                 .font(.caption)
                                 .foregroundStyle(.green)
                         } else {
-                            Label("Waiting for armed alarm...", systemImage: "clock.badge.questionmark")
+                            Label("Waiting for next alarm...", systemImage: "clock.badge.questionmark")
                                 .font(.caption)
                                 .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         }
                     }
+                }
+                .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+                    smartWakeStatusTick.toggle()
                 }
             }
             .scrollContentBackground(.hidden)
@@ -529,6 +539,31 @@ struct ContentView: View {
                 .font(.caption)
                 
                 Text(readLiveActivityDebugLog())
+                    .font(.system(.caption2, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .frame(maxHeight: 200, alignment: .top)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+            }
+            .font(.caption.monospaced())
+            
+            Divider()
+            
+            // Smart Wake Debug Log
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Smart Wake Debug Log")
+                        .font(.headline)
+                    Spacer()
+                    Button("Clear Smart Wake Log") {
+                        SmartWakeDebugLog.clear()
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                }
+                
+                Text(SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet.")
                     .font(.system(.caption2, design: .monospaced))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)

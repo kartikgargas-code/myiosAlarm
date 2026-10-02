@@ -48,7 +48,20 @@ final class SmartWakeService {
             isEnabled = newValue
             UserDefaults.standard.set(newValue, forKey: enabledKey)
             if newValue {
-                Task { await startIfAlarmArmedInternal() }
+                Task { 
+                    // Retry once if coordinator not yet available (can happen on fresh launch toggle)
+                    var attempts = 0
+                    while coordinator == nil && attempts < 2 {
+                        attempts += 1
+                        if attempts == 2 {
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                        }
+                        await startIfAlarmArmedInternal()
+                    }
+                    if coordinator == nil {
+                        SmartWakeDebugLog.log("START attempt: NO coordinator after retry — declining")
+                    }
+                }
             } else {
                 stop()
             }
@@ -126,6 +139,7 @@ final class SmartWakeService {
     private func startIfAlarmArmedInternal() async {
         guard let coordinator = self.coordinator else {
             os_log(.error, log: log, "No coordinator available for Smart Wake")
+            SmartWakeDebugLog.log("START attempt: NO coordinator — cannot check alarms")
             return
         }
 
@@ -133,7 +147,7 @@ final class SmartWakeService {
         let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
 
         // Check if any alarm is armed and due soon
-        let hasUpcomingAlarm = coordinator.alarms.contains { alarm in
+        let upcoming = coordinator.alarms.filter { alarm in
             guard alarm.isEnabled else { return false }
             if let occurrence = coordinator.occurrence(for: alarm.id) {
                 return occurrence.effectiveDate <= soon && occurrence.effectiveDate > now
@@ -141,19 +155,35 @@ final class SmartWakeService {
             return false
         }
 
-        guard hasUpcomingAlarm else {
+        guard !upcoming.isEmpty else {
             os_log(.info, log: log, "No upcoming alarm within 8h; not starting Smart Wake")
+            SmartWakeDebugLog.log("START attempt: declined — no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
             return
         }
 
+        let nextFire = upcoming.compactMap { coordinator.occurrence(for: $0.id)?.effectiveDate }.min()?.formatted(date: .omitted, time: .shortened) ?? "?"
+        SmartWakeDebugLog.log("START: keeping app alive; next alarm \(nextFire); upcoming count \(upcoming.count)")
         await startBackgroundAudio()
     }
 
     /// Start the silent background audio loop
     private func startBackgroundAudio() async {
-        guard let url = silentLoopURL,
-              fileManager.fileExists(atPath: url.path) else {
-            os_log(.error, log: log, "Silent loop file not ready")
+        guard let url = silentLoopURL else {
+            os_log(.error, log: log, "Silent loop URL not set")
+            SmartWakeDebugLog.log("START BACKGROUND: silentLoopURL is nil")
+            return
+        }
+        
+        // Wait for file if generation is still in progress
+        var attempts = 0
+        while !fileManager.fileExists(atPath: url.path) && attempts < 10 {
+            SmartWakeDebugLog.log("START BACKGROUND: waiting for silent loop file (attempt \(attempts+1)/10)")
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+        }
+        
+        guard fileManager.fileExists(atPath: url.path) else {
+            os_log(.error, log: log, "Silent loop file not ready after waiting")
+            SmartWakeDebugLog.log("START BACKGROUND: silent loop file not ready after 5s wait — giving up")
             return
         }
 
@@ -165,11 +195,13 @@ final class SmartWakeService {
             newPlayer.prepareToPlay()
             guard newPlayer.play() else {
                 os_log(.error, log: log, "Failed to start silent loop playback")
+                SmartWakeDebugLog.log("START BACKGROUND: play() returned false")
                 return
             }
             player = newPlayer
             isSessionActive = true
             os_log(.info, log: log, "Smart Wake silent loop started")
+            SmartWakeDebugLog.log("SILENT LOOP started (session active)")
 
             // Register for interruption notifications
             registerForInterruptions()
@@ -178,6 +210,7 @@ final class SmartWakeService {
             startTransitionArming()
         } catch {
             os_log(.error, log: log, "Failed to start background audio: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("START BACKGROUND ERROR: \(error.localizedDescription)")
         }
     }
 
@@ -202,12 +235,14 @@ final class SmartWakeService {
         unregisterForInterruptions()
         stopTransitionArming()
         os_log(.info, log: log, "Smart Wake stopped")
+        SmartWakeDebugLog.log("SILENT LOOP stopped (user toggled OFF)")
     }
 
     /// Stop only the silent player, keeping the audio session active and observers registered
     /// Used when transitioning to real alarm playback
-    func stopSilentPlayerOnly() {
-        os_log(.info, log: log, "stopSilentPlayerOnly() called - stopping silent loop, keeping session active")
+    func stopSilentPlayerOnly(reason: String = "transition to in-app playback") {
+        os_log(.info, log: log, "stopSilentPlayerOnly() called - stopping silent loop, keeping session active (reason: %{public}s)", reason)
+        SmartWakeDebugLog.log("SILENT LOOP stopped (\(reason))")
         player?.stop()
         player = nil
         isSessionActive = false
@@ -231,6 +266,15 @@ final class SmartWakeService {
         if shouldResume {
             try? AVAudioSession.sharedInstance().setActive(true)
             player?.play()
+        } else {
+            // Interruption ended without resume — re-arm check in case we need to restart
+            if isSmartWakeEnabled {
+                Task { 
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    await checkAndArmUpcomingAlarms()
+                    SmartWakeDebugLog.log("RE-ARM scheduled after interruption (no resume)")
+                }
+            }
         }
     }
 
@@ -428,17 +472,20 @@ final class SmartWakeService {
             let actualNow = Date()
             let tolerance: TimeInterval = 5.0
             if abs(actualNow.timeIntervalSince(fireDate)) > tolerance {
-                os_log(.info, log: log, "Missed fire window for %{public}s (diff: %{public}.1fs)", 
+                os_log(.info, log: log, "Missed fire window for %{public}s (diff: %{public}.1fs)",
                        occurrenceKey, actualNow.timeIntervalSince(fireDate))
+                SmartWakeDebugLog.log("TRANSITION WAKE MISSED WINDOW for \(occurrenceKey) (diff \(Int(actualNow.timeIntervalSince(fireDate)))s)")
                 return
             }
             
             os_log(.info, log: log, "TRANSITION WAKE: Firing for occurrence %{public}s at %{public}s", 
                    occurrenceKey, actualNow.formatted(date: .omitted, time: .standard))
+            SmartWakeDebugLog.log("TRANSITION WAKE fired for \(occurrenceKey)")
             
             // Find the alarm for this occurrence
             guard let alarm = engine.alarm(id: occurrence.alarmID) else {
                 os_log(.error, log: log, "Alarm not found for occurrence %{public}s", occurrenceKey)
+                SmartWakeDebugLog.log("TAKEOVER ABORT: alarm record not found for \(occurrenceKey)")
                 return
             }
             
@@ -452,13 +499,16 @@ final class SmartWakeService {
                     // playlist in-app. If AlarmKit refuses to cancel (the alarm keeps
                     // ringing), do NOT start in-app playback — double audio is worse
                     // than the system alarm sound alone.
+                    SmartWakeDebugLog.log("TAKEOVER: playlist sound for \(occurrenceKey), silencing AlarmKit first")
                     let silenced = await silenceAlarmKitAlarm(for: alarm)
                     guard silenced else {
                         os_log(.info, log: log, "AlarmKit cancel failed; keeping system alarm sound only")
+                        SmartWakeDebugLog.log("TAKEOVER STOPPED: AlarmKit cancel failed — system alarm keeps ringing, no in-app playback")
                         return
                     }
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
                         os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s after silencing AlarmKit", resolvedPlaylistID.uuidString)
+                        SmartWakeDebugLog.log("TAKEOVER: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
                         AlarmPlaybackService.shared.start(
                             playlistID: resolvedPlaylistID,
                             loudness: alarm.loudness,
@@ -466,9 +516,18 @@ final class SmartWakeService {
                             occurrence: occurrence
                         )
                     }
-                    stopSilentPlayerOnly()
+                    stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
+                    SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
+                    
+                    // Re-arm check: if there's another alarm coming up, restart the silent loop
+                    Task {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        await checkAndArmUpcomingAlarms()
+                        SmartWakeDebugLog.log("RE-ARM scheduled after takeover completion")
+                    }
                 } else {
                     os_log(.info, log: log, "Sound type %{public}s - AlarmKit handles playback", String(describing: soundToUse))
+                    SmartWakeDebugLog.log("TAKEOVER skipped: non-playlist sound (AlarmKit plays it): \(String(describing: soundToUse))")
                 }
                 
             } catch {
@@ -497,17 +556,19 @@ final class SmartWakeService {
         var alerting: [Alarm] = []
         do {
             // Poll up to ~3s for the alarm to reach .alerting
-            for _ in 0..<10 {
+            for attempt in 0..<10 {
                 alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
                 if !alerting.isEmpty { break }
-                try? await Task.sleep(nanoseconds: 300_000_000)
+                if attempt < 9 { try? await Task.sleep(nanoseconds: 300_000_000) }
             }
         } catch {
             os_log(.error, log: log, "Failed to inspect AlarmKit alarms: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("SILENCE: AlarmKit access threw: \(error.localizedDescription)")
             return false
         }
         guard !alerting.isEmpty else {
             os_log(.info, log: log, "No alerting AlarmKit alarm appeared within 3s; skipping takeover")
+            SmartWakeDebugLog.log("SILENCE: no .alerting alarm found within 3s of wake — takeover skipped (system sound may start later)")
             return false
         }
         var allCancelled = true
@@ -518,8 +579,10 @@ final class SmartWakeService {
                 // sound. AlarmManager.stop(id:) is documented but unverified
                 // here — only switch if cancel fails on device.
                 try AlarmManager.shared.cancel(id: kitAlarm.id)
+                SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
             } catch {
                 allCancelled = false
+                SmartWakeDebugLog.log("SILENCE: cancel FAILED for \(kitAlarm.id.uuidString): \(error.localizedDescription)")
                 os_log(.error, log: log, "cancel(id:%{public}s) failed: %{public}s", kitAlarm.id.uuidString, error.localizedDescription)
             }
         }

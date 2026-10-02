@@ -26,6 +26,7 @@ final class AlarmPlaybackService: NSObject {
     private weak var coordinator: AlarmCoordinator?
     private var isArmedForOccurrence: Set<String> = [] // Track armed occurrences to prevent double-start
     private var transitionCheckTask: Task<Void, Never>?
+    private var consecutiveFailures = 0 // Track consecutive play failures to prevent infinite recursion
     
     // Published state
     private(set) var isPlaying = false
@@ -51,6 +52,7 @@ final class AlarmPlaybackService: NSObject {
     ) {
         os_log(.info, log: log, "start(playlistID:%{public}s, loudness:%{public}d%%, alarmID:%{public}s, occurrenceKey:%{public}s)",
                playlistID.uuidString, loudness.percentage, alarm.id.uuidString, occurrence.occurrenceKey)
+        SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8)) tracks=\(selectedSoundIDs.count)")
 
         // Guard against double-start for same occurrence
         let occurrenceKey = occurrence.occurrenceKey
@@ -59,6 +61,9 @@ final class AlarmPlaybackService: NSObject {
             return
         }
         isArmedForOccurrence.insert(occurrenceKey)
+
+        // Reset consecutive failures on new start
+        consecutiveFailures = 0
 
         // Resolve playlist and selected sound IDs
         do {
@@ -78,6 +83,8 @@ final class AlarmPlaybackService: NSObject {
             
             // Ensure audio session is active (don't deactivate, only activate if needed)
             try ensureAudioSessionActive()
+            
+            SmartWakeDebugLog.log("PLAYBACK started track 1: \(selectedSoundIDs.first.map { SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name ?? "unknown" } ?? "unknown")")
             
             // Start playing the first track
             playTrack(at: 0)
@@ -114,6 +121,7 @@ final class AlarmPlaybackService: NSObject {
         let soundID = selectedSoundIDs[index]
         guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }) else {
             os_log(.error, log: log, "Sound not found for ID %{public}s, skipping", soundID.uuidString)
+            SmartWakeDebugLog.log("PLAYBACK: track \(index) failed - sound not found in library, skipping")
             // Skip broken track, advance to next
             currentTrackIndex = index + 1
             playTrack(at: currentTrackIndex)
@@ -129,6 +137,7 @@ final class AlarmPlaybackService: NSObject {
         let localURL = sound.localURL(soundsDirectory: soundsDir)
         guard let localURL, fileManager.fileExists(atPath: localURL.path) else {
             os_log(.error, log: log, "Sound file missing for %{public}s (%{public}s), skipping", sound.name, sound.fileName)
+            SmartWakeDebugLog.log("PLAYBACK: track \(index) failed - file missing (\(sound.fileName)), skipping")
             // Skip missing file, advance to next
             currentTrackIndex = index + 1
             playTrack(at: currentTrackIndex)
@@ -151,9 +160,11 @@ final class AlarmPlaybackService: NSObject {
             currentTrackName = sound.name
             isPlaying = true
             lastError = nil
+            consecutiveFailures = 0 // Reset on success
             
             os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d)", 
                    sound.name, index + 1, selectedSoundIDs.count)
+            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(sound.name)")
             
             // Publish Now Playing info
             publishNowPlayingInfo(for: sound, player: newPlayer)
@@ -164,6 +175,17 @@ final class AlarmPlaybackService: NSObject {
         } catch {
             lastError = error.localizedDescription
             os_log(.error, log: log, "Failed to play track %{public}s: %{public}s", sound.name, error.localizedDescription)
+            SmartWakeDebugLog.log("PLAYBACK: track \(index) failed to start: \(error.localizedDescription), skipping")
+            // Skip failed track, advance to next
+            consecutiveFailures += 1
+            if consecutiveFailures >= selectedSoundIDs.count {
+                // All tracks failed - abort playback
+                os_log(.error, log: log, "PLAYBACK ABORT: all \(selectedSoundIDs.count) tracks failed to start")
+                SmartWakeDebugLog.log("PLAYBACK ABORT: all \(selectedSoundIDs.count) tracks failed to start")
+                isPlaying = false
+                stop()
+                return
+            }
             // Skip failed track, advance to next
             currentTrackIndex = index + 1
             playTrack(at: currentTrackIndex)
@@ -361,10 +383,12 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
         Task { @MainActor in
             guard flag else {
                 os_log(.info, log: self.log, "Playback finished unsuccessfully (interrupted/error)")
+                SmartWakeDebugLog.log("PLAYBACK finished unsuccessfully (interrupted/error)")
                 return
             }
 
             os_log(.info, log: self.log, "Track finished successfully, advancing to next")
+            SmartWakeDebugLog.log("PLAYBACK finished track: \(self.currentTrackName ?? "unknown"), advancing")
 
             // Per-song history: one entry per fully completed track.
             self.recordHistoryForCurrentTrack()
@@ -379,6 +403,7 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
             let errorDesc = error?.localizedDescription ?? "Unknown decode error"
             self.lastError = "Audio decode error: \(errorDesc)"
             os_log(.error, log: self.log, "Audio decode error: %{public}s", errorDesc)
+            SmartWakeDebugLog.log("PLAYBACK decode error: \(errorDesc)")
             // Skip failed track
             self.currentTrackIndex += 1
             self.playTrack(at: self.currentTrackIndex)
