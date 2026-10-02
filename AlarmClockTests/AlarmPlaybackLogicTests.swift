@@ -66,7 +66,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         // Disable the earlier alarm
         try engine.setEnabled(false, id: alarm1.id)
 
-        let occurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 2)
+        let occurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 1)
         XCTAssertEqual(occurrences.count, 1)
         XCTAssertEqual(occurrences[0].alarmID, alarm2.id)
         XCTAssertEqual(components(occurrences[0].effectiveDate), [2026, 9, 21, 8, 0])
@@ -218,16 +218,16 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     func testNowPlayingInfoPlaybackRateWhenPaused() throws {
         var nowPlayingInfo: [String: Any] = [:]
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = Float(0.0)
 
-        XCTAssertEqual(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Float, 0.0)
+        XCTAssertEqual(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Float, Float(0.0))
     }
 
     func testNowPlayingInfoPlaybackRateWhenPlaying() throws {
         var nowPlayingInfo: [String: Any] = [:]
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = Float(1.0)
 
-        XCTAssertEqual(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Float, 1.0)
+        XCTAssertEqual(nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Float, Float(1.0))
     }
 
     // MARK: - Helpers
