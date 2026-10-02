@@ -610,12 +610,12 @@ final class AlarmCoordinator {
             let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
 
             // Create the test alarm configuration
-            let snoozeDuration = alarm.snoozeDurationMinutes ?? 10
+            _ = alarm.snoozeDurationMinutes ?? 10 // Snooze duration available for future use; .countdown has no associated values
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
                 stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
                 secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
-                secondaryButtonBehavior: .countdown(Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60)))
+                secondaryButtonBehavior: .countdown
             )
             let attributes = AlarmAttributes(
                 presentation: AlarmPresentation(alert: alert),
@@ -627,7 +627,7 @@ final class AlarmCoordinator {
                 tintColor: .orange
             )
 
-            let configuration = AlarmManager.AlarmConfiguration.alarm(
+            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
                 schedule: .fixed(testDate),
                 attributes: attributes,
                 sound: alarmKitSound

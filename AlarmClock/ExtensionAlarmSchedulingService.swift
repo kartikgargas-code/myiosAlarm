@@ -44,9 +44,12 @@ public struct ExtensionAlarmSchedulingService {
     }
     
     private func schedule(_ item: DesiredSystemAlarm) async throws {
+        _ = item.snoozeDurationMinutes ?? 10 // Snooze duration available for future use; .countdown has no associated values
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
-            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+            secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+            secondaryButtonBehavior: .countdown
         )
         let attributes = AlarmAttributes(
             presentation: AlarmPresentation(alert: alert),
@@ -58,7 +61,7 @@ public struct ExtensionAlarmSchedulingService {
             tintColor: .orange
         )
         
-        let configuration = AlarmManager.AlarmConfiguration.alarm(
+        let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
             schedule: .fixed(item.occurrence.effectiveDate),
             attributes: attributes,
             sound: item.alarmKitSound
@@ -81,6 +84,7 @@ public extension ExtensionAlarmSchedulingService {
         public let label: String
         public let sound: AlarmSound
         public let alarmKitSound: AlertConfiguration.AlertSound
+        public let snoozeDurationMinutes: Int? // Added for native snooze
     }
     
     public struct AlarmReconciliationPlan: Equatable {

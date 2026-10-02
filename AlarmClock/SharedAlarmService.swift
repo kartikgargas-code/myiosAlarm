@@ -229,7 +229,8 @@ public struct SharedAlarmService: LiveActivityAlarmService {
                     occurrence: occurrence,
                     label: label,
                     sound: soundToUse,
-                    alarmKitSound: alarmKitSound
+                    alarmKitSound: alarmKitSound,
+                    snoozeDurationMinutes: alarm.snoozeDurationMinutes
                 ))
             } catch {
                 print("Error resolving sound for occurrence: \(error)")
