@@ -2,6 +2,7 @@ import AVFoundation
 import Observation
 import Foundation
 import os.log
+import AlarmKit
 import AlarmClockShared
 
 /// Background audio session manager for "Smart Wake" feature
