@@ -646,8 +646,7 @@ final class AlarmCoordinator {
             let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
                 schedule: .fixed(testDate),
                 attributes: attributes,
-                sound: alarmKitSound,
-                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60))
+                sound: alarmKitSound
             )
 
             _ = try await (scheduler as? AlarmKitSchedulingService)?.manager.schedule(id: testID, configuration: configuration)

@@ -92,8 +92,7 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
         let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
             schedule: .fixed(item.occurrence.effectiveDate),
             attributes: attributes,
-            sound: item.alarmKitSound,
-            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60))
+            sound: item.alarmKitSound
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
     }
