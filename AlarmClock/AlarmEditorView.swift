@@ -16,6 +16,7 @@ struct AlarmEditorView: View {
     @State private var oneTimeDate: Date
     @State private var selectedSound: AlarmSound
     @State private var selectedLoudness: AlarmLoudness
+    @State private var snoozeDurationMinutes: Int
     @State private var showingSoundPicker = false
     
     // Simplified test alarm state
@@ -49,6 +50,7 @@ struct AlarmEditorView: View {
         _oneTimeDate = State(initialValue: existingAlarm?.oneTimeDate ?? Date.now.addingTimeInterval(3_600))
         _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
         _selectedLoudness = State(initialValue: existingAlarm?.loudness ?? .defaultValue)
+        _snoozeDurationMinutes = State(initialValue: existingAlarm?.snoozeDurationMinutes ?? 10)
     }
 
     var body: some View {
@@ -72,6 +74,7 @@ struct AlarmEditorView: View {
             scheduleFields
             soundSection
             loudnessSection
+            snoozeSection
             if existingAlarm != nil {
                 testAlarmSection
             }
@@ -137,6 +140,18 @@ struct AlarmEditorView: View {
             set: { selectedLoudness = AlarmLoudness(Int($0.rounded())) }
         )
     }
+    
+    private var snoozeSection: some View {
+        Section("Snooze Duration") {
+            Picker("Snooze Duration", selection: $snoozeDurationMinutes) {
+                Text("5 min").tag(5)
+                Text("10 min").tag(10)
+                Text("15 min").tag(15)
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+    
     private var testAlarmSection: some View {
         Section("Test Alarm") {
             if testAlarmState != .idle {
@@ -238,7 +253,8 @@ struct AlarmEditorView: View {
             adjustmentStepMinutes: 10, // Fixed adjustment step
             overrides: existingAlarm?.overrides ?? [:],
             sound: selectedSound,
-            loudness: selectedLoudness
+            loudness: selectedLoudness,
+            snoozeDurationMinutes: snoozeDurationMinutes
         )
     }
     private var repeatSelection: Binding<RepeatSelection> {

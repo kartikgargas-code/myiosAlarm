@@ -153,6 +153,7 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
     public var overrides: [String: AlarmOccurrenceOverride]
     public var sound: AlarmSound
     public var loudness: AlarmLoudness
+    public var snoozeDurationMinutes: Int? // New field for snooze duration (5, 10, 15)
 
     public init(
         id: UUID = UUID(),
@@ -164,7 +165,8 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         adjustmentStepMinutes: Int = 10,
         overrides: [String: AlarmOccurrenceOverride] = [:],
         sound: AlarmSound = .systemDefault,
-        loudness: AlarmLoudness = .defaultValue
+        loudness: AlarmLoudness = .defaultValue,
+        snoozeDurationMinutes: Int? = 10 // Default 10 minutes
     ) {
         self.id = id
         self.label = label
@@ -176,6 +178,7 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         self.overrides = overrides
         self.sound = sound
         self.loudness = loudness
+        self.snoozeDurationMinutes = snoozeDurationMinutes
     }
 }
 

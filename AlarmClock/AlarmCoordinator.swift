@@ -250,7 +250,8 @@ final class AlarmCoordinator {
                     occurrence: occurrence,
                     label: label,
                     sound: soundToUse,
-                    alarmKitSound: alarmKitSound
+                    alarmKitSound: alarmKitSound,
+                    snoozeDurationMinutes: alarm.snoozeDurationMinutes
                 ))
             } catch {
                 commitError = error.localizedDescription
@@ -609,9 +610,12 @@ final class AlarmCoordinator {
             let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
 
             // Create the test alarm configuration
+            let snoozeDuration = alarm.snoozeDurationMinutes ?? 10
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
-                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+                secondaryButtonBehavior: .countdown(Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60)))
             )
             let attributes = AlarmAttributes(
                 presentation: AlarmPresentation(alert: alert),

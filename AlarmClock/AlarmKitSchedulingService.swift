@@ -15,6 +15,7 @@ struct DesiredSystemAlarm: Equatable {
     let label: String
     let sound: AlarmSound
     let alarmKitSound: AlertConfiguration.AlertSound
+    let snoozeDurationMinutes: Int? // Added for native snooze
 }
 
 @MainActor
@@ -71,9 +72,12 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     }
 
     private func schedule(_ item: DesiredSystemAlarm) async throws {
+        let snoozeDuration = item.snoozeDurationMinutes ?? 10
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
-            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+            stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+            secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+            secondaryButtonBehavior: .countdown(Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60)))
         )
         let attributes = AlarmAttributes(
             presentation: AlarmPresentation(alert: alert),
