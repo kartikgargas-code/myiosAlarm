@@ -439,7 +439,8 @@ struct ContentView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Copy All Diagnostics") { 
                         let widgetDiagnosticsText = generateWidgetDiagnosticsText()
-                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText + "\n\n" + widgetDiagnosticsText + "\n\n" + readLiveActivityDebugLog()
+                        let smartWakeLogText = smartWakeLogForDiagnostics()
+                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText + "\n\n" + widgetDiagnosticsText + "\n\n" + readLiveActivityDebugLog() + "\n\n" + smartWakeLogText
                         UIPasteboard.general.string = combined
                     }
                 }
@@ -561,6 +562,13 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)
+                    Button("Copy Smart Wake Log") {
+                        if let text = SmartWakeDebugLog.read() {
+                            UIPasteboard.general.string = text
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
                 }
                 
                 Text(SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet.")
@@ -671,5 +679,11 @@ struct ContentView: View {
         text += "\n"
         
         return text
+    }
+    
+    // MARK: - Smart Wake Log for copy-all diagnostics
+    private func smartWakeLogForDiagnostics() -> String {
+        let log = SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet."
+        return "=== SMART WAKE LOG ===\n\(log)\n"
     }
 }
