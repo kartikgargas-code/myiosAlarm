@@ -565,24 +565,26 @@ final class AlarmEngineTests: XCTestCase {
 final class AlarmReconciliationPlanTests: XCTestCase {
     func testOrphanAlarmsAreCancelled() throws {
         // Simulate a scenario where AlarmKit has orphan alarms:
-        // - existingIDs: alarms currently in AlarmKit (including orphans)
-        // - desiredIDs: alarms we want to schedule
-        // - managedIDs: alarms our app knows about (subset of desired)
-        let existingIDs: Set<UUID> = [UUID(), UUID(), UUID(), UUID()] // 4 alarms in AlarmKit
-        let desiredIDs: Set<UUID> = [UUID(), UUID()] // 2 alarms we want
-        let managedIDs: Set<UUID> = [UUID(), UUID()] // 2 alarms we manage (same as desired in normal case)
+        // - existingIDs: alarms currently in AlarmKit (including orphans + desired)
+        // - desiredIDs: alarms we want to schedule (2 of which overlap with existing)
+        // - managedIDs: alarms our app knows about (same as desired)
+        let desiredID1 = UUID()
+        let desiredID2 = UUID()
+        let orphanID1 = UUID()
+        let orphanID2 = UUID()
         
-        // Make managedIDs a subset of desiredIDs to simulate normal case
-        let managedIDsSubset = Set(desiredIDs.prefix(2))
+        let existingIDs: Set<UUID> = [desiredID1, desiredID2, orphanID1, orphanID2] // 4 alarms in AlarmKit (2 desired + 2 orphans)
+        let desiredIDs: Set<UUID> = [desiredID1, desiredID2] // 2 alarms we want (overlap with existing)
+        let managedIDs: Set<UUID> = [desiredID1, desiredID2] // same as desired
         
         let plan = AlarmReconciliationPlan(
             desiredIDs: desiredIDs,
             existingIDs: existingIDs,
-            managedIDs: managedIDsSubset
+            managedIDs: managedIDs
         )
         
         // With the new logic, cancel should include ALL existing alarms not in desiredIDs
-        // That's 4 existing - 2 desired = 2 orphans to cancel
+        // That's 2 orphans (orphanID1, orphanID2) to cancel
         XCTAssertEqual(plan.cancel.count, 2, "Should cancel orphan alarms (existing but not desired)")
         
         // Verify the cancelled IDs are exactly the ones in existing but not in desired
