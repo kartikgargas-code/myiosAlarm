@@ -2,11 +2,14 @@
 import ActivityKit
 import Foundation
 import AlarmClockShared
+import os.log
 
 /// Service for scheduling AlarmKit alarms from a Live Activity intent.
 @MainActor
 public struct ExtensionAlarmSchedulingService {
     var manager: AlarmManager { AlarmManager.shared }
+    
+    private let reconcileLog = OSLog(subsystem: "com.example.alarmclock", category: "AlarmKitScheduling")
     
     /// Reconcile desired alarms with AlarmKit
     /// This is the same logic as AlarmKitSchedulingService.reconcile but usable from extensions
@@ -24,6 +27,13 @@ public struct ExtensionAlarmSchedulingService {
         )
         let missing = desired.filter { plan.schedule.contains($0.id) }
         
+        // Log reconciliation details
+        os_log(.info, log: reconcileLog, "RECONCILE: existing=%{public}d desired=%{public}d cancelling=%{public}d", existingIDs.count, desiredIDs.count, plan.cancel.count)
+        SmartWakeDebugLog.log("RECONCILE: existing=\(existingIDs.count) desired=\(desiredIDs.count) cancelling=\(plan.cancel.count)")
+        for cancelID in plan.cancel {
+            SmartWakeDebugLog.log("RECONCILE CANCEL: \(cancelID.uuidString)")
+        }
+        
         var newlyScheduled: [UUID] = []
         do {
             for item in missing.sorted(by: { $0.occurrence.effectiveDate < $1.occurrence.effectiveDate }) {
@@ -38,7 +48,14 @@ public struct ExtensionAlarmSchedulingService {
         }
         
         for id in plan.cancel {
-            try manager.cancel(id: id)
+            do {
+                try manager.cancel(id: id)
+                os_log(.info, log: reconcileLog, "RECONCILE: cancelled %{public}s", id.uuidString)
+                SmartWakeDebugLog.log("RECONCILE CANCEL SUCCESS: \(id.uuidString)")
+            } catch {
+                os_log(.error, log: reconcileLog, "RECONCILE CANCEL FAILED: %{public}s error=%{public}s", id.uuidString, error.localizedDescription)
+                SmartWakeDebugLog.log("RECONCILE CANCEL FAILED: \(id.uuidString) error=\(error.localizedDescription)")
+            }
         }
         return desiredIDs
     }
@@ -101,7 +118,10 @@ public extension ExtensionAlarmSchedulingService {
         
         public init(desiredIDs: Set<UUID>, existingIDs: Set<UUID>, managedIDs: Set<UUID>) {
             schedule = desiredIDs.subtracting(existingIDs)
-            cancel = managedIDs.subtracting(desiredIDs).intersection(existingIDs)
+            // Cancel ALL app-namespace alarms not currently desired.
+            // Orphans (existing in AlarmKit but not in managedIDs or desiredIDs) are
+            // never cancelled by the old logic. This change ensures they are cancelled.
+            cancel = existingIDs.subtracting(desiredIDs)
         }
     }
     

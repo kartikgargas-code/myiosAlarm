@@ -561,6 +561,64 @@ final class AlarmEngineTests: XCTestCase {
     }
 }
 
+@MainActor
+final class AlarmReconciliationPlanTests: XCTestCase {
+    func testOrphanAlarmsAreCancelled() throws {
+        // Simulate a scenario where AlarmKit has orphan alarms:
+        // - existingIDs: alarms currently in AlarmKit (including orphans)
+        // - desiredIDs: alarms we want to schedule
+        // - managedIDs: alarms our app knows about (subset of desired)
+        let existingIDs: Set<UUID> = [UUID(), UUID(), UUID(), UUID()] // 4 alarms in AlarmKit
+        let desiredIDs: Set<UUID> = [UUID(), UUID()] // 2 alarms we want
+        let managedIDs: Set<UUID> = [UUID(), UUID()] // 2 alarms we manage (same as desired in normal case)
+        
+        // Make managedIDs a subset of desiredIDs to simulate normal case
+        let managedIDsSubset = Set(desiredIDs.prefix(2))
+        
+        let plan = AlarmReconciliationPlan(
+            desiredIDs: desiredIDs,
+            existingIDs: existingIDs,
+            managedIDs: managedIDsSubset
+        )
+        
+        // With the new logic, cancel should include ALL existing alarms not in desiredIDs
+        // That's 4 existing - 2 desired = 2 orphans to cancel
+        XCTAssertEqual(plan.cancel.count, 2, "Should cancel orphan alarms (existing but not desired)")
+        
+        // Verify the cancelled IDs are exactly the ones in existing but not in desired
+        let expectedCancel = existingIDs.subtracting(desiredIDs)
+        XCTAssertEqual(plan.cancel, expectedCancel, "Cancel set should equal existing minus desired")
+    }
+    
+    func testNoOrphansWhenExistingMatchesDesired() throws {
+        let ids: Set<UUID> = [UUID(), UUID(), UUID()]
+        let plan = AlarmReconciliationPlan(
+            desiredIDs: ids,
+            existingIDs: ids,
+            managedIDs: ids
+        )
+        
+        XCTAssertTrue(plan.cancel.isEmpty, "No orphans when existing matches desired")
+        XCTAssertTrue(plan.schedule.isEmpty, "No scheduling needed when existing matches desired")
+    }
+    
+    func testNewAlarmsAreScheduled() throws {
+        let existingIDs: Set<UUID> = [UUID()]
+        let newIDs: Set<UUID> = [UUID(), UUID(), UUID()]
+        let desiredIDs = existingIDs.union(newIDs)
+        let managedIDs = desiredIDs
+        
+        let plan = AlarmReconciliationPlan(
+            desiredIDs: desiredIDs,
+            existingIDs: existingIDs,
+            managedIDs: managedIDs
+        )
+        
+        XCTAssertEqual(plan.schedule.count, 3, "Should schedule 3 new alarms")
+        XCTAssertEqual(plan.schedule, newIDs, "Schedule set should equal new desired alarms")
+    }
+}
+
 
 #if DIAGNOSTIC_BUILD
 @MainActor

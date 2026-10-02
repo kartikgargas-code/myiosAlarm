@@ -153,6 +153,10 @@ struct ContentView: View {
                 }
                 // Set shared instance for AlarmPlaybackService access
                 AlarmCoordinator.sharedInstance = coordinator
+                // Start Smart Wake in foreground if enabled (idempotent)
+                if smartWakeService.isSmartWakeEnabled {
+                    await smartWakeService.startIfReadyForeground()
+                }
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
@@ -162,6 +166,13 @@ struct ContentView: View {
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
                             await smartWakeService.startIfAlarmArmed(coordinator: coordinator)
+                        }
+                    }
+                } else if newPhase == .inactive {
+                    // Last foreground moment before lock/suspend — ensure Smart Wake is running
+                    if smartWakeService.isSmartWakeEnabled {
+                        Task {
+                            await smartWakeService.startIfReadyForeground()
                         }
                     }
                 }

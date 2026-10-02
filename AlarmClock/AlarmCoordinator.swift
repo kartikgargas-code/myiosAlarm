@@ -226,15 +226,18 @@ final class AlarmCoordinator {
             let alarms = try AlarmManager.shared.alarms
             if alarms.isEmpty {
                 os_log(.info, log: alarmKitStateOSLog, "STATE DUMP: no AlarmKit alarms exist")
+                SmartWakeDebugLog.log("STATE DUMP: no AlarmKit alarms exist")
             }
             for a in alarms {
                 os_log(.info, log: alarmKitStateOSLog,
                        "STATE DUMP: id=%{public}s state=%{public}s",
                        a.id.uuidString,
                        String(describing: a.state))
+                SmartWakeDebugLog.log("STATE DUMP: id=\(a.id.uuidString) state=\(String(describing: a.state))")
             }
         } catch {
             os_log(.error, log: alarmKitStateOSLog, "STATE DUMP FAILED: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("STATE DUMP FAILED: \(error.localizedDescription)")
         }
     }
     private let alarmKitStateOSLog = OSLog(subsystem: "com.example.alarmclock", category: "AlarmKitState")

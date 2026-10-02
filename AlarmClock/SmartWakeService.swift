@@ -4,6 +4,7 @@ import Foundation
 import os.log
 import AlarmKit
 import AlarmClockShared
+import UIKit
 
 /// Background audio session manager for "Smart Wake" feature
 /// Keeps a silent/near-silent loop running overnight so the app stays alive
@@ -254,8 +255,16 @@ final class SmartWakeService {
             startTransitionArming()
         } catch {
             let nsError = error as NSError
-            os_log(.error, log: log, "Failed to start background audio: %{public}s (domain=%{public}s code=%{public}d)", error.localizedDescription, nsError.domain, nsError.code)
-            SmartWakeDebugLog.log("START BACKGROUND ERROR: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
+            let scenePhase = UIApplication.shared.applicationState
+            let sceneDesc: String
+            switch scenePhase {
+            case .active: sceneDesc = "foregroundActive"
+            case .inactive: sceneDesc = "inactive"
+            case .background: sceneDesc = "background"
+            @unknown default: sceneDesc = "unknown"
+            }
+            os_log(.error, log: log, "Failed to start background audio: %{public}s (domain=%{public}s code=%{public}d) scene=%{public}s", error.localizedDescription, nsError.domain, nsError.code, sceneDesc)
+            SmartWakeDebugLog.log("START BACKGROUND ERROR: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) scene=\(sceneDesc)")
         }
     }
 
@@ -265,9 +274,18 @@ final class SmartWakeService {
     
     private func activateAudioSession() async throws {
         let session = AVAudioSession.sharedInstance()
+        let scenePhase = UIApplication.shared.applicationState
+        let sceneDesc: String
+        switch scenePhase {
+        case .active: sceneDesc = "foregroundActive"
+        case .inactive: sceneDesc = "inactive"
+        case .background: sceneDesc = "background"
+        @unknown default: sceneDesc = "unknown"
+        }
         
-        // Set category FIRST without activating (no .mixWithOthers for initial setup)
-        try session.setCategory(.playback, mode: .default, options: [])
+        // Set category with .mixWithOthers to allow activation in background
+        // This is required for Smart Wake to work when app is backgrounded
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         
         // Retry activation up to 3 times
         var attempt = 0
@@ -277,13 +295,13 @@ final class SmartWakeService {
             attempt += 1
             do {
                 try session.setActive(true)
-                os_log(.info, log: log, "Audio session activated successfully (attempt %{public}d)", attempt)
-                SmartWakeDebugLog.log("AUDIO SESSION active (attempt \(attempt))")
+                os_log(.info, log: log, "Audio session activated successfully (attempt %{public}d) scene=%{public}s", attempt, sceneDesc)
+                SmartWakeDebugLog.log("AUDIO SESSION active (attempt \(attempt)) scene=\(sceneDesc)")
                 return // Success
             } catch {
                 lastError = error
                 let nsError = error as NSError
-                SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
+                SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) scene=\(sceneDesc)")
                 if attempt < 3 {
                     try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay before retry
                 }
@@ -293,7 +311,7 @@ final class SmartWakeService {
         // All attempts failed
         if let error = lastError {
             let nsError = error as NSError
-            SmartWakeDebugLog.log("ACTIVATION all attempts failed (domain=\(nsError.domain) code=\(nsError.code))")
+            SmartWakeDebugLog.log("ACTIVATION all attempts failed (domain=\(nsError.domain) code=\(nsError.code)) scene=\(sceneDesc)")
             throw error
         } else {
             throw NSError(domain: "SmartWake", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio session activation failed after 3 attempts"])
