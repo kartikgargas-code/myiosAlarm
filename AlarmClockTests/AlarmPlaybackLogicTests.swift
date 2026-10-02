@@ -1,6 +1,5 @@
 import XCTest
 @testable import AlarmClock
-import AlarmClockShared
 import MediaPlayer
 
 @MainActor
@@ -59,8 +58,8 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     func testDueOccurrenceEvaluationWithDisabledAlarm() throws {
         var engine = AlarmClock.AlarmEngine(calendar: calendar)
-        let alarm1 = AlarmRecord(label: "Alarm 1", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
-        let alarm2 = AlarmRecord(label: "Alarm 2", time: AlarmTime(hour: 8, minute: 0), repeatRule: .daily)
+        let alarm1 = AlarmClock.AlarmRecord(label: "Alarm 1", time: AlarmClock.AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
+        let alarm2 = AlarmClock.AlarmRecord(label: "Alarm 2", time: AlarmClock.AlarmTime(hour: 8, minute: 0), repeatRule: .daily)
         try engine.upsert(alarm1, now: now)
         try engine.upsert(alarm2, now: now)
 
@@ -76,7 +75,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     func testDueOccurrenceFromAppGroupSnapshot() throws {
         // Create a snapshot with alarms
         var engine = AlarmClock.AlarmEngine(calendar: calendar)
-        let alarm = AlarmRecord(label: "Test Alarm", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
+        let alarm = AlarmClock.AlarmRecord(label: "Test Alarm", time: AlarmClock.AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
         try engine.upsert(alarm, now: now)
 
         // Add an adjustment
@@ -88,7 +87,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         let encoder = JSONEncoder.alarmEncoder
         let decoder = JSONDecoder.alarmDecoder
         let data = try encoder.encode(snapshot)
-        let decodedSnapshot = try decoder.decode(AlarmStoreSnapshot.self, from: data)
+        let decodedSnapshot: AlarmClock.AlarmStoreSnapshot = try decoder.decode(AlarmClock.AlarmStoreSnapshot.self, from: data)
 
         // Recreate engine from decoded snapshot
         let decodedEngine = AlarmClock.AlarmEngine(snapshot: decodedSnapshot, calendar: calendar)
@@ -104,9 +103,9 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     func testTrackSequenceResolutionForImportedSound() throws {
         // For imported sounds, the sequence is a single track
         let soundID = UUID()
-        let alarm = AlarmRecord(
+        let alarm = AlarmClock.AlarmRecord(
             label: "Test",
-            time: AlarmTime(hour: 7, minute: 0),
+            time: AlarmClock.AlarmTime(hour: 7, minute: 0),
             repeatRule: .daily,
             sound: .imported(soundID)
         )
@@ -122,9 +121,9 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     func testTrackSequenceResolutionForRandomPlaylist() throws {
         let playlistID = UUID()
-        let alarm = AlarmRecord(
+        let alarm = AlarmClock.AlarmRecord(
             label: "Test",
-            time: AlarmTime(hour: 7, minute: 0),
+            time: AlarmClock.AlarmTime(hour: 7, minute: 0),
             repeatRule: .daily,
             sound: .random(playlistID)
         )
@@ -140,10 +139,10 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     func testTrackSequenceResolutionForPrecomposedPlaylist() throws {
         let playlistID = UUID()
-        let loudness = AlarmLoudness(75)
-        let alarm = AlarmRecord(
+        let loudness = AlarmClock.AlarmLoudness(75)
+        let alarm = AlarmClock.AlarmRecord(
             label: "Test",
-            time: AlarmTime(hour: 7, minute: 0),
+            time: AlarmClock.AlarmTime(hour: 7, minute: 0),
             repeatRule: .daily,
             sound: .precomposedPlaylist(playlistID, loudness)
         )
@@ -160,9 +159,9 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     func testTrackSequenceResolutionFromSnapshotWithOverrides() throws {
         var engine = AlarmClock.AlarmEngine(calendar: calendar)
         let playlistID = UUID()
-        let alarm = AlarmRecord(
+        let alarm = AlarmClock.AlarmRecord(
             label: "Test",
-            time: AlarmTime(hour: 7, minute: 0),
+            time: AlarmClock.AlarmTime(hour: 7, minute: 0),
             repeatRule: .daily,
             sound: .random(playlistID)
         )
@@ -170,7 +169,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
         // Simulate an override with a specific playlist selection
         let occurrence = engine.nextOccurrence(for: alarm.id, now: now)!
-        let override = AlarmOccurrenceOverride(
+        let override = AlarmClock.AlarmOccurrenceOverride(
             offsetMinutes: nil,
             customDate: nil,
             isSkipped: false,
@@ -235,7 +234,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
 
     private func engineWithDailyAlarm() -> AlarmClock.AlarmEngine {
         var engine = AlarmClock.AlarmEngine(calendar: calendar)
-        let alarm = AlarmRecord(label: "Daily Alarm", time: AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
+        let alarm = AlarmClock.AlarmRecord(label: "Daily Alarm", time: AlarmClock.AlarmTime(hour: 7, minute: 0), repeatRule: .daily)
         try! engine.upsert(alarm, now: now)
         return engine
     }
