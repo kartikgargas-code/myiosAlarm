@@ -192,11 +192,13 @@ final class AudioProcessingService {
         let selectedSongDurations = selectedSounds.compactMap { $0.duration }
         let expectedTotalDuration = selectedSongDurations.reduce(0, +)
         
-        // Generate filename for the precomposed playlist
-        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(loudness.percentage)pct.wav"
+        // Generate selection hash for cache key based on actual selected songs
+        let selectionKey = selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
+        let selectionHash = String(abs(selectionKey.hashValue))
+        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct.wav"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
-        // If already exists, return it
+        // If already exists for THIS specific selection, return it
         if fileManager.fileExists(atPath: precomposedURL.path) {
             let preparationEndTime = Date()
             let preparationEntry = PlaylistDiagnostics.PreparationEntry(
@@ -380,6 +382,17 @@ final class AudioProcessingService {
             fileReadable: metadata != nil,
             appearsComplete: metadata.map { abs($0.duration - expectedTotalDuration) < 1.0 } ?? false
         )
+        
+        // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection
+        let patternPrefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
+        let patternSuffix = "_\(loudness.percentage)pct.wav"
+        let allFiles = (try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)) ?? []
+        for file in allFiles {
+            let fileName = file.lastPathComponent
+            if fileName.hasPrefix(patternPrefix) && fileName.hasSuffix(patternSuffix) && fileName != precomposedFileName {
+                try? fileManager.removeItem(at: file)
+            }
+        }
         
         return (precomposedURL, preparationEntry, generatedFileEntry)
     }
