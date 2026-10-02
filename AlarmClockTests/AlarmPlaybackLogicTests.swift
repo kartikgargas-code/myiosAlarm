@@ -254,4 +254,34 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         return [comps.year!, comps.month!, comps.day!, comps.hour!, comps.minute!]
     }
+    
+    // MARK: - Backward Compatibility Tests
+    
+    func testAlarmRecordDecodesWithoutSnoozeDuration() throws {
+        // Create JSON without snoozeDurationMinutes field (simulating old data)
+        let json = """
+        {
+            "id": "12345678-1234-1234-1234-123456789012",
+            "label": "Test Alarm",
+            "time": {"hour": 7, "minute": 0},
+            "repeatRule": "daily",
+            "oneTimeDate": null,
+            "isEnabled": true,
+            "adjustmentStepMinutes": 10,
+            "overrides": {},
+            "sound": "systemDefault",
+            "loudness": 100
+        }
+        """.data(using: .utf8)!
+        
+        let decoder = JSONDecoder.alarmDecoder
+        let alarmRecord = try decoder.decode(AlarmClock.AlarmRecord.self, from: json)
+        
+        XCTAssertEqual(alarmRecord.id.uuidString, "12345678-1234-1234-1234-123456789012")
+        XCTAssertEqual(alarmRecord.label, "Test Alarm")
+        XCTAssertEqual(alarmRecord.time.hour, 7)
+        XCTAssertEqual(alarmRecord.time.minute, 0)
+        XCTAssertEqual(alarmRecord.repeatRule, .daily)
+        XCTAssertEqual(alarmRecord.snoozeDurationMinutes, 10) // Default value
+    }
 }

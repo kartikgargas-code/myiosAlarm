@@ -193,7 +193,7 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
     public var overrides: [String: AlarmOccurrenceOverride]
     public var sound: AlarmSound
     public var loudness: AlarmLoudness
-    public var snoozeDurationMinutes: Int? // New field for snooze duration (5, 10, 15)
+    public var snoozeDurationMinutes: Int?
 
     public init(
         id: UUID = UUID(),
@@ -206,7 +206,7 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         overrides: [String: AlarmOccurrenceOverride] = [:],
         sound: AlarmSound = .systemDefault,
         loudness: AlarmLoudness = .defaultValue,
-        snoozeDurationMinutes: Int? = 10 // Default 10 minutes
+        snoozeDurationMinutes: Int? = 10
     ) {
         self.id = id
         self.label = label
@@ -219,6 +219,25 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         self.sound = sound
         self.loudness = loudness
         self.snoozeDurationMinutes = snoozeDurationMinutes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, time, repeatRule, oneTimeDate, isEnabled, adjustmentStepMinutes, overrides, sound, loudness, snoozeDurationMinutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        time = try container.decode(AlarmTime.self, forKey: .time)
+        repeatRule = try container.decode(AlarmRepeatRule.self, forKey: .repeatRule)
+        oneTimeDate = try container.decodeIfPresent(Date.self, forKey: .oneTimeDate)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        adjustmentStepMinutes = try container.decode(Int.self, forKey: .adjustmentStepMinutes)
+        overrides = try container.decode([String: AlarmOccurrenceOverride].self, forKey: .overrides)
+        sound = try container.decode(AlarmSound.self, forKey: .sound)
+        loudness = try container.decode(AlarmLoudness.self, forKey: .loudness)
+        snoozeDurationMinutes = try container.decodeIfPresent(Int.self, forKey: .snoozeDurationMinutes) ?? 10
     }
 }
 
