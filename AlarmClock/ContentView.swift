@@ -162,20 +162,16 @@ struct ContentView: View {
     
     /// Check if an alarm is currently ringing and record play history
     private func checkForActiveRing() {
-        // Get the currently resolved song name for the active ring
-        if let songName = coordinator.currentRingSongName() {
-            currentRingSongName = songName
+        // Get the currently resolved song name and alarm for the active ring
+        if let result = coordinator.currentRingSongAndAlarm() {
+            currentRingSongName = result.songName
             
-            // Record in play history if we have an active occurrence
-            if let occurrence = coordinator.nextOccurrence,
-               occurrence.effectiveDate <= Date(),
-               let alarm = coordinator.alarms.first(where: { $0.id == occurrence.alarmID }) {
-                coordinator.recordPlayHistory(
-                    songName: songName,
-                    alarmID: alarm.id,
-                    alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
-                )
-            }
+            // Record in play history using the same alarm that was resolved for the song
+            coordinator.recordPlayHistory(
+                songName: result.songName,
+                alarmID: result.alarm.id,
+                alarmLabel: result.alarm.label.isEmpty ? "Alarm" : result.alarm.label
+            )
         } else {
             currentRingSongName = nil
         }

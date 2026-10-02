@@ -115,6 +115,12 @@ final class AlarmCoordinator {
     /// Resolve the display name of the song for the currently/next ringing alarm
     /// Returns nil if no alarm is due or currently ringing
     func currentRingSongName() -> String? {
+        return currentRingSongAndAlarm()?.songName
+    }
+    
+    /// Returns the currently ringing song name AND the matching alarm record
+    /// Uses the same logic as currentRingSongName() but also returns the alarm for history recording
+    func currentRingSongAndAlarm() -> (songName: String, alarm: AlarmRecord)? {
         let currentDate = now()
         guard let occurrence = nextOccurrence else { return nil }
         
@@ -131,7 +137,8 @@ final class AlarmCoordinator {
         // Resolve the sound for this specific occurrence using the same logic as scheduling
         do {
             let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
-            return displayNameForSound(soundToUse, alarm: alarm)
+            let songName = displayNameForSound(soundToUse, alarm: alarm)
+            return (songName: songName, alarm: alarm)
         } catch {
             return nil
         }
