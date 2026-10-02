@@ -126,20 +126,25 @@ final class AlarmCoordinator {
         let currentDate = now()
         
         // Find the alarm that's currently in .alerting state
-        for kitAlarm in kitManager.alarms {
-            guard kitAlarm.state == .alerting else { continue }
+        // Note: AlarmKit's alarms collection access may throw
+        let alertingAlarms: [Alarm]
+        do {
+            alertingAlarms = try kitManager.alarms.filter { $0.state == .alerting }
+        } catch {
+            return nil
+        }
+        
+        for kitAlarm in alertingAlarms {
+            // Use the AlarmKit alarm's ID to match with our scheduled alarms
+            let alarmKitID = kitAlarm.id
             
-            // Extract our alarmID from the metadata
-            guard let metadata = kitAlarm.metadata as? ScheduledOccurrenceMetadata else { continue }
-            let alarmID = metadata.alarmID
+            // Check if this matches one of our scheduled alarms
+            guard let alarm = engine.alarm(id: alarmKitID) else { continue }
             
             // Check if the occurrence is due (within reasonable window)
-            guard let occurrence = engine.nextOccurrence(for: alarmID, now: currentDate) else { continue }
+            guard let occurrence = engine.nextOccurrence(for: alarmKitID, now: currentDate) else { continue }
             guard occurrence.effectiveDate <= currentDate,
                   !occurrence.isAdjusted || occurrence.effectiveDate > occurrence.baseDate else { continue }
-            
-            // Get our alarm record
-            guard let alarm = engine.alarm(id: alarmID) else { continue }
             
             // Resolve the sound for this occurrence
             do {
