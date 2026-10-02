@@ -165,6 +165,43 @@ public enum AlarmRepeatRule: Codable, Equatable, Hashable {
                 .joined(separator: ", ")
         }
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, days
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "never": self = .never
+        case "daily": self = .daily
+        case "weekdays": self = .weekdays
+        case "weekends": self = .weekends
+        case "custom":
+            let days = try container.decode(Set<Int>.self, forKey: .days)
+            self = .custom(days)
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid repeat rule type: \(type)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .never:
+            try container.encode("never", forKey: .type)
+        case .daily:
+            try container.encode("daily", forKey: .type)
+        case .weekdays:
+            try container.encode("weekdays", forKey: .type)
+        case .weekends:
+            try container.encode("weekends", forKey: .type)
+        case .custom(let days):
+            try container.encode("custom", forKey: .type)
+            try container.encode(days, forKey: .days)
+        }
+    }
 }
 
 public struct AlarmTime: Codable, Equatable, Hashable {
