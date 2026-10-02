@@ -188,7 +188,7 @@ final class SmartWakeService {
         }
 
         do {
-            try configureAudioSession()
+            try await configureAudioSession()
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.numberOfLoops = -1 // Loop indefinitely
             newPlayer.volume = 0.001 // Near-silent
@@ -214,8 +214,8 @@ final class SmartWakeService {
         }
     }
 
-    private func configureAudioSession() throws {
-        try activateAudioSession()
+    private func configureAudioSession() async throws {
+        try await activateAudioSession()
     }
     
     private func activateAudioSession() async throws {
