@@ -390,11 +390,27 @@ struct PlaylistEditorView: View {
     @State private var selectedSoundIDs: Set<UUID>
     @State private var showingDeleteConfirmation = false
     @State private var deleteError: String?
+    @State private var sortOption: PlaylistSortOption
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
         self.playlist = playlist
         self.alarms = alarms
         self._selectedSoundIDs = State(initialValue: Set(playlist.selectedSoundIDs))
+        self._sortOption = State(initialValue: playlist.sortOption)
+    }
+
+    private var sortedSounds: [ImportedSound] {
+        let sounds = playlist.soundIDs.compactMap { SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 }) }
+        switch sortOption {
+        case .name:
+            return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .fileSize:
+            return sounds.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
+        case .dateAdded:
+            return sounds.sorted { $0.dateAdded > $1.dateAdded }
+        case .dateModified:
+            return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
+        }
     }
 
     var body: some View {
@@ -405,32 +421,46 @@ struct PlaylistEditorView: View {
                         .font(.headline)
                 }
 
+                Section {
+                    Picker("Play Order", selection: .constant(playlist.playOrder)) {
+                        ForEach(PlaylistPlayOrder.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    Picker("Sort By", selection: $sortOption) {
+                        ForEach(PlaylistSortOption.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
-                    ForEach(playlist.soundIDs, id: \.self) { soundID in
-                        if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(sound.name)
-                                        .font(.body)
-                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                    Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
-                                        .font(.caption)
-                                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                }
-                                Spacer()
-                                if selectedSoundIDs.contains(sound.id) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                                        .font(.title2)
-                                }
+                    ForEach(sortedSounds, id: \.id) { sound in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sound.name)
+                                    .font(.body)
+                                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
+                                    .font(.caption)
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if selectedSoundIDs.contains(sound.id) {
-                                    selectedSoundIDs.remove(sound.id)
-                                } else {
-                                    selectedSoundIDs.insert(sound.id)
-                                }
+                            Spacer()
+                            if selectedSoundIDs.contains(sound.id) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                                    .font(.title2)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if selectedSoundIDs.contains(sound.id) {
+                                selectedSoundIDs.remove(sound.id)
+                            } else {
+                                selectedSoundIDs.insert(sound.id)
                             }
                         }
                     }
@@ -469,6 +499,7 @@ struct PlaylistEditorView: View {
                     Button("Save") {
                         var updatedPlaylist = playlist
                         updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
+                        updatedPlaylist.sortOption = sortOption
                         SoundLibrary.shared.updatePlaylist(updatedPlaylist)
                         dismiss()
                     }

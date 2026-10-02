@@ -115,33 +115,49 @@ final class AlarmCoordinator {
     /// Resolve the display name of the song for the currently/next ringing alarm
     /// Returns nil if no alarm is due or currently ringing
     func currentRingSongName() -> String? {
-        return currentRingSongAndAlarm()?.songName
+        return currentlyRingingAlarm()?.songName
     }
     
-    /// Returns the currently ringing song name AND the matching alarm record
-    /// Uses the same logic as currentRingSongName() but also returns the alarm for history recording
-    func currentRingSongAndAlarm() -> (songName: String, alarm: AlarmRecord)? {
+    /// SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
+    /// Uses AlarmKit's actual .alerting state to determine what's currently ringing.
+    /// Returns (songName, alarmRecord) if an alarm is actively alerting, nil otherwise.
+    func currentlyRingingAlarm() -> (songName: String, alarm: AlarmRecord)? {
+        let kitManager = AlarmManager.shared
         let currentDate = now()
-        guard let occurrence = nextOccurrence else { return nil }
         
-        // Check if this occurrence is currently due (within a reasonable window)
-        // AlarmKit rings at the scheduled time and continues until stopped
-        // We consider it "ringing" if the effective date has passed and it's not skipped
-        guard occurrence.effectiveDate <= currentDate,
-              !occurrence.isAdjusted || occurrence.effectiveDate > occurrence.baseDate else {
-            return nil
+        // Find the alarm that's currently in .alerting state
+        for kitAlarm in kitManager.alarms {
+            guard kitAlarm.state == .alerting else { continue }
+            
+            // Extract our alarmID from the metadata
+            guard let metadata = kitAlarm.metadata as? ScheduledOccurrenceMetadata else { continue }
+            let alarmID = metadata.alarmID
+            
+            // Check if the occurrence is due (within reasonable window)
+            guard let occurrence = engine.nextOccurrence(for: alarmID, now: currentDate) else { continue }
+            guard occurrence.effectiveDate <= currentDate,
+                  !occurrence.isAdjusted || occurrence.effectiveDate > occurrence.baseDate else { continue }
+            
+            // Get our alarm record
+            guard let alarm = engine.alarm(id: alarmID) else { continue }
+            
+            // Resolve the sound for this occurrence
+            do {
+                let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
+                let songName = displayNameForSound(soundToUse, alarm: alarm)
+                return (songName: songName, alarm: alarm)
+            } catch {
+                continue // Try next alerting alarm if any
+            }
         }
         
-        guard let alarm = engine.alarm(id: occurrence.alarmID) else { return nil }
-        
-        // Resolve the sound for this specific occurrence using the same logic as scheduling
-        do {
-            let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
-            let songName = displayNameForSound(soundToUse, alarm: alarm)
-            return (songName: songName, alarm: alarm)
-        } catch {
-            return nil
-        }
+        return nil
+    }
+    
+    /// Deprecated: Use currentlyRingingAlarm() instead
+    @available(*, deprecated, message: "Use currentlyRingingAlarm() instead - single source of truth")
+    func currentRingSongAndAlarm() -> (songName: String, alarm: AlarmRecord)? {
+        return currentlyRingingAlarm()
     }
     
     /// Get display name for a sound
@@ -610,7 +626,7 @@ final class AlarmCoordinator {
             let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
 
             // Create the test alarm configuration
-            _ = alarm.snoozeDurationMinutes ?? 10 // Snooze duration available for future use; .countdown has no associated values
+            let snoozeDuration = alarm.snoozeDurationMinutes ?? 10
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
                 stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
@@ -630,7 +646,8 @@ final class AlarmCoordinator {
             let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
                 schedule: .fixed(testDate),
                 attributes: attributes,
-                sound: alarmKitSound
+                sound: alarmKitSound,
+                countdownDuration: Alarm.CountdownDuration(postAlert: TimeInterval(snoozeDuration * 60))
             )
 
             _ = try await (scheduler as? AlarmKitSchedulingService)?.manager.schedule(id: testID, configuration: configuration)

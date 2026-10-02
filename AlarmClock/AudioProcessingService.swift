@@ -150,7 +150,7 @@ final class AudioProcessingService {
     }
 
     /// Precompose a playlist into a single WAV file for AlarmKit
-    /// Selects multiple random songs, concatenates them with loudness applied
+    /// Selects multiple random songs (or uses sequence order), concatenates them with loudness applied
     /// Returns the URL of the combined file
     func precomposePlaylist(
         playlistID: UUID,
@@ -177,11 +177,18 @@ final class AudioProcessingService {
             throw AudioProcessingError.processingFailed("Playlist is empty")
         }
         
-        // Select random songs (avoiding immediate repeats if we have history)
-        let selectedSoundIDs = selectRandomSongs(
-            from: soundIDs,
-            count: min(songCount, soundIDs.count)
-        )
+        // Select songs based on play order: random or sequence
+        let selectedSoundIDs: [UUID]
+        if playlist.playOrder == .sequence {
+            // Use selected songs in their listed order (up to songCount)
+            selectedSoundIDs = Array(soundIDs.prefix(min(songCount, soundIDs.count)))
+        } else {
+            // Random mode (default behavior)
+            selectedSoundIDs = selectRandomSongs(
+                from: soundIDs,
+                count: min(songCount, soundIDs.count)
+            )
+        }
         
         // Prepare diagnostic data
         let preparationStartTime = Date()

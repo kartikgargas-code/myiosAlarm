@@ -1,30 +1,64 @@
 import Foundation
 
+public enum PlaylistPlayOrder: String, Codable, CaseIterable {
+    case random = "Random"
+    case sequence = "Sequence"
+    
+    public var displayName: String {
+        switch self {
+        case .random: "Random"
+        case .sequence: "Sequence"
+        }
+    }
+}
+
+public enum PlaylistSortOption: String, Codable, CaseIterable {
+    case name = "Name"
+    case fileSize = "File Size"
+    case dateAdded = "Date Added"
+    case dateModified = "Date Modified"
+    
+    public var displayName: String {
+        switch self {
+        case .name: "Name"
+        case .fileSize: "File Size"
+        case .dateAdded: "Date Added"
+        case .dateModified: "Date Modified"
+        }
+    }
+}
+
 public struct Playlist: Identifiable, Codable, Hashable {
     public let id: UUID
     public var name: String
     public var soundIDs: [UUID]
     public var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
     public var dateCreated: Date
-
+    public var playOrder: PlaylistPlayOrder  // New: Random vs Sequence
+    public var sortOption: PlaylistSortOption  // New: How songs are sorted in editor
+    
     public init(
         id: UUID = UUID(),
         name: String,
         soundIDs: [UUID] = [],
         selectedSoundIDs: [UUID]? = nil,
-        dateCreated: Date = Date()
+        dateCreated: Date = Date(),
+        playOrder: PlaylistPlayOrder = .random,
+        sortOption: PlaylistSortOption = .name
     ) {
         self.id = id
         self.name = name
         self.soundIDs = soundIDs
         self.selectedSoundIDs = selectedSoundIDs ?? soundIDs
         self.dateCreated = dateCreated
+        self.playOrder = playOrder
+        self.sortOption = sortOption
     }
-
+    
     private enum CodingKeys: String, CodingKey {
-        case id, name, soundIDs, selectedSoundIDs, dateCreated
+        case id, name, soundIDs, selectedSoundIDs, dateCreated, playOrder, sortOption
     }
-
+    
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -32,6 +66,8 @@ public struct Playlist: Identifiable, Codable, Hashable {
         soundIDs = try container.decode([UUID].self, forKey: .soundIDs)
         selectedSoundIDs = try container.decodeIfPresent([UUID].self, forKey: .selectedSoundIDs) ?? soundIDs
         dateCreated = try container.decode(Date.self, forKey: .dateCreated)
+        playOrder = try container.decodeIfPresent(PlaylistPlayOrder.self, forKey: .playOrder) ?? .random
+        sortOption = try container.decodeIfPresent(PlaylistSortOption.self, forKey: .sortOption) ?? .name
     }
 }
 

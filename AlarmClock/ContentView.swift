@@ -162,8 +162,8 @@ struct ContentView: View {
     
     /// Check if an alarm is currently ringing and record play history
     private func checkForActiveRing() {
-        // Get the currently resolved song name and alarm for the active ring
-        if let result = coordinator.currentRingSongAndAlarm() {
+        // SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
+        if let result = coordinator.currentlyRingingAlarm() {
             currentRingSongName = result.songName
             
             // Record in play history using the same alarm that was resolved for the song

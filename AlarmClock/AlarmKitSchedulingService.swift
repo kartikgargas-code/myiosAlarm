@@ -72,7 +72,7 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     }
 
     private func schedule(_ item: DesiredSystemAlarm) async throws {
-        _ = item.snoozeDurationMinutes ?? 10 // Snooze duration available for future use; .countdown has no associated values
+        let snoozeDuration = item.snoozeDurationMinutes ?? 10
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
             stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
@@ -92,7 +92,8 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
         let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>.alarm(
             schedule: .fixed(item.occurrence.effectiveDate),
             attributes: attributes,
-            sound: item.alarmKitSound
+            sound: item.alarmKitSound,
+            countdownDuration: Alarm.CountdownDuration(postAlert: TimeInterval(snoozeDuration * 60))
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
     }
