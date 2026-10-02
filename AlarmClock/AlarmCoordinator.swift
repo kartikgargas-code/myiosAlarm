@@ -698,6 +698,7 @@ final class AlarmCoordinator {
 
             // Create the test alarm configuration
             let snoozeInterval = TimeInterval((alarm.snoozeDurationMinutes ?? 10) * 60)
+            let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
             let alert = AlarmPresentation.Alert(
                 title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"),
                 stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
@@ -707,8 +708,8 @@ final class AlarmCoordinator {
             let attributes = AlarmAttributes(
                 presentation: AlarmPresentation(
                     alert: alert,
-                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)")),
-                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min")),
+                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
                 ),
                 metadata: ScheduledOccurrenceMetadata(
                     alarmID: alarm.id,

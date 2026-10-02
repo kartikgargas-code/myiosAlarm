@@ -45,6 +45,7 @@ public struct ExtensionAlarmSchedulingService {
     
     private func schedule(_ item: DesiredSystemAlarm) async throws {
         let snoozeInterval = TimeInterval((item.snoozeDurationMinutes ?? 10) * 60)
+        let snoozeMinutes = item.snoozeDurationMinutes ?? 10
         let alert = AlarmPresentation.Alert(
             title: LocalizedStringResource(stringLiteral: item.label),
             stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
@@ -54,8 +55,8 @@ public struct ExtensionAlarmSchedulingService {
         let attributes = AlarmAttributes(
             presentation: AlarmPresentation(
                 alert: alert,
-                countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: item.label)),
-                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min")),
+                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
             ),
             metadata: ScheduledOccurrenceMetadata(
                 alarmID: item.occurrence.alarmID,
