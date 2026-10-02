@@ -166,10 +166,6 @@ public enum AlarmSound: Codable, Equatable, Hashable {
             debugDescription: "Unrecognized AlarmSound encoding"))
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case type, name, id, playlistID, loudness
-    }
-
     private enum LegacyCodingKeys: String, CodingKey {
         case systemDefault, builtIn, imported, random, precomposedPlaylist
     }
