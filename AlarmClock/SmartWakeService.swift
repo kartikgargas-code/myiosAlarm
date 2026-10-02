@@ -1,4 +1,4 @@
-import AVFoundation
+﻿import AVFoundation
 import Observation
 import Foundation
 import os.log
@@ -59,7 +59,7 @@ final class SmartWakeService {
                         await startIfAlarmArmedInternal()
                     }
                     if coordinator == nil {
-                        SmartWakeDebugLog.log("START attempt: NO coordinator after retry — declining")
+                        SmartWakeDebugLog.log("START attempt: NO coordinator after retry â€” declining")
                     }
                 }
             } else {
@@ -139,7 +139,7 @@ final class SmartWakeService {
     private func startIfAlarmArmedInternal() async {
         guard let coordinator = self.coordinator else {
             os_log(.error, log: log, "No coordinator available for Smart Wake")
-            SmartWakeDebugLog.log("START attempt: NO coordinator — cannot check alarms")
+            SmartWakeDebugLog.log("START attempt: NO coordinator â€” cannot check alarms")
             return
         }
 
@@ -157,12 +157,50 @@ final class SmartWakeService {
 
         guard !upcoming.isEmpty else {
             os_log(.info, log: log, "No upcoming alarm within 8h; not starting Smart Wake")
-            SmartWakeDebugLog.log("START attempt: declined — no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
+            SmartWakeDebugLog.log("START attempt: declined â€” no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
             return
         }
 
         let nextFire = upcoming.compactMap { coordinator.occurrence(for: $0.id)?.effectiveDate }.min()?.formatted(date: .omitted, time: .shortened) ?? "?"
         SmartWakeDebugLog.log("START: keeping app alive; next alarm \(nextFire); upcoming count \(upcoming.count)")
+        await startBackgroundAudio()
+    }
+
+    /// Public foreground-ready entry: same guard as startIfAlarmArmedInternal but
+    /// safe to call from foreground at any time (returns immediately if already running).
+    /// Called from ContentView when coordinator becomes available or app becomes inactive.
+    func startIfReadyForeground() async {
+        // Same guard as startIfAlarmArmedInternal, but safe to call from foreground
+        guard let coordinator = self.coordinator else {
+            SmartWakeDebugLog.log("FOREGROUND START attempt: NO coordinator â€” cannot check alarms")
+            return
+        }
+        
+        // Already running?
+        if isRunning {
+            SmartWakeDebugLog.log("FOREGROUND START: silent loop already running")
+            return
+        }
+        
+        let now = Date()
+        let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
+        
+        // Check if any alarm is armed and due soon
+        let upcoming = coordinator.alarms.filter { alarm in
+            guard alarm.isEnabled else { return false }
+            if let occurrence = coordinator.occurrence(for: alarm.id) {
+                return occurrence.effectiveDate <= soon && occurrence.effectiveDate > now
+            }
+            return false
+        }
+        
+        guard !upcoming.isEmpty else {
+            SmartWakeDebugLog.log("FOREGROUND START attempt: declined â€” no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
+            return
+        }
+        
+        let nextFire = upcoming.compactMap { coordinator.occurrence(for: $0.id)?.effectiveDate }.min()?.formatted(date: .omitted, time: .shortened) ?? "?"
+        SmartWakeDebugLog.log("FOREGROUND START: silent loop active before backgrounding; next alarm \(nextFire); upcoming count \(upcoming.count)")
         await startBackgroundAudio()
     }
 
@@ -183,7 +221,13 @@ final class SmartWakeService {
         
         guard fileManager.fileExists(atPath: url.path) else {
             os_log(.error, log: log, "Silent loop file not ready after waiting")
-            SmartWakeDebugLog.log("START BACKGROUND: silent loop file not ready after 5s wait — giving up")
+            SmartWakeDebugLog.log("START BACKGROUND: silent loop file not ready after 5s wait â€” giving up")
+            return
+        }
+
+        // Early exit if already running (foreground start succeeded, then background transition)
+        if isRunning {
+            SmartWakeDebugLog.log("FOREGROUND: loop already running, nothing to do")
             return
         }
 
@@ -209,8 +253,9 @@ final class SmartWakeService {
             // Start transition arming task
             startTransitionArming()
         } catch {
-            os_log(.error, log: log, "Failed to start background audio: %{public}s", error.localizedDescription)
-            SmartWakeDebugLog.log("START BACKGROUND ERROR: \(error.localizedDescription)")
+            let nsError = error as NSError
+            os_log(.error, log: log, "Failed to start background audio: %{public}s (domain=%{public}s code=%{public}d)", error.localizedDescription, nsError.domain, nsError.code)
+            SmartWakeDebugLog.log("START BACKGROUND ERROR: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
         }
     }
 
@@ -237,7 +282,8 @@ final class SmartWakeService {
                 return // Success
             } catch {
                 lastError = error
-                SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription)")
+                let nsError = error as NSError
+                SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
                 if attempt < 3 {
                     try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay before retry
                 }
@@ -246,6 +292,8 @@ final class SmartWakeService {
         
         // All attempts failed
         if let error = lastError {
+            let nsError = error as NSError
+            SmartWakeDebugLog.log("ACTIVATION all attempts failed (domain=\(nsError.domain) code=\(nsError.code))")
             throw error
         } else {
             throw NSError(domain: "SmartWake", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio session activation failed after 3 attempts"])
@@ -299,7 +347,7 @@ final class SmartWakeService {
             try? AVAudioSession.sharedInstance().setActive(true)
             player?.play()
         } else {
-            // Interruption ended without resume — re-arm check in case we need to restart
+            // Interruption ended without resume â€” re-arm check in case we need to restart
             if isSmartWakeEnabled {
                 Task { 
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -500,7 +548,7 @@ final class SmartWakeService {
                 return
             }
             
-            // Verify it's still the right time (±5s tolerance)
+            // Verify it's still the right time (Â±5s tolerance)
             let actualNow = Date()
             let tolerance: TimeInterval = 5.0
             if abs(actualNow.timeIntervalSince(fireDate)) > tolerance {
@@ -529,13 +577,13 @@ final class SmartWakeService {
                 if isPlaylistSound(soundToUse) {
                     // Takeover: silence AlarmKit's alarm sound first, then play the
                     // playlist in-app. If AlarmKit refuses to cancel (the alarm keeps
-                    // ringing), do NOT start in-app playback — double audio is worse
+                    // ringing), do NOT start in-app playback â€” double audio is worse
                     // than the system alarm sound alone.
                     SmartWakeDebugLog.log("TAKEOVER: playlist sound for \(occurrenceKey), silencing AlarmKit first")
                     let silenced = await silenceAlarmKitAlarm(for: alarm)
                     guard silenced else {
                         os_log(.info, log: log, "AlarmKit cancel failed; keeping system alarm sound only")
-                        SmartWakeDebugLog.log("TAKEOVER STOPPED: AlarmKit cancel failed — system alarm keeps ringing, no in-app playback")
+                        SmartWakeDebugLog.log("TAKEOVER STOPPED: AlarmKit cancel failed â€” system alarm keeps ringing, no in-app playback")
                         return
                     }
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
@@ -600,7 +648,7 @@ final class SmartWakeService {
         }
         guard !alerting.isEmpty else {
             os_log(.info, log: log, "No alerting AlarmKit alarm appeared within 3s; skipping takeover")
-            SmartWakeDebugLog.log("SILENCE: no .alerting alarm found within 3s of wake — takeover skipped (system sound may start later)")
+            SmartWakeDebugLog.log("SILENCE: no .alerting alarm found within 3s of wake â€” takeover skipped (system sound may start later)")
             return false
         }
         var allCancelled = true
@@ -609,7 +657,7 @@ final class SmartWakeService {
                 // cancel() is the API proven in this codebase (all reconcile
                 // paths); on an alerting alarm it removes it and silences the
                 // sound. AlarmManager.stop(id:) is documented but unverified
-                // here — only switch if cancel fails on device.
+                // here â€” only switch if cancel fails on device.
                 try AlarmManager.shared.cancel(id: kitAlarm.id)
                 SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
             } catch {
