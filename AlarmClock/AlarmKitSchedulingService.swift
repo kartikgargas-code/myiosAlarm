@@ -1,4 +1,4 @@
-import AlarmKit
+﻿import AlarmKit
 import ActivityKit
 import Foundation
 import SwiftUI
@@ -85,7 +85,7 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
             presentation: AlarmPresentation(
                 alert: alert,
                 countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: item.label)),
-                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label))
+                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
             ),
             metadata: ScheduledOccurrenceMetadata(
                 alarmID: item.occurrence.alarmID,

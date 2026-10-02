@@ -1,4 +1,4 @@
-import AlarmKit
+﻿import AlarmKit
 import ActivityKit
 import Foundation
 import AlarmClockShared
@@ -55,7 +55,7 @@ public struct ExtensionAlarmSchedulingService {
             presentation: AlarmPresentation(
                 alert: alert,
                 countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: item.label)),
-                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label))
+                paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: item.label), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
             ),
             metadata: ScheduledOccurrenceMetadata(
                 alarmID: item.occurrence.alarmID,

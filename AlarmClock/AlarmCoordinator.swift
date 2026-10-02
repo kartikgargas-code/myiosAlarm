@@ -1,4 +1,4 @@
-import AlarmKit
+﻿import AlarmKit
 import ActivityKit
 import Foundation
 import Observation
@@ -119,7 +119,7 @@ final class AlarmCoordinator {
         return currentlyRingingAlarm()?.songName
     }
     
-    /// SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
+    /// SINGLE SOURCE OF TRUTH for ring detection â€” do not add a second check elsewhere.
     /// Uses AlarmKit's actual .alerting state to determine what's currently ringing.
     /// Returns (songName, alarmRecord) if an alarm is actively alerting, nil otherwise.
     func currentlyRingingAlarm() -> (songName: String, alarm: AlarmRecord)? {
@@ -169,7 +169,7 @@ final class AlarmCoordinator {
     }
 
     /// Resolve an AlarmKit alarm ID to the app's AlarmRecord.
-    /// AlarmKit echoes the UUID passed to schedule(id:configuration:) — for managed
+    /// AlarmKit echoes the UUID passed to schedule(id:configuration:) â€” for managed
     /// alarms that is SystemScheduleID, for test alarms the caller-provided UUID.
     private func matchAppAlarm(forKitAlarmID kitID: UUID) -> AlarmRecord? {
         // Direct record id (test alarms).
@@ -339,7 +339,7 @@ final class AlarmCoordinator {
     }
 
     /// Stable per-selection hash so schedule identity changes when the chosen
-    /// song set changes — reconcile then reschedules with the fresh precomposed file.
+    /// song set changes â€” reconcile then reschedules with the fresh precomposed file.
     private func desiredSelectionHash(for sound: AlarmSound) -> String? {
         if case .precomposedPlaylist(let playlistID, _) = sound,
            let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
@@ -685,7 +685,7 @@ final class AlarmCoordinator {
                     // Use precomposed playlist for test alarm too
                     soundToUse = .precomposedPlaylist(playlistID, alarm.loudness)
                     if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == playlist.soundIDs.first! }) {
-                        displaySound = "\(sound.name) (from \(playlist.name) — precomposed)"
+                        displaySound = "\(sound.name) (from \(playlist.name) â€” precomposed)"
                     }
                 } else {
                     soundToUse = .systemDefault
@@ -708,7 +708,7 @@ final class AlarmCoordinator {
                 presentation: AlarmPresentation(
                     alert: alert,
                     countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)")),
-                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"))
+                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "[TEST] \(alarm.label.isEmpty ? "Test Alarm" : alarm.label)"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
                 ),
                 metadata: ScheduledOccurrenceMetadata(
                     alarmID: alarm.id,
