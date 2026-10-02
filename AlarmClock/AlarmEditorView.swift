@@ -37,7 +37,9 @@ struct AlarmEditorView: View {
         self.onSave = onSave
         self.onTestAlarm = onTestAlarm
         let calendar = Calendar.autoupdatingCurrent
-        let time = existingAlarm?.time ?? AlarmTime(hour: 7, minute: 0)
+        let now = Date.now
+        let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
+        let time = existingAlarm?.time ?? AlarmTime(hour: nowComponents.hour ?? 7, minute: nowComponents.minute ?? 0)
         let selectedTime = calendar.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
         _label = State(initialValue: existingAlarm?.label ?? "")
         _selectedTime = State(initialValue: selectedTime)
