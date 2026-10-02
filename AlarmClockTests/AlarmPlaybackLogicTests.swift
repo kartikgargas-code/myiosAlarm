@@ -259,7 +259,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
     
     func testAlarmRecordDecodesWithoutSnoozeDuration() throws {
         // Create JSON without snoozeDurationMinutes field (simulating old data)
-        // Note: repeatRule now uses custom encoding with "type" field
+        // Note: repeatRule and sound now use custom encoding with "type" field
         let json = """
         {
             "id": "12345678-1234-1234-1234-123456789012",
@@ -270,7 +270,7 @@ final class AlarmPlaybackLogicTests: XCTestCase {
             "isEnabled": true,
             "adjustmentStepMinutes": 10,
             "overrides": {},
-            "sound": "systemDefault",
+            "sound": {"type": "systemDefault"},
             "loudness": 100
         }
         """.data(using: .utf8)!

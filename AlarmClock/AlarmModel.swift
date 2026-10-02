@@ -101,6 +101,54 @@ public enum AlarmSound: Codable, Equatable, Hashable {
         case .precomposedPlaylist(let playlistID, _): "Precomposed — Playlist \(playlistID.uuidString.prefix(8))"
         }
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, name, id, playlistID, loudness
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "systemDefault": self = .systemDefault
+        case "builtin":
+            let name = try container.decode(String.self, forKey: .name)
+            self = .builtIn(name)
+        case "imported":
+            let id = try container.decode(UUID.self, forKey: .id)
+            self = .imported(id)
+        case "random":
+            let playlistID = try container.decode(UUID.self, forKey: .playlistID)
+            self = .random(playlistID)
+        case "precomposed":
+            let playlistID = try container.decode(UUID.self, forKey: .playlistID)
+            let loudness = try container.decode(AlarmLoudness.self, forKey: .loudness)
+            self = .precomposedPlaylist(playlistID, loudness)
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Invalid alarm sound type: \(type)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .systemDefault:
+            try container.encode("systemDefault", forKey: .type)
+        case .builtIn(let name):
+            try container.encode("builtin", forKey: .type)
+            try container.encode(name, forKey: .name)
+        case .imported(let id):
+            try container.encode("imported", forKey: .type)
+            try container.encode(id, forKey: .id)
+        case .random(let playlistID):
+            try container.encode("random", forKey: .type)
+            try container.encode(playlistID, forKey: .playlistID)
+        case .precomposedPlaylist(let playlistID, let loudness):
+            try container.encode("precomposed", forKey: .type)
+            try container.encode(playlistID, forKey: .playlistID)
+            try container.encode(loudness, forKey: .loudness)
+        }
+    }
 }
 
 public struct AlarmLoudness: Codable, Equatable, Hashable {
