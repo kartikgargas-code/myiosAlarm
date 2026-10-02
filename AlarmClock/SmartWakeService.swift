@@ -215,9 +215,41 @@ final class SmartWakeService {
     }
 
     private func configureAudioSession() throws {
+        try activateAudioSession()
+    }
+    
+    private func activateAudioSession() async throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try session.setActive(true)
+        
+        // Set category FIRST without activating (no .mixWithOthers for initial setup)
+        try session.setCategory(.playback, mode: .default, options: [])
+        
+        // Retry activation up to 3 times
+        var attempt = 0
+        var lastError: Error?
+        
+        while attempt < 3 {
+            attempt += 1
+            do {
+                try session.setActive(true)
+                os_log(.info, log: log, "Audio session activated successfully (attempt %{public}d)", attempt)
+                SmartWakeDebugLog.log("AUDIO SESSION active (attempt \(attempt))")
+                return // Success
+            } catch {
+                lastError = error
+                SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription)")
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay before retry
+                }
+            }
+        }
+        
+        // All attempts failed
+        if let error = lastError {
+            throw error
+        } else {
+            throw NSError(domain: "SmartWake", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio session activation failed after 3 attempts"])
+        }
     }
 
     /// Stop the background audio session
