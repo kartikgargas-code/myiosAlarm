@@ -81,7 +81,7 @@ final class AlarmCoordinator {
     }
 
     func save(_ alarm: AlarmRecord) async {
-        await commit { try $0.upsert(alarm, now: now()) }
+        await commit { try $0.upsert(alarm, now: self.now()) }
     }
 
     func delete(id: UUID) async {
@@ -93,23 +93,23 @@ final class AlarmCoordinator {
     }
 
     func adjustNext(id: UUID, minutes: Int) async {
-        await commit { try $0.adjustNext(id: id, byMinutes: minutes, now: now()) }
+        await commit { try $0.adjustNext(id: id, byMinutes: minutes, now: self.now()) }
     }
 
     func setNextTime(id: UUID, date: Date) async {
-        await commit { try $0.setNextTime(id: id, date: date, now: now()) }
+        await commit { try $0.setNextTime(id: id, date: date, now: self.now()) }
     }
 
     func resetNext(id: UUID) async {
-        await commit { try $0.resetNext(id: id, now: now()) }
+        await commit { try $0.resetNext(id: id, now: self.now()) }
     }
 
     func skipNext(id: UUID) async {
-        await commit { try $0.skipNext(id: id, now: now()) }
+        await commit { try $0.skipNext(id: id, now: self.now()) }
     }
 
     func undoSkip(id: UUID) async {
-        await commit { try $0.undoSkip(id: id, now: now()) }
+        await commit { try $0.undoSkip(id: id, now: self.now()) }
     }
 
     func occurrence(for alarmID: UUID) -> AlarmOccurrence? {
@@ -311,7 +311,7 @@ final class AlarmCoordinator {
             let (desired, soundWarnings) = await desiredSystemAlarms(from: candidate)
             if !soundWarnings.isEmpty {
                 lastWarnings = soundWarnings
-                warningLog("Sound resolution issues (alarm still saved, affected system alarms skipped): \(soundWarnings.joined(separator: " | "))")
+                os_log(.info, log: warningLog, "Sound resolution issues (alarm still saved, affected system alarms skipped): %{public}s", soundWarnings.joined(separator: " | "))
             } else {
                 lastWarnings = []
             }
@@ -348,7 +348,7 @@ final class AlarmCoordinator {
             let data = try JSONEncoder.alarmEncoder.encode(snapshot)
             try data.write(to: url, options: .atomic)
         } catch {
-            warningLog("Failed to mirror alarms.json to App Group: \(error.localizedDescription)")
+            os_log(.error, log: warningLog, "Failed to mirror alarms.json to App Group: %{public}s", error.localizedDescription)
         }
     }
 
