@@ -65,7 +65,7 @@ public struct ExtensionAlarmSchedulingService {
             schedule: .fixed(item.occurrence.effectiveDate),
             attributes: attributes,
             sound: item.alarmKitSound,
-            countdownDuration: Alarm.CountdownDuration(postAlert: TimeInterval(snoozeDuration * 60))
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60))
         )
         _ = try await manager.schedule(id: item.id, configuration: configuration)
     }

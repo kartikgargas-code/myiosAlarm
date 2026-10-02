@@ -647,7 +647,7 @@ final class AlarmCoordinator {
                 schedule: .fixed(testDate),
                 attributes: attributes,
                 sound: alarmKitSound,
-                countdownDuration: Alarm.CountdownDuration(postAlert: TimeInterval(snoozeDuration * 60))
+                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeDuration * 60))
             )
 
             _ = try await (scheduler as? AlarmKitSchedulingService)?.manager.schedule(id: testID, configuration: configuration)
