@@ -113,6 +113,7 @@ targets:
       - path: AlarmClock/AlarmScheduleCalculator.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
       - path: AlarmClock/LiveActivityIntentProtocol.swift
+      - path: AlarmClock/AppGroupResolver.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:

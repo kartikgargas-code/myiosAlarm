@@ -13,8 +13,11 @@ final class AlarmCoordinator {
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
     private(set) var lastError: String?
-    private(set) var isSynchronizing = false
-    private var commitError: String?
+    /// Non-fatal per-alarm issues from the last commit (e.g. one alarm's sound
+    /// failed to precompose). The alarm list still saved; affected system
+    /// alarms were skipped this round.
+    private(set) var lastWarnings: [String] = []
+    private let warningLog = OSLog(subsystem: "com.example.alarmclock", category: "CommitWarnings")
     // Store the engine modified by desiredSystemAlarms to persist random sound selections
     private var desiredSystemAlarmsEngine: AlarmEngine?
 
@@ -212,6 +215,30 @@ final class AlarmCoordinator {
     @MainActor
     private func ringDetectionLog(_ message: String) {}
     #endif
+
+    /// Black-box recorder: prints every AlarmKit alarm's state to the log so a
+    /// device session (Console.app / sysdiagnose, subsystem com.example.alarmclock,
+    /// category AlarmKitState) shows what the system ACTUALLY did — e.g. after a
+    /// snooze tap: is the alarm .alerting, .countdown, .paused? Intentionally NOT
+    /// gated on DEBUG: release builds must record too.
+    func logAlarmKitState() {
+        do {
+            let alarms = try AlarmManager.shared.alarms
+            if alarms.isEmpty {
+                os_log(.info, log: alarmKitStateOSLog, "STATE DUMP: no AlarmKit alarms exist")
+            }
+            for a in alarms {
+                os_log(.info, log: alarmKitStateOSLog,
+                       "STATE DUMP: id=%{public}s state=%{public}s",
+                       a.id.uuidString,
+                       String(describing: a.state))
+            }
+        } catch {
+            os_log(.error, log: alarmKitStateOSLog, "STATE DUMP FAILED: %{public}s", error.localizedDescription)
+        }
+    }
+    private let alarmKitStateOSLog = OSLog(subsystem: "com.example.alarmclock", category: "AlarmKitState")
+
     
     /// Deprecated: Use currentlyRingingAlarm() instead
     @available(*, deprecated, message: "Use currentlyRingingAlarm() instead - single source of truth")
@@ -262,20 +289,31 @@ final class AlarmCoordinator {
         }
     }
 
-    private func commit(_ mutation: (inout AlarmEngine) throws -> Void) async {
-        guard !isSynchronizing else { return }
-        isSynchronizing = true
-        defer { isSynchronizing = false }
+    /// Commits are serialized: a mutation arriving while another commit runs is
+    /// queued and applied afterwards, never silently dropped.
+    private var commitQueue: Task<Void, Never>?
 
+    func commit(_ mutation: @escaping (inout AlarmEngine) throws -> Void) async {
+        let previous = commitQueue
+        let task = Task { @MainActor in
+            await previous?.value
+            await performCommit(mutation)
+        }
+        commitQueue = task
+        await task.value
+    }
+
+    private func performCommit(_ mutation: (inout AlarmEngine) throws -> Void) async {
         var candidate = engine
-        commitError = nil
         do {
             try mutation(&candidate)
             candidate.pruneExpiredOverrides(now: now())
-            let desired = await desiredSystemAlarms(from: candidate)
-            if let desiredError = commitError {
-                lastError = desiredError
-                return
+            let (desired, soundWarnings) = await desiredSystemAlarms(from: candidate)
+            if !soundWarnings.isEmpty {
+                lastWarnings = soundWarnings
+                warningLog("Sound resolution issues (alarm still saved, affected system alarms skipped): \(soundWarnings.joined(separator: " | "))")
+            } else {
+                lastWarnings = []
             }
             // Use the engine modified by desiredSystemAlarms to persist random sound selections
             if let modifiedEngine = desiredSystemAlarmsEngine {
@@ -288,6 +326,7 @@ final class AlarmCoordinator {
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
             try persistence.save(candidate.snapshot)
+            writeAlarmsToAppGroup(candidate.snapshot)
             engine = candidate
             lastError = nil
             publish()
@@ -296,10 +335,31 @@ final class AlarmCoordinator {
         }
     }
 
-    private func desiredSystemAlarms(from engine: AlarmEngine) async -> [DesiredSystemAlarm] {
+    /// Mirror alarms.json into the shared App Group so Smart Wake (and the
+    /// widget/extension world) can read current alarm state. Best-effort:
+    /// a missing container (no entitlements / unresolved group) just skips it.
+    private func writeAlarmsToAppGroup(_ snapshot: AlarmStoreSnapshot) {
+        guard let groupID = AppGroupResolver.resolve(),
+              let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
+            return
+        }
+        do {
+            let url = containerURL.appendingPathComponent("alarms.json")
+            let data = try JSONEncoder.alarmEncoder.encode(snapshot)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            warningLog("Failed to mirror alarms.json to App Group: \(error.localizedDescription)")
+        }
+    }
+
+    /// Per-alarm sound isolation: a failure resolving one alarm's sound becomes a
+    /// warning for that alarm only; the remaining alarms still get scheduled and
+    /// the commit succeeds. Returns (desired system alarms, warnings).
+    private func desiredSystemAlarms(from engine: AlarmEngine) async -> ([DesiredSystemAlarm], [String]) {
         var mutableEngine = engine
         let occurrences = mutableEngine.desiredOccurrences(now: now())
         var results: [DesiredSystemAlarm] = []
+        var warnings: [String] = []
         
         for occurrence in occurrences {
             guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
@@ -330,12 +390,12 @@ final class AlarmCoordinator {
                     snoozeDurationMinutes: alarm.snoozeDurationMinutes
                 ))
             } catch {
-                commitError = error.localizedDescription
+                warnings.append("\(label): \(error.localizedDescription)")
             }
         }
         // Store the modified engine for persistence
         desiredSystemAlarmsEngine = mutableEngine
-        return results
+        return (results, warnings)
     }
 
     /// Stable per-selection hash so schedule identity changes when the chosen

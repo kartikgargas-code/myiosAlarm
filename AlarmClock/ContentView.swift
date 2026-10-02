@@ -165,6 +165,12 @@ struct ContentView: View {
     /// (one entry per fully completed song); recording here produced duplicates
     /// and only fired on foreground transitions.
     private func checkForActiveRing() {
+        // Black-box recorder: dump full AlarmKit state every time the app comes
+        // to foreground. This is how we diagnose the snooze display mystery —
+        // after a snooze tap, reopening the app prints the alarm's true state
+        // (alerting / countdown / paused) and countdown dates.
+        coordinator.logAlarmKitState()
+
         // SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
         if let result = coordinator.currentlyRingingAlarm() {
             currentRingSongName = result.songName
@@ -556,9 +562,9 @@ struct ContentView: View {
 
     private func readLiveActivityDebugLog() -> String {
         let fileManager = FileManager.default
-        guard let appGroupURL = fileManager.containerURL(
-            forSecurityApplicationGroupIdentifier: "group.com.example.alarmclock"
-        ) else { return "App Group not available" }
+        guard let appGroupURL = AppGroupResolver.resolve().flatMap({
+            fileManager.containerURL(forSecurityApplicationGroupIdentifier: $0)
+        }) else { return "App Group not available" }
         
         let logURL = appGroupURL.appendingPathComponent("live_activity_debug.log")
         

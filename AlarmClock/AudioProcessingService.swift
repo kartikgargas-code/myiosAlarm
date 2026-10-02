@@ -251,104 +251,118 @@ final class AudioProcessingService {
             return (precomposedURL, preparationEntry, generatedFileEntry)
         }
         
-        // Concatenate songs into single file
-        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
-            var combinedBuffer: AVAudioPCMBuffer?
-            var outputFormat: AVAudioFormat?
-            
-            // Read and concatenate each song
+        // Concatenate songs into a single WAV by streaming each song's frames
+        // to disk as they are read. Holding every song's PCM in one buffer
+        // peaked at hundreds of MB and got the app killed (jetsam) mid-commit.
+        // Memory stays at a few chunk buffers regardless of song count/length.
+        // Songs are converted to the output format (44.1k stereo) with
+        // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
+        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] -> URL in
+            let outputSettings = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 44_100.0,
+                AVNumberOfChannelsKey: 2,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false
+            ] as [String: Any]
+
+            let outputFile = try AVAudioFile(forWriting: precomposedURL, settings: outputSettings)
+            let outputFormat = outputFile.processingFormat
+            let gain = Float(loudness.gainFactor)
+            var appendedSongs = 0
+
+            func writeConverted(_ buffer: AVAudioPCMBuffer) throws {
+                if gain != 1.0 {
+                    let channels = Int(buffer.format.channelCount)
+                    let frames = Int(buffer.frameLength)
+                    for channel in 0..<channels {
+                        guard let channelData = buffer.floatChannelData?[channel] else { continue }
+                        for frame in 0..<frames {
+                            channelData[frame] *= gain
+                        }
+                    }
+                }
+                try outputFile.write(from: buffer)
+            }
+
             for soundID in selectedSoundIDs {
                 guard let sound = importedSounds.first(where: { $0.id == soundID }),
                       let soundURL = sound.localURL(soundsDirectory: soundsDir),
                       fileManager.fileExists(atPath: soundURL.path) else {
                     continue
                 }
-                
-                let audioFile = try AVAudioFile(forReading: soundURL)
-                let format = audioFile.processingFormat
-                let frameCount = UInt32(audioFile.length)
-                
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-                    throw AudioProcessingError.bufferCreationFailed
-                }
-                
-                try audioFile.read(into: buffer)
-                
-                // Apply gain
-                let gain = Float(loudness.gainFactor)
-                let channels = Int(format.channelCount)
-                let frames = Int(buffer.frameLength)
-                
-                for channel in 0..<channels {
-                    guard let channelData = buffer.floatChannelData?[channel] else { continue }
-                    for frame in 0..<frames {
-                        channelData[frame] *= gain
-                    }
-                }
-                
-                // Initialize combined buffer with first song's format
-                if combinedBuffer == nil {
-                    outputFormat = format
-                    
-                    // Calculate total frames
-                    var totalFrames = 0
-                    for id in selectedSoundIDs {
-                        guard let sound = importedSounds.first(where: { $0.id == id }),
-                              let soundURL = sound.localURL(soundsDirectory: soundsDir),
-                              fileManager.fileExists(atPath: soundURL.path) else { continue }
-                        let audioFile = try AVAudioFile(forReading: soundURL)
-                        totalFrames += Int(audioFile.length)
-                    }
-                    
-                    guard let outputFormat = outputFormat else {
-                        throw AudioProcessingError.processingFailed("No output format")
-                    }
-                    
-                    guard let newBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: AVAudioFrameCount(totalFrames)) else {
-                        throw AudioProcessingError.bufferCreationFailed
-                    }
-                    combinedBuffer = newBuffer
-                }
-                
-                // Append to combined buffer
-                if let combined = combinedBuffer {
-                    let srcFrames = Int(buffer.frameLength)
-                    let dstFrames = Int(combined.frameLength)
-                    
-                    for channel in 0..<channels {
-                        guard let srcData = buffer.floatChannelData?[channel],
-                              let dstData = combined.floatChannelData?[channel] else { continue }
-                        
-                        for frame in 0..<srcFrames {
-                            if dstFrames + frame < Int(combined.frameCapacity) {
-                                dstData[dstFrames + frame] = srcData[frame]
+
+                do {
+                    let audioFile = try AVAudioFile(forReading: soundURL)
+                    let sourceFormat = audioFile.processingFormat
+
+                    if sourceFormat == outputFormat {
+                        // Fast path: same format, straight chunk copy.
+                        let chunkFrames: AVAudioFrameCount = 262_144
+                        guard let chunk = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: chunkFrames) else { continue }
+                        while true {
+                            try audioFile.read(into: chunk, frameCount: chunkFrames)
+                            if chunk.frameLength == 0 { break }
+                            try writeConverted(chunk)
+                            if chunk.frameLength < chunkFrames { break }
+                        }
+                    } else {
+                        // Convert to the output format so mixed sample rates and
+                        // channel counts play at correct speed.
+                        let converter = try AVAudioConverter(from: sourceFormat, to: outputFormat)
+                        let srcChunkFrames: AVAudioFrameCount = 262_144
+                        guard let srcChunk = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: srcChunkFrames) else { continue }
+                        var reachedEOF = false
+
+                        let inputBlock: AVAudioConverterInputBlock = { _, status in
+                            if reachedEOF {
+                                status.pointee = .endOfStream
+                                return nil
                             }
+                            do {
+                                try audioFile.read(into: srcChunk, frameCount: srcChunkFrames)
+                            } catch {
+                                reachedEOF = true
+                                status.pointee = .noDataNow
+                                return nil
+                            }
+                            if srcChunk.frameLength == 0 {
+                                reachedEOF = true
+                                status.pointee = .endOfStream
+                                return nil
+                            }
+                            status.pointee = .haveData
+                            return srcChunk
+                        }
+
+                        while !reachedEOF {
+                            let dstCapacity: AVAudioFrameCount = 262_144
+                            guard let dstChunk = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: dstCapacity) else { break }
+                            var convertError: NSError?
+                            let status = converter.convert(to: dstChunk, error: &convertError, withInputFrom: inputBlock)
+                            if status == .error { break }
+                            if dstChunk.frameLength > 0 {
+                                try writeConverted(dstChunk)
+                            }
+                            if status == .endOfStream { break }
+                            if dstChunk.frameLength == 0 && status == .haveData { continue }
+                            if dstChunk.frameLength < dstCapacity && status == .haveData { continue }
                         }
                     }
-                    
-                    combined.frameLength += AVAudioFrameCount(srcFrames)
+                    appendedSongs += 1
+                } catch {
+                    // Skip unreadable/corrupt song instead of failing the whole playlist.
+                    continue
                 }
             }
-            
-            guard let combinedBuffer = combinedBuffer,
-                  let outputFormat = outputFormat else {
-                throw AudioProcessingError.processingFailed("No audio data to combine")
+
+            guard appendedSongs > 0 else {
+                try? fileManager.removeItem(at: precomposedURL)
+                throw AudioProcessingError.processingFailed("No songs in playlist could be read")
             }
-            
-            // Write combined file as WAV
-            let outputSettings = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: outputFormat.sampleRate,
-                AVNumberOfChannelsKey: outputFormat.channelCount,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsNonInterleaved: false
-            ] as [String: Any]
-            
-            let outputFile = try AVAudioFile(forWriting: precomposedURL, settings: outputSettings)
-            try outputFile.write(from: combinedBuffer)
-            
+
             return precomposedURL
         }.value
         

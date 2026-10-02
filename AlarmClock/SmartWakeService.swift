@@ -328,13 +328,14 @@ final class SmartWakeService {
         }
         
         // Read fresh snapshot from App Group
-        let appGroupIdentifier = "group.com.example.alarmclock"
-        #if DIAGNOSTIC_BUILD
-        let appGroupIdentifier = "group.com.example.alarmclock.diagnostic"
-        #endif
-        
-        guard let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+        // AltStore resigns the group (adds team suffix); resolve at runtime.
+        guard let appGroupIdentifier = AppGroupResolver.resolve() else {
             os_log(.error, log: log, "App Group container not available")
+            return
+        }
+
+        guard let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            os_log(.error, log: log, "App Group container not available for %{public}s", appGroupIdentifier)
             return
         }
         
@@ -445,32 +446,26 @@ final class SmartWakeService {
                 let (soundToUse, _) = try resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine)
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
-                if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse,
-                   case .random(_) = alarm.sound {
-                    // Both resolve to precomposed playlist - start playlist playback
-                    os_log(.info, log: log, "Starting playlist playback for playlist %{public}s", resolvedPlaylistID.uuidString)
-                    AlarmPlaybackService.shared.start(
-                        playlistID: resolvedPlaylistID,
-                        loudness: alarm.loudness,
-                        alarm: alarm,
-                        occurrence: occurrence
-                    )
+                if isPlaylistSound(soundToUse) {
+                    // Takeover: silence AlarmKit's alarm sound first, then play the
+                    // playlist in-app. If AlarmKit refuses to cancel (the alarm keeps
+                    // ringing), do NOT start in-app playback — double audio is worse
+                    // than the system alarm sound alone.
+                    let silenced = await silenceAlarmKitAlarm(for: alarm)
+                    guard silenced else {
+                        os_log(.info, log: log, "AlarmKit cancel failed; keeping system alarm sound only")
+                        return
+                    }
+                    if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
+                        os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s after silencing AlarmKit", resolvedPlaylistID.uuidString)
+                        AlarmPlaybackService.shared.start(
+                            playlistID: resolvedPlaylistID,
+                            loudness: alarm.loudness,
+                            alarm: alarm,
+                            occurrence: occurrence
+                        )
+                    }
                     stopSilentPlayerOnly()
-                } else if case .precomposedPlaylist(let playlistID, _) = soundToUse {
-                    // Precomposed playlist directly
-                    os_log(.info, log: log, "Starting precomposed playlist playback for playlist %{public}s", playlistID.uuidString)
-                    AlarmPlaybackService.shared.start(
-                        playlistID: playlistID,
-                        loudness: alarm.loudness,
-                        alarm: alarm,
-                        occurrence: occurrence
-                    )
-                    stopSilentPlayerOnly()
-                } else if case .imported(_) = soundToUse {
-                    // Single imported track - create a temporary single-track playlist behavior
-                    // For now, we'll need to handle this case - could create a single-track playlist
-                    os_log(.info, log: log, "Single imported sound - AlarmKit will handle playback")
-                    // For imported sounds, AlarmKit handles the playback directly
                 } else {
                     os_log(.info, log: log, "Sound type %{public}s - AlarmKit handles playback", String(describing: soundToUse))
                 }
@@ -479,6 +474,56 @@ final class SmartWakeService {
                 os_log(.error, log: log, "Failed to resolve sound for occurrence: %{public}s", error.localizedDescription)
             }
         }
+    }
+
+    private func isPlaylistSound(_ sound: AlarmSound) -> Bool {
+        switch sound {
+        case .precomposedPlaylist: return true
+        case .random: return true
+        default: return false
+        }
+    }
+
+    /// Ask AlarmKit to cancel the alerting alarm(s) so the system sound stops.
+    /// Managed alarms are scheduled under SystemScheduleID identities (not the
+    /// record id), so any alerting alarm at the transition moment is ours.
+    /// Waits briefly for the alarm to actually enter .alerting first: if this
+    /// wake-up fires a moment before AlarmKit starts ringing, starting playback
+    /// immediately would produce double audio once the system sound kicks in.
+    /// Returns false when nothing is alerting (no takeover should happen) or
+    /// when a cancel call throws.
+    private func silenceAlarmKitAlarm(for alarm: AlarmRecord) async -> Bool {
+        var alerting: [Alarm] = []
+        do {
+            // Poll up to ~3s for the alarm to reach .alerting
+            for _ in 0..<10 {
+                alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                if !alerting.isEmpty { break }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+        } catch {
+            os_log(.error, log: log, "Failed to inspect AlarmKit alarms: %{public}s", error.localizedDescription)
+            return false
+        }
+        guard !alerting.isEmpty else {
+            os_log(.info, log: log, "No alerting AlarmKit alarm appeared within 3s; skipping takeover")
+            return false
+        }
+        var allCancelled = true
+        for kitAlarm in alerting {
+            do {
+                // cancel() is the API proven in this codebase (all reconcile
+                // paths); on an alerting alarm it removes it and silences the
+                // sound. AlarmManager.stop(id:) is documented but unverified
+                // here — only switch if cancel fails on device.
+                try AlarmManager.shared.cancel(id: kitAlarm.id)
+            } catch {
+                allCancelled = false
+                os_log(.error, log: log, "cancel(id:%{public}s) failed: %{public}s", kitAlarm.id.uuidString, error.localizedDescription)
+            }
+        }
+        os_log(.info, log: log, "Cancel requested for %d alerting AlarmKit alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
+        return allCancelled
     }
     
     /// Resolve sound for occurrence (mirrors AlarmCoordinator logic)

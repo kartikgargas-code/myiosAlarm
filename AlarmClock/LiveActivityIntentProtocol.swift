@@ -23,9 +23,9 @@ private let liveActivityLog = OSLog(subsystem: "com.example.alarmclock", categor
 /// File-based debug logger for in-app debugging (writes to App Group container)
 private func appendLiveActivityDebugLog(_ message: String) {
     let fileManager = FileManager.default
-    guard let appGroupURL = fileManager.containerURL(
-        forSecurityApplicationGroupIdentifier: "group.com.example.alarmclock"
-    ) else { return }
+    guard let appGroupURL = AppGroupResolver.resolve().flatMap({
+        fileManager.containerURL(forSecurityApplicationGroupIdentifier: $0)
+    }) else { return }
     
     let logURL = appGroupURL.appendingPathComponent("live_activity_debug.log")
     let timestamp = ISO8601DateFormatter().string(from: Date())

@@ -150,15 +150,24 @@ final class SoundLibrary {
             try fileManager.copyItem(at: sourceURL, to: destURL)
             let size = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
             
-            // Read duration from the audio file
+            // Read duration from the audio file. Some MP3s (odd headers/VBR)
+            // defeat AVAudioFile's length estimate; fall back to AVURLAsset.
             var duration: TimeInterval? = nil
             do {
                 let audioFile = try AVAudioFile(forReading: destURL)
                 let sampleRate = audioFile.processingFormat.sampleRate
                 let frameCount = audioFile.length
-                duration = Double(frameCount) / sampleRate
+                if sampleRate > 0, frameCount > 0 {
+                    duration = Double(frameCount) / sampleRate
+                }
             } catch {
-                // Duration reading failed, leave as nil
+                // Duration reading failed, try asset fallback below
+            }
+            if duration == nil || duration == 0 {
+                let asset = AVURLAsset(url: destURL)
+                if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+                    duration = seconds
+                }
             }
             
             return (stableFileName, size, duration)
@@ -211,15 +220,24 @@ final class SoundLibrary {
                     }
                     try fileManager.copyItem(at: sourceFileURL, to: destURL)
 
-                    // Read duration from the audio file
+                    // Read duration from the audio file (asset fallback for
+                    // MP3s whose length AVAudioFile can't estimate)
                     var duration: TimeInterval? = nil
                     do {
                         let audioFile = try AVAudioFile(forReading: destURL)
                         let sampleRate = audioFile.processingFormat.sampleRate
                         let frameCount = audioFile.length
-                        duration = Double(frameCount) / sampleRate
+                        if sampleRate > 0, frameCount > 0 {
+                            duration = Double(frameCount) / sampleRate
+                        }
                     } catch {
-                        // Duration reading failed, leave as nil
+                        // Duration reading failed, asset fallback below
+                    }
+                    if duration == nil || duration == 0 {
+                        let asset = AVURLAsset(url: destURL)
+                        if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+                            duration = seconds
+                        }
                     }
 
                     let id = stableID(for: stableFileName)

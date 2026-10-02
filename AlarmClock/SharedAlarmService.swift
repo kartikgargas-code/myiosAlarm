@@ -13,14 +13,19 @@ public struct SharedAlarmService: LiveActivityAlarmService {
     private let extensionScheduler = ExtensionAlarmSchedulingService()
     
     public init(
-        appGroupIdentifier: String = "group.com.example.alarmclock",
+        appGroupIdentifier: String? = nil,
         now: @escaping () -> Date = Date.init
     ) {
-        // Use App Group for shared persistence
-        let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
+        // AltStore resigns the App Group (team-ID suffix); resolve at runtime so
+        // the container is found on device. Without a container, persistence
+        // falls back to Application Support (app-private) via fileURL = nil.
+        let resolved = appGroupIdentifier ?? AppGroupResolver.resolve()
+        let appGroupURL = resolved.flatMap {
+            FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0)
+        }
         let fileURL = appGroupURL?.appendingPathComponent("alarms.json")
         self.persistence = JSONAlarmPersistence(fileURL: fileURL)
-        self.appGroupIdentifier = appGroupIdentifier
+        self.appGroupIdentifier = resolved ?? "unavailable"
         self.now = now
     }
     
