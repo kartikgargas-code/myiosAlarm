@@ -257,7 +257,7 @@ final class AudioProcessingService {
         // Memory stays at a few chunk buffers regardless of song count/length.
         // Songs are converted to the output format (44.1k stereo) with
         // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
-        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] -> URL in
+        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
             let outputSettings = [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: 44_100.0,
