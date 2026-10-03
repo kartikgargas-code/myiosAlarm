@@ -393,4 +393,40 @@ final class AlarmPlaybackLogicTests: XCTestCase {
         XCTAssertNotEqual(withoutHash, withHash)
         XCTAssertNotEqual(withHash, withOtherHash)
     }
+    
+    // MARK: - Display Name UUID Stripping Tests
+    
+    func testDisplayNameStripsTrailingUUID() {
+        let testCases = [
+            ("song_123e4567-e89b-12d3-a456-426614174000", "song"),
+            ("my_track_abcd1234-5678-90ab-cdef-123456789012", "my_track"),
+            ("clean_name", "clean_name"),
+            ("name_with_underscore_123e4567-e89b-12d3-a456-426614174000", "name_with_underscore"),
+            ("", ""),
+            ("no_uuid_here_", "no_uuid_here_"),
+        ]
+        
+        for (input, expected) in testCases {
+            let result = stripTrailingUUID(input)
+            XCTAssertEqual(result, expected, "Failed for input: \(input)")
+        }
+    }
+    
+    func testDisplayNameHandlesEdgeCases() {
+        // UUID in middle should not be stripped
+        XCTAssertEqual(stripTrailingUUID("prefix_123e4567-e89b-12d3-a456-426614174000_suffix"), "prefix_123e4567-e89b-12d3-a456-426614174000_suffix")
+        // Multiple UUIDs - only last one stripped
+        XCTAssertEqual(stripTrailingUUID("name_11111111-1111-1111-1111-111111111111_22222222-2222-2222-2222-222222222222"), "name_11111111-1111-1111-1111-111111111111")
+        // Partial UUID (not 36 chars) should not match
+        XCTAssertEqual(stripTrailingUUID("name_123"), "name_123")
+    }
+    
+    // Helper function extracted from AlarmPlaybackService for testing
+    private func stripTrailingUUID(_ soundName: String) -> String {
+        let uuidPattern = "_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        if let range = soundName.range(of: uuidPattern, options: .regularExpression) {
+            return String(soundName[..<range.lowerBound])
+        }
+        return soundName
+    }
 }

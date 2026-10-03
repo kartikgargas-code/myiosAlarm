@@ -1,6 +1,9 @@
 import Foundation
 import AVFoundation
 
+/// File name for the silent companion alarm sound (near-silent WAV, >=1s)
+let silentCompanionFileName = "silent_companion.wav"
+
 struct ImportedSound: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
@@ -76,6 +79,7 @@ final class SoundLibrary {
 
     private init() {
         createSoundsDirectory()
+        ensureSilentCompanionSound()
         loadSounds()
         loadPlaylists()
     }
@@ -84,6 +88,65 @@ final class SoundLibrary {
         guard let dir = soundsDirectory else { return }
         if !fileManager.fileExists(atPath: dir.path) {
             try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+    }
+
+    /// Ensure the silent companion WAV exists in Library/Sounds for AlarmKit companion alarms
+    private func ensureSilentCompanionSound() {
+        guard let soundsDir = soundsDirectory else { return }
+        let silentURL = soundsDir.appendingPathComponent(silentCompanionFileName)
+        
+        if fileManager.fileExists(atPath: silentURL.path) {
+            return
+        }
+
+        // Generate a 1-second near-silent WAV file programmatically (reuse SmartWakeService approach)
+        Task.detached(priority: .userInitiated) { [weak self] in
+            await self?.generateSilentCompanionSound(at: silentURL)
+        }
+    }
+
+    private func generateSilentCompanionSound(at url: URL) async {
+        let sampleRate = 44100.0
+        let duration = 1.5 // 1.5 seconds to ensure >=1s
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            os_log(.error, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Failed to create silent companion buffer")
+            return
+        }
+        buffer.frameLength = frameCount
+
+        // Fill with near-silence (very low amplitude to keep audio session alive)
+        let channels = Int(format.channelCount)
+        let frames = Int(buffer.frameLength)
+        let amplitude: Float = 0.0001 // -80 dB, barely audible but keeps session alive
+
+        for channel in 0..<channels {
+            guard let channelData = buffer.floatChannelData?[channel] else { continue }
+            for frame in 0..<frames {
+                // Very low frequency tone at near-zero amplitude
+                channelData[frame] = amplitude * sin(2.0 * Float.pi * 20.0 * Float(frame) / Float(sampleRate))
+            }
+        }
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: 2,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+
+        do {
+            let outputFile = try AVAudioFile(forWriting: url, settings: settings)
+            try outputFile.write(from: buffer)
+            os_log(.info, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Generated silent companion sound at %{public}s", url.path)
+        } catch {
+            os_log(.error, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Failed to generate silent companion sound: %{public}s", error.localizedDescription)
         }
     }
 
@@ -362,6 +425,12 @@ final class SoundLibrary {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
         return sound.fileName
+    }
+
+    /// Get the silent companion alarm sound file name for AlarmKit
+    /// This is a near-silent WAV file (>=1s) in Library/Sounds for companion alarms
+    func silentCompanionAlarmKitFileName() -> String {
+        return silentCompanionFileName
     }
 
     func playlist(for id: UUID) throws -> Playlist {

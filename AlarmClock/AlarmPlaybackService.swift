@@ -3,6 +3,7 @@ import AVFoundation
 import MediaPlayer
 import Observation
 import os.log
+import AlarmKit
 import AlarmClockShared
 import UIKit
 import UserNotifications
@@ -31,6 +32,11 @@ final class AlarmPlaybackService: NSObject {
     private var transitionCheckTask: Task<Void, Never>?
     private var consecutiveFailures = 0 // Track consecutive play failures to prevent infinite recursion
     
+    // Companion alarm for lock-screen UI (Stop/Snooze buttons while our songs play)
+    private var companionAlarmID: UUID?
+    private var companionSnoozeDurationMinutes: Int = 10
+    private var companionTask: Task<Void, Never>?
+    
     // Published state
     private(set) var isPlaying = false
     private(set) var currentTrackName: String?
@@ -40,6 +46,39 @@ final class AlarmPlaybackService: NSObject {
     private override init() {
         super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
+        registerForInterruptions()
+    }
+    
+    /// Register for audio session interruption notifications
+    private func registerForInterruptions() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+    }
+    
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        
+        switch type {
+        case .began:
+            SmartWakeDebugLog.log("PLAYBACK INTERRUPTED")
+        case .ended:
+            guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
+            
+            // If playback should resume, or if it's supposed to be playing but isn't (2s tick fallback)
+            if options.contains(.shouldResume) || (isPlaying && player?.isPlaying != true) {
+                attemptPlaybackResume()
+            }
+        @unknown default:
+            break
+        }
     }
 
     /// Start playback for the given alarm occurrence
@@ -452,12 +491,14 @@ final class AlarmPlaybackService: NSObject {
             lastError = nil
             consecutiveFailures = 0 // Reset on success
             
-            os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d) volume=%{public}.2f (loudness %{public}d%%)", 
-                   sound.name, index + 1, selectedSoundIDs.count, volume, currentLoudness?.percentage ?? 100)
-            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(sound.name) volume=\(String(format: "%.2f", volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
+            let displayTrackName = displayName(for: sound.name)
             
-            // Publish Now Playing info
-            publishNowPlayingInfo(for: sound, player: newPlayer)
+            os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d) volume=%{public}.2f (loudness %{public}d%%)", 
+                   displayTrackName, index + 1, selectedSoundIDs.count, volume, currentLoudness?.percentage ?? 100)
+            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(displayTrackName) volume=\(String(format: "%.2f", volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
+            
+            // Publish Now Playing info with stripped display name
+            publishNowPlayingInfo(for: sound, player: newPlayer, displayName: displayTrackName)
             
             // Setup remote command center
             setupRemoteCommands()
@@ -483,10 +524,10 @@ final class AlarmPlaybackService: NSObject {
     }
 
     /// Publish Now Playing info for the current track
-    private func publishNowPlayingInfo(for sound: ImportedSound, player: AVAudioPlayer) {
+    private func publishNowPlayingInfo(for sound: ImportedSound, player: AVAudioPlayer, displayName: String) {
         var nowPlayingInfo: [String: Any] = [:]
         
-        nowPlayingInfo[MPMediaItemPropertyTitle] = sound.name
+        nowPlayingInfo[MPMediaItemPropertyTitle] = displayName
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = player.duration
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
@@ -515,7 +556,7 @@ final class AlarmPlaybackService: NSObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        os_log(.info, log: log, "Published Now Playing info for: %{public}s", sound.name)
+        os_log(.info, log: log, "Published Now Playing info for: %{public}s", displayName)
     }
 
     /// Update elapsed time in Now Playing info
@@ -623,6 +664,18 @@ final class AlarmPlaybackService: NSObject {
         os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
         
+        // Cancel companion alarm if scheduled
+        if let companionID = companionAlarmID {
+            SmartWakeDebugLog.log("COMPANION cancel on stop: \(companionID.uuidString)")
+            Task {
+                try? await AlarmManager.shared.cancel(id: companionID)
+            }
+            companionAlarmID = nil
+        }
+        
+        companionTask?.cancel()
+        companionTask = nil
+        
         // Remove from armed occurrences set using composite key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
             let armingKey = "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
@@ -684,6 +737,192 @@ final class AlarmPlaybackService: NSObject {
             alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
         )
     }
+
+    /// Schedule a companion AlarmKit alarm ~2s in the future for lock-screen UI (Stop/Snooze)
+    /// Called after successful takeover when scene is not foregroundActive
+    func scheduleCompanionAlarm(for alarm: AlarmRecord, occurrence: AlarmOccurrence) async {
+        // Only schedule companion when not foreground (locked/background)
+        let scenes = UIApplication.shared.connectedScenes
+        let foregroundActive = scenes.compactMap { $0 as? UIWindowScene }.first?.activationState == .foregroundActive
+        
+        guard !foregroundActive else {
+            SmartWakeDebugLog.log("COMPANION: skipped (foregroundActive)")
+            return
+        }
+        
+        guard let coordinator = AlarmCoordinator.sharedInstance else {
+            SmartWakeDebugLog.log("COMPANION: no coordinator available")
+            return
+        }
+        
+        let companionID = UUID()
+        companionAlarmID = companionID
+        companionSnoozeDurationMinutes = alarm.snoozeDurationMinutes ?? 10
+        
+        do {
+            // Get the silent companion sound file name
+            let silentFileName = SoundLibrary.shared.silentCompanionAlarmKitFileName()
+            
+            // Create companion alarm configuration
+            let snoozeInterval = TimeInterval(companionSnoozeDurationMinutes * 60)
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource(stringLiteral: alarm.label.isEmpty ? "Alarm" : alarm.label),
+                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+                secondaryButtonBehavior: .countdown
+            )
+            
+            let attributes = AlarmAttributes(
+                presentation: AlarmPresentation(
+                    alert: alert,
+                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(companionSnoozeDurationMinutes) min")),
+                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(companionSnoozeDurationMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                ),
+                metadata: ScheduledOccurrenceMetadata(
+                    alarmID: alarm.id,
+                    occurrenceKey: "COMPANION-\(occurrence.occurrenceKey)",
+                    baseDate: Date()
+                ),
+                tintColor: .orange
+            )
+            
+            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
+                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeInterval),
+                schedule: .fixed(Date().addingTimeInterval(2.0)), // ~2s in future
+                attributes: attributes,
+                stopIntent: nil,
+                secondaryIntent: nil,
+                sound: .named(silentFileName)
+            )
+            
+            _ = try await AlarmManager.shared.schedule(id: companionID, configuration: configuration)
+            SmartWakeDebugLog.log("COMPANION scheduled id=\(companionID.uuidString)")
+            
+            // Register companion in reconcile so it's not cancelled as orphan
+            // This is done by adding to managed IDs via coordinator - but we need a way to track this
+            // For now, we'll observe its lifecycle via alarmUpdates
+            
+            // Start observing companion lifecycle
+            startCompanionObservation()
+            
+        } catch {
+            SmartWakeDebugLog.log("COMPANION scheduling FAILED: \(error.localizedDescription)")
+            companionAlarmID = nil
+        }
+    }
+    
+    /// Start observing companion alarm lifecycle via AlarmManager.alarmUpdates
+    private func startCompanionObservation() {
+        companionTask?.cancel()
+        companionTask = Task { @MainActor in
+            do {
+                for await alarms in AlarmManager.shared.alarmUpdates {
+                    guard let companionID = companionAlarmID,
+                          let companion = alarms.first(where: { $0.id == companionID }) else {
+                        continue
+                    }
+                    
+                    SmartWakeDebugLog.log("COMPANION alerting; playing=\(player?.isPlaying ?? false)")
+                    
+                    if companion.state == .alerting {
+                        // Companion is alerting - check if playback is running
+                        if player?.isPlaying != true {
+                            // Playback not running - start resume attempts
+                            attemptPlaybackResume()
+                        }
+                    } else if companion.state == .countdown {
+                        // User pressed Snooze
+                        SmartWakeDebugLog.log("COMPANION snoozed")
+                        stop(reason: "companion-snooze")
+                        return
+                    } else if companion.state != .alerting && companion.state != .countdown {
+                        // Companion left alerting state - check if it was Stop
+                        if companion.state == .paused || companion.state == .scheduled {
+                            // Likely user pressed Stop
+                            SmartWakeDebugLog.log("COMPANION stopped by user")
+                            stop(reason: "alarmkit-ui")
+                            return
+                        }
+                    }
+                }
+            } catch {
+                SmartWakeDebugLog.log("COMPANION observation error: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// Attempt to resume playback with retry logic
+    private func attemptPlaybackResume() {
+        var attempts = 0
+        let maxAttempts = 3
+        
+        func tryResume() {
+            attempts += 1
+            SmartWakeDebugLog.log("PLAYBACK RESUME attempt \(attempts)/\(maxAttempts)")
+            
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setActive(true)
+                
+                if player?.play() == true {
+                    SmartWakeDebugLog.log("PLAYBACK RESUMED ok")
+                    return
+                } else {
+                    SmartWakeDebugLog.log("PLAYBACK RESUMED failed (play returned false)")
+                }
+            } catch {
+                SmartWakeDebugLog.log("PLAYBACK RESUMED error: \(error.localizedDescription)")
+            }
+            
+            if attempts < maxAttempts {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.tryResume()
+                }
+            } else {
+                // All attempts failed - trigger revert safety
+                SmartWakeDebugLog.log("PLAYBACK RESUMED: all \(maxAttempts) attempts failed")
+                revertCompanionAndRestartPlayback()
+            }
+        }
+        
+        tryResume()
+    }
+    
+    /// Revert safety: cancel companion and restart playback
+    private func revertCompanionAndRestartPlayback() {
+        SmartWakeDebugLog.log("COMPANION REVERTED")
+        
+        if let companionID = companionAlarmID {
+            Task {
+                try? await AlarmManager.shared.cancel(id: companionID)
+            }
+            companionAlarmID = nil
+        }
+        
+        companionTask?.cancel()
+        companionTask = nil
+        
+        // Restart current track
+        if let currentTrack = currentTrackName,
+           let index = selectedSoundIDs.firstIndex(where: { soundID in 
+                SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == currentTrack 
+            }) {
+            playTrack(at: index)
+        } else if currentTrackIndex < selectedSoundIDs.count {
+            playTrack(at: currentTrackIndex)
+        }
+    }
+    
+    /// Strip trailing UUID from sound name for display (format: "name_<36-char-uuid>")
+    private func displayName(for soundName: String) -> String {
+        // Pattern: name_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX (36 chars after last _)
+        let uuidPattern = "_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        if let range = soundName.range(of: uuidPattern, options: .regularExpression) {
+            return String(soundName[..<range.lowerBound])
+        }
+        return soundName
+    }
+
 }
 
 // MARK: - AVAudioPlayerDelegate

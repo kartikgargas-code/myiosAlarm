@@ -779,6 +779,8 @@ final class SmartWakeService {
                         AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
                         // Setup local notification with Stop action
                         AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
+                        // Schedule companion alarm for lock-screen UI (Stop/Snooze)
+                        await AlarmPlaybackService.shared.scheduleCompanionAlarm(for: alarm, occurrence: occurrence)
                         stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
                         SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
                     } else {
@@ -859,6 +861,8 @@ final class SmartWakeService {
                             AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
                             // Setup local notification with Stop action
                             AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
+                            // Schedule companion alarm for lock-screen UI (Stop/Snooze)
+                            await AlarmPlaybackService.shared.scheduleCompanionAlarm(for: alarm, occurrence: occurrence)
                             stopSilentPlayerOnly(reason: "retry-B takeover completed for \(occurrenceKey)")
                             SmartWakeDebugLog.log("TAKEOVER RETRY-B complete for \(occurrenceKey); silent player stopped")
                         } else {
