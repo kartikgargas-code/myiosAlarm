@@ -763,6 +763,10 @@ final class SmartWakeService {
                             }
                         }
                         os_log(.info, log: log, "Cancelled %d alerting alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
+                        // Promote to primary session for lock screen controls (if not foreground)
+                        AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
+                        // Setup local notification with Stop action
+                        AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
                         stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
                         SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
                     } else {
@@ -838,6 +842,10 @@ final class SmartWakeService {
                         
                         if retryBSuccess {
                             SmartWakeDebugLog.log("TAKEOVER RETRY-B SUCCESS: playback confirmed after retry")
+                            // Promote to primary session for lock screen controls (if not foreground)
+                            AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
+                            // Setup local notification with Stop action
+                            AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
                             stopSilentPlayerOnly(reason: "retry-B takeover completed for \(occurrenceKey)")
                             SmartWakeDebugLog.log("TAKEOVER RETRY-B complete for \(occurrenceKey); silent player stopped")
                         } else {

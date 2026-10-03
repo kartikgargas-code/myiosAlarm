@@ -5,6 +5,7 @@ import Observation
 import os.log
 import AlarmClockShared
 import UIKit
+import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
 /// Integrates with system Now Playing and remote command center for lock screen control.
@@ -203,6 +204,194 @@ final class AlarmPlaybackService: NSObject {
             os_log(.info, log: log, "Audio session category set to MIXABLE (no activation needed)")
             SmartWakeDebugLog.log("PLAYBACK: audio session category set to MIXABLE (no silent loop)")
         }
+    }
+    
+    /// Try to promote to primary (non-mixable) session for lock screen controls.
+    /// Only called after playback is confirmed AND scene is NOT foregroundActive.
+    /// Best effort - if it fails, we revert to mixable and continue playback.
+    func promoteToPrimarySessionIfNeeded() {
+        let scenePhase = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.activationState
+        
+        guard scenePhase != .foregroundActive else {
+            SmartWakeDebugLog.log("PRIMARY PROMOTE: already foregroundActive, skipping")
+            return
+        }
+        
+        let session = AVAudioSession.sharedInstance()
+        
+        // Save current player state
+        let wasPlaying = player?.isPlaying ?? false
+        let currentTime = player?.currentTime ?? 0
+        let currentTrack = currentTrackName
+        let currentIndex = currentTrackIndex
+        
+        do {
+            logSessionDump("PRIMARY PROMOTE attempt")
+            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setActive(true)
+            SmartWakeDebugLog.log("PRIMARY PROMOTE ok")
+            logSessionDump("PRIMARY PROMOTE ok")
+            
+            // Verify player is still playing
+            if !(player?.isPlaying ?? false) {
+                // Player stopped during promotion - restart current track
+                SmartWakeDebugLog.log("PRIMARY PROMOTE: player stopped during promotion, restarting track")
+                if let trackName = currentTrack, let index = selectedSoundIDs.firstIndex(where: { 
+                    SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name == trackName 
+                }) {
+                    playTrack(at: index)
+                }
+            }
+            
+            // Re-publish Now Playing info with playbackState = .playing
+            if let trackName = currentTrackName,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }) {
+                publishNowPlayingInfo(for: sound, player: player!)
+                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+                SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
+            }
+            
+            // Setup stop command for lock screen
+            setupStopCommand()
+            
+        } catch {
+            // Revert to mixable session
+            SmartWakeDebugLog.log("PRIMARY PROMOTE failed code=\((error as NSError).code) desc=\(error.localizedDescription)")
+            logSessionDump("PRIMARY PROMOTE FAILED")
+            
+            do {
+                try restoreMixableAudioSession()
+                SmartWakeDebugLog.log("PRIMARY PROMOTE REVERTED")
+                
+                // Restart current track if it was playing
+                if let trackName = currentTrackName, let index = selectedSoundIDs.firstIndex(where: { 
+                    SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name == currentTrackName 
+                }) {
+                    playTrack(at: currentTrackIndex)
+                }
+            } catch {
+                SmartWakeDebugLog.log("PRIMARY PROMOTE REVERT failed: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    /// Setup stop command for lock screen that fully stops the alarm
+    private func setupStopCommand() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        
+        // Stop command - fully stops alarm (same as banner Stop)
+        commandCenter.stopCommand.isEnabled = true
+        commandCenter.stopCommand.addTarget { [weak self] _ in
+            self?.stop(reason: "lockscreen")
+            SmartWakeDebugLog.log("PLAYBACK stopped (reason: lockscreen)")
+            return .success
+        }
+        
+        // Pause command - pauses playback
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            self?.pausePlayback()
+            return .success
+        }
+        
+        // Toggle play/pause - stop if playing, resume if paused
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            if self.player?.isPlaying == true {
+                self.pausePlayback()
+            } else {
+                self.resumePlayback()
+            }
+            return .success
+        }
+        
+        // Re-publish Now Playing info with playbackState = .playing
+        if let currentTrackName = currentTrackName,
+           let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }),
+           let currentPlayer = player {
+            publishNowPlayingInfo(for: sound, player: currentPlayer)
+            MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+            SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
+        }
+    }
+    
+    /// Setup local notification with Stop action for background
+    func setupStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
+        let center = UNUserNotificationCenter.current()
+        
+        // Create stop action
+        let stopAction = UNNotificationAction(
+            identifier: "STOP_ALARM",
+            title: "Stop",
+            options: [] // No .foreground - runs in background
+        )
+        
+        // Create category with stop action
+        let category = UNNotificationCategory(
+            identifier: "ALARM_RINGING",
+            actions: [stopAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        
+        center.setNotificationCategories([category])
+        
+        // Request authorization if not already determined
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                    if let error = error {
+                        SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
+                    }
+                    SmartWakeDebugLog.log("STOP NOTIFICATION authorization: \(granted ? "granted" : "denied")")
+                    if granted {
+                        self.postStopNotification(alarm: alarm, occurrence: occurrence)
+                    } else {
+                        SmartWakeDebugLog.log("STOP NOTIFICATION denied")
+                    }
+                }
+            case .authorized:
+                self.postStopNotification(alarm: alarm, occurrence: occurrence)
+            case .denied, .provisional, .ephemeral:
+                SmartWakeDebugLog.log("STOP NOTIFICATION denied")
+            @unknown default:
+                SmartWakeDebugLog.log("STOP NOTIFICATION unknown auth status")
+            }
+        }
+    }
+    
+    private func postStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
+        let content = UNMutableNotificationContent()
+        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
+        content.body = "Alarm ringing - tap Stop"
+        content.sound = nil // We handle audio ourselves
+        content.categoryIdentifier = "ALARM_RINGING"
+        content.interruptionLevel = .active // Not .timeSensitive
+        
+        let request = UNNotificationRequest(
+            identifier: "ALARM_RINGING_\(alarm.id.uuidString)_\(occurrence.occurrenceKey)",
+            content: content,
+            trigger: nil // Fire immediately
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                SmartWakeDebugLog.log("STOP NOTIFICATION post error: \(error.localizedDescription)")
+            } else {
+                SmartWakeDebugLog.log("STOP NOTIFICATION posted")
+            }
+        }
+    }
+    
+    /// Remove stop notification when playback stops
+    func removeStopNotification(alarmID: UUID, occurrenceKey: String) {
+        let identifier = "ALARM_RINGING_\(alarmID.uuidString)_\(occurrenceKey)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
     /// Play a track at the given index in selectedSoundIDs

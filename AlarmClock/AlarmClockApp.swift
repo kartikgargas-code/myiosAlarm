@@ -1,6 +1,7 @@
 ﻿import SwiftUI
 import AppIntents
 import AlarmClockShared
+import UserNotifications
 
 @main
 struct AlarmClockApp: App {
@@ -9,6 +10,14 @@ struct AlarmClockApp: App {
         // App @main entry points already run on the main thread
         MainActor.assumeIsolated {
             LiveActivityAlarmServiceProvider.shared = SharedAlarmService()
+        }
+        
+        // Request notification authorization for Stop action on lock screen
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
+            }
+            SmartWakeDebugLog.log("NOTIFICATION authorization (app launch): \(granted ? "granted" : "denied")")
         }
     }
     
