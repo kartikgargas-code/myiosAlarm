@@ -32,6 +32,15 @@ struct ContentView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(ThemeManager.shared.colors.primaryText)
                             Spacer()
+                            Button {
+                                alarmPlaybackService.stop()
+                                currentRingSongName = nil
+                            } label: {
+                                Label("Stop", systemImage: "stop.fill")
+                                    .labelStyle(.iconOnly)
+                            }
+                            .tint(ThemeManager.shared.colors.accent)
+                            .buttonStyle(.bordered)
                         }
                         .padding(.vertical, 4)
                         .listRowBackground(ThemeManager.shared.colors.accent.opacity(0.15))
@@ -94,6 +103,12 @@ struct ContentView: View {
                 }
                 .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
                     smartWakeStatusTick.toggle()
+                    // Validate the ringing alarm still exists and is enabled
+                    if alarmPlaybackService.isPlaying {
+                        if !alarmPlaybackService.validateStillRinging() {
+                            currentRingSongName = nil
+                        }
+                    }
                 }
             }
             .scrollContentBackground(.hidden)

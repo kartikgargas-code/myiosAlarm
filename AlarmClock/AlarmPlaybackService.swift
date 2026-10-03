@@ -19,6 +19,7 @@ final class AlarmPlaybackService: NSObject {
     private var player: AVAudioPlayer?
     private var currentPlaylistID: UUID?
     private var currentLoudness: AlarmLoudness?
+    private var currentAlarmID: UUID? // Snapshot of the alarm ID at takeover start
     private var currentAlarm: AlarmRecord?
     private var currentOccurrence: AlarmOccurrence?
     private var currentTrackIndex = 0
@@ -76,6 +77,7 @@ final class AlarmPlaybackService: NSObject {
             
             currentPlaylistID = playlistID
             currentLoudness = loudness
+            currentAlarmID = alarm.id // Snapshot the alarm ID for validation
             currentAlarm = alarm
             currentOccurrence = occurrence
             currentTrackIndex = 0
@@ -94,6 +96,28 @@ final class AlarmPlaybackService: NSObject {
             os_log(.error, log: log, "Failed to start playback: %{public}s", error.localizedDescription)
             isArmedForOccurrence.remove(occurrenceKey)
         }
+    }
+    
+    /// Check if the original alarm still exists and is enabled.
+    /// Call this before advancing to the next track or on a timer tick.
+    /// Returns true if playback should continue, false if it should stop.
+    func validateStillRinging() -> Bool {
+        guard let alarmID = currentAlarmID,
+              let coordinator = AlarmCoordinator.sharedInstance else {
+            os_log(.info, log: log, "PLAYBACK validation: missing alarmID or coordinator, stopping")
+            SmartWakeDebugLog.log("PLAYBACK validation: missing alarmID or coordinator, stopping")
+            return false
+        }
+        
+        // Check if the alarm still exists and is enabled
+        if let alarm = coordinator.alarms.first(where: { $0.id == alarmID }),
+           alarm.isEnabled {
+            return true
+        }
+        
+        os_log(.info, log: log, "PLAYBACK stopped: alarm disabled/deleted (alarmID: %{public}s)", alarmID.uuidString)
+        SmartWakeDebugLog.log("PLAYBACK stopped: alarm disabled/deleted (alarmID: \(alarmID.uuidString.prefix(8)))")
+        return false
     }
 
     /// Ensure the audio session is active (for background playback)
@@ -147,7 +171,8 @@ final class AlarmPlaybackService: NSObject {
         do {
             let newPlayer = try AVAudioPlayer(contentsOf: localURL)
             newPlayer.numberOfLoops = 0 // Play once, we handle sequencing
-            newPlayer.volume = currentLoudness?.gainFactor ?? 1.0
+            let volume = currentLoudness?.gainFactor ?? 1.0
+            newPlayer.volume = volume
             newPlayer.delegate = self
             newPlayer.prepareToPlay()
             
@@ -162,9 +187,9 @@ final class AlarmPlaybackService: NSObject {
             lastError = nil
             consecutiveFailures = 0 // Reset on success
             
-            os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d)", 
-                   sound.name, index + 1, selectedSoundIDs.count)
-            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(sound.name)")
+            os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d) volume=%{public}.2f (loudness %{public}d%%)", 
+                   sound.name, index + 1, selectedSoundIDs.count, volume, currentLoudness?.percentage ?? 100)
+            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(sound.name) volume=\(String(format: "%.2f", volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
             
             // Publish Now Playing info
             publishNowPlayingInfo(for: sound, player: newPlayer)
@@ -356,6 +381,12 @@ final class AlarmPlaybackService: NSObject {
 
     /// Advance to next track in playlist
     private func advanceToNextTrack() {
+        // Validate the alarm still exists and is enabled before continuing
+        guard validateStillRinging() else {
+            stop()
+            return
+        }
+        
         currentTrackIndex += 1
         if currentTrackIndex >= selectedSoundIDs.count {
             // Completed full cycle - loop back
