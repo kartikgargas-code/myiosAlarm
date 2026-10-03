@@ -46,6 +46,10 @@ final class AlarmCoordinator {
     private let maxHistoryEntries = 200
     private let ringDetectionOSLog = OSLog(subsystem: "com.example.alarmclock", category: "RingDetection")
 
+    // Track companion alarm ID and emergency re-ring IDs so reconcile doesn't cancel them as orphans
+    private var companionAlarmID: UUID?
+    private var emergencyReRingIDs: Set<UUID> = []
+
     init(
         persistence: any AlarmPersisting = JSONAlarmPersistence(),
         scheduler: (any AlarmSystemScheduling)? = nil,
@@ -322,9 +326,17 @@ final class AlarmCoordinator {
             if let modifiedEngine = desiredSystemAlarmsEngine {
                 candidate = modifiedEngine
             }
+            
+            // Exclude companion alarm and emergency re-ring IDs from reconciliation cancel set
+            var managedIDs = engine.snapshot.managedSystemAlarmIDs
+            if let companionID = companionAlarmID {
+                managedIDs.insert(companionID)
+            }
+            managedIDs.formUnion(emergencyReRingIDs)
+            
             candidate.snapshot.managedSystemAlarmIDs = try await scheduler.reconcile(
                 desired: desired,
-                managedIDs: engine.snapshot.managedSystemAlarmIDs
+                managedIDs: managedIDs
             )
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
@@ -399,6 +411,21 @@ final class AlarmCoordinator {
         // Store the modified engine for persistence
         desiredSystemAlarmsEngine = mutableEngine
         return (results, warnings)
+    }
+    
+    /// Set the companion alarm ID so it's excluded from reconciliation cancellation
+    func setCompanionAlarmID(_ id: UUID?) {
+        companionAlarmID = id
+    }
+    
+    /// Add an emergency re-ring ID so it's excluded from reconciliation cancellation
+    func addEmergencyReRingID(_ id: UUID) {
+        emergencyReRingIDs.insert(id)
+    }
+    
+    /// Clear all emergency re-ring IDs (e.g., after they've fired)
+    func clearEmergencyReRingIDs() {
+        emergencyReRingIDs.removeAll()
     }
 
     /// Stable per-selection hash so schedule identity changes when the chosen

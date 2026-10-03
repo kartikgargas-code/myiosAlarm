@@ -33,11 +33,17 @@ final class AlarmPlaybackService: NSObject {
     private var consecutiveFailures = 0 // Track consecutive play failures to prevent infinite recursion
     
     // Companion alarm for lock-screen UI (Stop/Snooze buttons while our songs play)
-    private var companionAlarmID: UUID?
+    private var _companionAlarmID: UUID?
+    var companionAlarmID: UUID? { _companionAlarmID }
     private var companionSnoozeDurationMinutes: Int = 10
     private var companionTask: Task<Void, Never>?
     private var companionResumeAttempts = 0
     private var companionMaxResumeAttempts = 3
+    
+    // Companion state machine state
+    private var companionHasAlerted = false
+    private var companionAlertingLogged = false
+    private var companionScheduledLogged = false
     
     // Published state
     private(set) var isPlaying = false
@@ -676,6 +682,8 @@ final class AlarmPlaybackService: NSObject {
                 try? await AlarmManager.shared.cancel(id: companionID)
             }
             companionAlarmID = nil
+            // Clear companion ID in coordinator
+            AlarmCoordinator.sharedInstance?.setCompanionAlarmID(nil)
         }
         
         companionTask?.cancel()
@@ -757,7 +765,7 @@ final class AlarmPlaybackService: NSObject {
         
         // No coordinator needed for scheduling companion alarms
         let companionID = UUID()
-        companionAlarmID = companionID
+        _companionAlarmID = companionID
         companionSnoozeDurationMinutes = alarm.snoozeDurationMinutes ?? 10
         
         do {
@@ -799,54 +807,102 @@ final class AlarmPlaybackService: NSObject {
             _ = try await AlarmManager.shared.schedule(id: companionID, configuration: configuration)
             SmartWakeDebugLog.log("COMPANION scheduled id=\(companionID.uuidString)")
             
-            // Register companion in reconcile so it's not cancelled as orphan
-            // This is done by adding to managed IDs via coordinator - but we need a way to track this
-            // For now, we'll observe its lifecycle via alarmUpdates
-            
             // Start observing companion lifecycle
             startCompanionObservation()
             
         } catch {
             SmartWakeDebugLog.log("COMPANION scheduling FAILED: \(error.localizedDescription)")
-            companionAlarmID = nil
+            _companionAlarmID = nil
         }
     }
     
     /// Start observing companion alarm lifecycle via AlarmManager.alarmUpdates
+    /// State machine for companion alarm states:
+    /// - .scheduled: ignore (log once "COMPANION waiting")
+    /// - .alerting: log ONCE per transition; if player not playing, run resume attempts
+    /// - .countdown: log "COMPANION snoozed", stop playback (reason "companion-snooze")
+    /// - Missing AFTER alerting: treat as user pressed Stop -> stop(reason:"alarmkit-ui")
+    /// - Missing BEFORE alerting: ignore for up to 10s (log "COMPANION never alerted" then cancel nothing)
     private func startCompanionObservation() {
         companionTask?.cancel()
+        companionHasAlerted = false
+        companionAlertingLogged = false
+        companionScheduledLogged = false
+        
+        var companionFirstSeenDate: Date? = nil
+        var companionNeverAlertedLogged = false
+        
         companionTask = Task { @MainActor in
-            do {
-                for await alarms in AlarmManager.shared.alarmUpdates {
-                    guard let companionID = companionAlarmID,
-                          let companion = alarms.first(where: { $0.id == companionID }) else {
-                        continue
-                    }
+            for await alarms in AlarmManager.shared.alarmUpdates {
+                guard let companionID = companionAlarmID else {
+                    // Companion was cancelled/cleared externally
+                    return
+                }
+                
+                let companion = alarms.first(where: { $0.id == companionID })
+                
+                if let companion = companion {
+                    // Companion exists - reset the "never alerted" timer
+                    companionFirstSeenDate = nil
+                    companionNeverAlertedLogged = false
                     
-                    SmartWakeDebugLog.log("COMPANION alerting; playing=\(player?.isPlaying ?? false)")
-                    
-                    if companion.state == .alerting {
-                        // Companion is alerting - check if playback is running
+                    switch companion.state {
+                    case .scheduled:
+                        if !companionScheduledLogged {
+                            SmartWakeDebugLog.log("COMPANION waiting (scheduled)")
+                            companionScheduledLogged = true
+                        }
+                        
+                    case .alerting:
+                        if !companionAlertingLogged {
+                            SmartWakeDebugLog.log("COMPANION alerting; playing=\(player?.isPlaying ?? false)")
+                            companionAlertingLogged = true
+                        }
+                        if !companionHasAlerted {
+                            companionHasAlerted = true
+                        }
+                        // If playback is not running, attempt resume
                         if player?.isPlaying != true {
-                            // Playback not running - start resume attempts
                             attemptPlaybackResume()
                         }
-                    } else if companion.state == .countdown {
+                        
+                    case .countdown:
                         // User pressed Snooze
                         SmartWakeDebugLog.log("COMPANION snoozed")
                         stop(reason: "companion-snooze")
                         return
-                    } else if companion.state != .alerting && companion.state != .countdown {
-                        // Companion left alerting state - check if it was Stop
-                        if companion.state == .paused || companion.state == .scheduled {
-                            // Likely user pressed Stop
-                            SmartWakeDebugLog.log("COMPANION stopped by user")
+                        
+                    case .paused:
+                        // Could be user interaction or system pause - don't treat as stop unless we already alerted
+                        if companionHasAlerted {
+                            SmartWakeDebugLog.log("COMPANION paused after alerting; stopping (alarmkit-ui)")
                             stop(reason: "alarmkit-ui")
                             return
                         }
+                        // If not yet alerted, just log
+                        SmartWakeDebugLog.log("COMPANION paused (pre-alerting)")
+                        
+                    default:
+                        break
+                    }
+                } else {
+                    // Companion not in alarms list
+                    if companionHasAlerted {
+                        // Was alerting before, now missing = user pressed Stop
+                        SmartWakeDebugLog.log("COMPANION stopped by user (missing after alerting)")
+                        stop(reason: "alarmkit-ui")
+                        return
+                    } else {
+                        // Never alerted yet - wait up to 10s
+                        if companionFirstSeenDate == nil {
+                            companionFirstSeenDate = Date()
+                        } else if !companionNeverAlertedLogged && Date().timeIntervalSince(companionFirstSeenDate!) > 10.0 {
+                            SmartWakeDebugLog.log("COMPANION never alerted after 10s; keeping playback running")
+                            companionNeverAlertedLogged = true
+                        }
                     }
                 }
-            } // for await doesn't throw, so no catch needed
+            }
         }
     }
     
@@ -890,12 +946,14 @@ final class AlarmPlaybackService: NSObject {
     private func revertCompanionAndRestartPlayback() {
         SmartWakeDebugLog.log("COMPANION REVERTED")
         
-        if let companionID = companionAlarmID {
+        if let companionID = _companionAlarmID {
             // Fire and forget - we don't need to await here
             Task.detached {
                 try? await AlarmManager.shared.cancel(id: companionID)
             }
-            companionAlarmID = nil
+            _companionAlarmID = nil
+            // Clear companion ID in coordinator
+            AlarmCoordinator.sharedInstance?.setCompanionAlarmID(nil)
         }
         
         companionTask?.cancel()
