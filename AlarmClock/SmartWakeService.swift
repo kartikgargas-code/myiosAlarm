@@ -60,6 +60,10 @@ final class SmartWakeService {
     
     private func startStatusTick() {
         statusTickTask = Task { @MainActor in
+            var lastLoopRunning = isRunning
+            var lastScenePhase: UIApplication.State = .background
+            var lastAlertingCount = 0
+            
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 guard !Task.isCancelled else { break }
@@ -67,6 +71,12 @@ final class SmartWakeService {
                 // Check for any alerting AlarmKit alarm (system ring) - for banner visibility during system rings
                 do {
                     let alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                    let alertingCount = alerting.count
+                    if alertingCount != lastAlertingCount {
+                        let scenePhase = UIApplication.shared.applicationState
+                        SmartWakeDebugLog.log("SCENE -> \(scenePhaseString(scenePhase)) alerting=\(alertingCount)")
+                        lastAlertingCount = alertingCount
+                    }
                     if !alerting.isEmpty {
                         // Try to get song name from the first alerting alarm via coordinator
                         if let coordinator = AlarmCoordinator.sharedInstance {
@@ -88,6 +98,14 @@ final class SmartWakeService {
                     }
                 } catch {
                     // Ignore errors
+                }
+                
+                // Check if silent loop died
+                if lastLoopRunning && !isRunning {
+                    SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false")
+                    lastLoopRunning = false
+                } else if !lastLoopRunning && isRunning {
+                    lastLoopRunning = true
                 }
                 
                 // Update status text only when it changes to prevent render churn
@@ -113,6 +131,15 @@ final class SmartWakeService {
                     }
                 }
             }
+        }
+    }
+    
+    private func scenePhaseString(_ state: UIApplication.State) -> String {
+        switch state {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown(\(state.rawValue))"
         }
     }
 
@@ -430,11 +457,28 @@ final class SmartWakeService {
 
     @MainActor private func logInterruptionBegan() {
         os_log(.info, log: log, "Audio interruption began")
+        
+        // Get the reason if available
+        let reasonString: String
+        if let info = AVAudioSession.sharedInstance().interruptionNotification,
+           let userInfo = info.userInfo,
+           let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt {
+            reasonString = "\(reasonValue)"
+        } else {
+            reasonString = "unknown"
+        }
+        
+        // Check if session was suspended
+        let wasSuspended = (AVAudioSession.sharedInstance().otherAudioPlaying == false)
+        
+        SmartWakeDebugLog.log("INTERRUPTION began reason=\(reasonString) wasSuspended=\(wasSuspended)")
     }
-
+    
     @MainActor private func logInterruptionEnded(options: AVAudioSession.InterruptionOptions) {
         os_log(.info, log: log, "Audio interruption ended, shouldResume: %{public}d", options.contains(.shouldResume) ? 1 : 0)
+        SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
     }
+
 
     @MainActor private func logRouteChange(reason: AVAudioSession.RouteChangeReason) {
         os_log(.info, log: log, "Audio route changed: %{public}d", reason.rawValue)
@@ -489,6 +533,12 @@ final class SmartWakeService {
 
         switch type {
         case .began:
+            // Get the reason if available
+            let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt
+            let reasonString = reasonValue != nil ? "\(reasonValue!)" : "unknown"
+            let wasSuspended = !AVAudioSession.sharedInstance().isOtherAudioPlaying
+            SmartWakeDebugLog.log("INTERRUPTION began reason=\(reasonString) wasSuspended=\(wasSuspended)")
+            
             logInterruptionBegan()
             // Log interruption affecting playback if AlarmPlaybackService is playing
             if AlarmPlaybackService.shared.isPlaying {
@@ -498,6 +548,7 @@ final class SmartWakeService {
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             logInterruptionEnded(options: options)
+            SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
             if options.contains(.shouldResume) {
                 handleInterruptionEnded(shouldResume: true)
             } else {
@@ -668,6 +719,7 @@ final class SmartWakeService {
             os_log(.info, log: log, "TRANSITION WAKE: Firing for occurrence %{public}s at %{public}s", 
                    occurrenceKey, actualNow.formatted(date: .omitted, time: .standard))
             SmartWakeDebugLog.log("TRANSITION WAKE fired for \(occurrenceKey)")
+            SmartWakeDebugLog.log("WAKE STATE: loopRunning=\(isRunning) silentPlayerPlaying=\(player?.isPlaying == true)")
             
             // Find the alarm for this occurrence
             guard let alarm = engine.alarm(id: occurrence.alarmID) else {
@@ -682,9 +734,9 @@ final class SmartWakeService {
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
                 if isPlaylistSound(soundToUse) {
-                    // NEW TAKEOVER ORDER: Start playback FIRST, confirm playing, THEN silence ALL alerting alarms
+                    // ATTEMPT A: Start playback FIRST, confirm playing, THEN silence ALL alerting alarms
                     // This ensures: never total silence (floor sound kept if playback fails), no double audio
-                    SmartWakeDebugLog.log("TAKEOVER: starting in-app playback first for \(occurrenceKey)")
+                    SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A: starting in-app playback first for \(occurrenceKey)")
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
                         os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s", resolvedPlaylistID.uuidString)
                         SmartWakeDebugLog.log("TAKEOVER: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
@@ -707,7 +759,7 @@ final class SmartWakeService {
                     }
                     
                     if playbackStarted {
-                        SmartWakeDebugLog.log("TAKEOVER: playback confirmed, now silencing ALL alerting alarms")
+                        SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A SUCCESS: playback confirmed, now silencing ALL alerting alarms")
                         // Silence ALL alerting alarms (not just matched one)
                         let alerting = (try? AlarmManager.shared.alarms.filter { $0.state == .alerting }) ?? []
                         var allCancelled = true
@@ -724,10 +776,123 @@ final class SmartWakeService {
                         stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
                         SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
                     } else {
-                        // Playback failed to start — keep floor sound, log fallback
-                        os_log(.error, log: log, "TAKEOVER FALLBACK: playback failed to start, leaving AlarmKit alarms ringing")
-                        SmartWakeDebugLog.log("TAKEOVER FALLBACK: playback failed, AlarmKit alarms left ringing")
-                        // Don't stop silent player either - let it continue
+                        // ATTEMPT A FAILED - log and remove occurrence key to allow retry
+                        os_log(.error, log: log, "TAKEOVER ATTEMPT-A FAILED: playback failed to start, leaving AlarmKit alarms ringing")
+                        SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A FALLBACK: playback failed, AlarmKit alarms left ringing")
+                        // Remove from isArmedForOccurrence so we can retry
+                        armedOccurrences.remove(occurrenceKey)
+                        
+                        // ATTEMPT B: Cancel ALL alerting alarms first, then reclaim session and retry
+                        SmartWakeDebugLog.log("TAKEOVER RETRY-B: cancelling alerting alarms then reclaiming session")
+                        
+                        // Cancel ALL alerting AlarmKit alarms
+                        let alerting = (try? AlarmManager.shared.alarms.filter { $0.state == .alerting }) ?? []
+                        var allCancelled = true
+                        for kitAlarm in alerting {
+                            do {
+                                try AlarmManager.shared.cancel(id: kitAlarm.id)
+                                SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
+                            } catch {
+                                allCancelled = false
+                                SmartWakeDebugLog.log("SILENCE: cancel FAILED for \(kitAlarm.id.uuidString): \(error.localizedDescription)")
+                            }
+                        }
+                        os_log(.info, log: log, "Cancelled %d alerting alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
+                        
+                        // Stop silent player to reclaim session
+                        stopSilentPlayerOnly(reason: "retry-B reclaim session")
+                        
+                        // Up to 3 retry attempts
+                        var retryBSuccess = false
+                        for retryAttempt in 1...3 {
+                            SmartWakeDebugLog.log("TAKEOVER RETRY-B ATTEMPT \(retryAttempt)/3")
+                            
+                            // Ensure audio session is active (reclaim)
+                            do {
+                                try AlarmPlaybackService.shared.ensureAudioSessionActive()
+                                AlarmPlaybackService.shared.logSessionDump("RETRY-B attempt \(retryAttempt) pre-start")
+                            } catch {
+                                SmartWakeDebugLog.log("RETRY-B attempt \(retryAttempt): session activation FAILED: \(error.localizedDescription)")
+                                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
+                                continue
+                            }
+                            
+                            // Start playback
+                            if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
+                                AlarmPlaybackService.shared.start(
+                                    playlistID: resolvedPlaylistID,
+                                    loudness: alarm.loudness,
+                                    alarm: alarm,
+                                    occurrence: occurrence
+                                )
+                            }
+                            
+                            // Wait 500ms for isPlaying
+                            var playbackStarted = false
+                            for attempt in 0..<10 {
+                                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                                if AlarmPlaybackService.shared.isPlaying {
+                                    playbackStarted = true
+                                    break
+                                }
+                            }
+                            
+                            if playbackStarted {
+                                retryBSuccess = true
+                                break
+                            } else {
+                                AlarmPlaybackService.shared.logSessionDump("RETRY-B attempt \(retryAttempt) play() FALSE")
+                                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
+                            }
+                        }
+                        
+                        if retryBSuccess {
+                            SmartWakeDebugLog.log("TAKEOVER RETRY-B SUCCESS: playback confirmed after retry")
+                            stopSilentPlayerOnly(reason: "retry-B takeover completed for \(occurrenceKey)")
+                            SmartWakeDebugLog.log("TAKEOVER RETRY-B complete for \(occurrenceKey); silent player stopped")
+                        } else {
+                            // RETRY B FAILED - NEVER leave silence, schedule emergency re-ring
+                            os_log(.error, log: log, "TAKEOVER RETRY-B FAILED: all 3 retries exhausted, scheduling emergency re-ring")
+                            SmartWakeDebugLog.log("TAKEOVER RETRY-B FAILED: all 3 retries exhausted, scheduling emergency re-ring")
+                            
+                            // Schedule emergency AlarmKit alarm ~3s in future using existing scheduling path
+                            let emergencyFireDate = Date().addingTimeInterval(3.0)
+                            do {
+                                // Reuse existing scheduling code path - create a one-off alarm
+                                let emergencyID = UUID()
+                                let emergencyConfig = AlarmManager.AlarmConfiguration<AlarmKitScheduleMetadata>(
+                                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
+                                    schedule: .fixed(emergencyFireDate),
+                                    attributes: AlarmAttributes(
+                                        presentation: AlarmPresentation(
+                                            alert: AlarmPresentation.Alert(
+                                                title: LocalizedStringResource(stringLiteral: "Emergency Re-ring"),
+                                                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+                                                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+                                                secondaryButtonBehavior: .countdown
+                                            ),
+                                            countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min")),
+                                            paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                                        ),
+                                        metadata: AlarmKitScheduleMetadata(
+                                            alarmID: alarm.id,
+                                            occurrenceKey: "EMERGENCY-\(occurrenceKey)",
+                                            baseDate: emergencyFireDate
+                                        ),
+                                        tintColor: .red
+                                    ),
+                                    stopIntent: nil,
+                                    secondaryIntent: nil,
+                                    sound: soundToUse // reuse the same floor sound
+                                )
+                                _ = try await AlarmManager.shared.schedule(id: emergencyID, configuration: emergencyConfig)
+                                SmartWakeDebugLog.log("EMERGENCY RE-RING scheduled id=\(emergencyID.uuidString) at \(emergencyFireDate)")
+                            } catch {
+                                SmartWakeDebugLog.log("EMERGENCY RE-RING scheduling FAILED: \(error.localizedDescription)")
+                                os_log(.error, log: log, "EMERGENCY RE-RING scheduling FAILED: %{public}s", error.localizedDescription)
+                            }
+                        }
+                        }
                     }
                     
                     // Re-arm check: if there's another alarm coming up, restart the silent loop

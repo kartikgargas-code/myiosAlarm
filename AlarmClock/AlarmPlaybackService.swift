@@ -33,6 +33,7 @@ final class AlarmPlaybackService: NSObject {
     private(set) var isPlaying = false
     private(set) var currentTrackName: String?
     private(set) var lastError: String?
+    private var lastSessionDump: String = ""
 
     private override init() {
         super.init()
@@ -53,7 +54,10 @@ final class AlarmPlaybackService: NSObject {
     ) {
         os_log(.info, log: log, "start(playlistID:%{public}s, loudness:%{public}d%%, alarmID:%{public}s, occurrenceKey:%{public}s)",
                playlistID.uuidString, loudness.percentage, alarm.id.uuidString, occurrence.occurrenceKey)
-        SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8)) tracks=\(selectedSoundIDs.count)")
+        SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8))")
+        
+        // Log session state at start entry
+        logSessionDump("START")
 
         // Guard against double-start for same occurrence
         let occurrenceKey = occurrence.occurrenceKey
@@ -88,7 +92,8 @@ final class AlarmPlaybackService: NSObject {
             // Then claim primary session for lock-screen Now Playing visibility
             try activatePrimaryAudioSession()
             
-            SmartWakeDebugLog.log("PLAYBACK started track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
+            SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8)) tracks=\(selectedSoundIDs.count)")
+            SmartWakeDebugLog.log("PLAYBACK queued track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
             
             // Start playing the first track
             playTrack(at: 0)
@@ -127,16 +132,37 @@ final class AlarmPlaybackService: NSObject {
     /// Ensure the audio session is active (for background playback)
     private func ensureAudioSessionActive() throws {
         let session = AVAudioSession.sharedInstance()
-        // If other audio is playing, session is already active - just ensure category
-        if session.isOtherAudioPlaying {
-            os_log(.info, log: log, "Audio session already active (other audio playing), skipping activation")
-            SmartWakeDebugLog.log("PLAYBACK: session already active, skipping activation")
+        // ALWAYS set category and activate - no shortcuts. isOtherAudioPlaying is true due to AlarmKit sound, not our active session.
+        do {
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            return
+            try session.setActive(true)
+            os_log(.info, log: log, "Audio session activated (mixable)")
+            SmartWakeDebugLog.log("PLAYBACK: session activated (mixable)")
+        } catch {
+            let nsError = error as NSError
+            os_log(.error, log: log, "Failed to activate session: %{public}s (domain=%{public}s code=%{public}d)", error.localizedDescription, nsError.domain, nsError.code)
+            SmartWakeDebugLog.log("PLAYBACK: session activation FAILED (domain=\(nsError.domain) code=\(nsError.code) desc=\(error.localizedDescription))")
+            throw error
         }
-        // Only activate if not already active - never deactivate
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try session.setActive(true)
+    }
+    
+    /// Log a complete session state dump for debugging
+    /// Call at: start() entry, after play() returns false, after each retry in retry-B
+    private func logSessionDump(_ tag: String) {
+        let session = AVAudioSession.sharedInstance()
+        let appState = UIApplication.shared.applicationState.rawValue
+        let sceneState = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.activationState.rawValue ?? -1
+        let silentPlayerRunning = SmartWakeService.shared.isRunning
+        
+        var dump = "SESSION DUMP [\(tag)]: "
+        dump += "cat=\(session.category.rawValue) mode=\(session.mode.rawValue) opts=\(session.categoryOptions.rawValue) "
+        dump += "isOtherAudioPlaying=\(session.isOtherAudioPlaying) secondaryAudioShouldBeSilencedHint=\(session.secondaryAudioShouldBeSilencedHint) "
+        dump += "outputVolume=\(session.outputVolume) "
+        dump += "routeOutputs=\(session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: \",\")) "
+        dump += "silentPlayer=\(silentPlayerRunning) appState=\(appState) sceneState=\(sceneState)"
+        
+        lastSessionDump = dump
+        SmartWakeDebugLog.log(dump)
     }
     
     /// Activate primary audio session for lock-screen Now Playing visibility
@@ -222,6 +248,8 @@ final class AlarmPlaybackService: NSObject {
             newPlayer.prepareToPlay()
             
             guard newPlayer.play() else {
+                // Log session state on play() failure
+                logSessionDump("play() FALSE")
                 throw NSError(domain: "AlarmPlayback", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to start playback"])
             }
             
