@@ -129,22 +129,6 @@ struct ContentView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
                 }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        editorAlarm = nil
-                        showingEditor = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        showingNextAlarmControl = true
-                    } label: {
-                        Label("Next Alarm", systemImage: "alarm.waves.left.and.right")
-                    }
-                }
             }
             .sheet(isPresented: $showingEditor) {
                 AlarmEditorView(
