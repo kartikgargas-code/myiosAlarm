@@ -850,7 +850,7 @@ final class SmartWakeService {
                             do {
                                 // Reuse existing scheduling code path - create a one-off alarm
                                 let emergencyID = UUID()
-                                let emergencyConfig = AlarmManager.AlarmConfiguration<AlarmKitScheduleMetadata>(
+                                let emergencyConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
                                     countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
                                     schedule: .fixed(emergencyFireDate),
                                     attributes: AlarmAttributes(
