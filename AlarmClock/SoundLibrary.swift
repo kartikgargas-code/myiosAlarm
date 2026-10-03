@@ -1,8 +1,11 @@
 import Foundation
 import AVFoundation
+import os.log
 
 /// File name for the silent companion alarm sound (near-silent WAV, >=1s)
 let silentCompanionFileName = "silent_companion.wav"
+
+private let soundLibraryLog = OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary")
 
 struct ImportedSound: Identifiable, Codable, Hashable {
     let id: UUID
@@ -113,7 +116,7 @@ final class SoundLibrary {
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
 
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            os_log(.error, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Failed to create silent companion buffer")
+            os_log(.error, log: soundLibraryLog, "Failed to create silent companion buffer")
             return
         }
         buffer.frameLength = frameCount
@@ -144,9 +147,9 @@ final class SoundLibrary {
         do {
             let outputFile = try AVAudioFile(forWriting: url, settings: settings)
             try outputFile.write(from: buffer)
-            os_log(.info, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Generated silent companion sound at %{public}s", url.path)
+            os_log(.info, log: soundLibraryLog, "Generated silent companion sound at %{public}s", url.path)
         } catch {
-            os_log(.error, log: OSLog(subsystem: "com.example.alarmclock", category: "SoundLibrary"), "Failed to generate silent companion sound: %{public}s", error.localizedDescription)
+            os_log(.error, log: soundLibraryLog, "Failed to generate silent companion sound: %{public}s", error.localizedDescription)
         }
     }
 
