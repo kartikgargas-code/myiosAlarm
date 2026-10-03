@@ -17,14 +17,86 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
     @State private var alarmPlaybackService = AlarmPlaybackService.shared
-    @State private var smartWakeStatusTick = false
+    // Copy button feedback states
+    @State private var smartWakeLogCopied = false
+    @State private var smartWakeLogUnavailable = false
 
     var body: some View {
         NavigationStack {
-            List {
-                // Show currently ringing song banner if active
-                if let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName {
+            ZStack {
+                List {
+                    if authorizationModel.authorizationDescription != "Authorized" {
+                        authorizationSection
+                    }
+
+                    Section("Alarms") {
+                        if coordinator.alarms.isEmpty {
+                            ContentUnavailableView("No Alarms", systemImage: "alarm", description: Text("Tap + to create one."))
+                        }
+                        ForEach(coordinator.alarms) { alarm in
+                            alarmRow(alarm)
+                        }
+                        .onDelete { offsets in
+                            for offset in offsets {
+                                let id = coordinator.alarms[offset].id
+                                Task { await coordinator.delete(id: id) }
+                            }
+                        }
+                    }
+
+                    if let error = coordinator.lastError {
+                        Section("Scheduling Error") {
+                            Text(error).foregroundStyle(ThemeManager.shared.colors.destructive)
+                        }
+                    }
+
                     Section {
+                        Button("AlarmKit Diagnostics") { showingDiagnostics = true }
+                        Button("Themes") { showingAppearance = true }
+                        Button("Play History") { showingHistory = true }
+                    }
+
+                    Section("Smart Wake") {
+                        Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
+                        if smartWakeService.isSmartWakeEnabled {
+                            Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
+                                .font(.caption)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            // Status from SmartWakeService (only updates when changed)
+                            Text(smartWakeService.statusTextPublished)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    smartWakeService.statusTextPublished.contains("Ringing") ? .orange :
+                                    smartWakeService.statusTextPublished.contains("Active") ? .green :
+                                    ThemeManager.shared.colors.secondaryText
+                                )
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .background(ThemeManager.shared.colors.background)
+                .navigationTitle("Alarm Clock")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            editorAlarm = nil
+                            showingEditor = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button {
+                            showingNextAlarmControl = true
+                        } label: {
+                            Label("Next Alarm", systemImage: "alarm.waves.left.and.right")
+                        }
+                    }
+                }
+                
+                // Now Ringing banner as pinned overlay (stable, not in List)
+                if let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName {
+                    VStack {
                         HStack {
                             Image(systemName: "speaker.wave.3.fill")
                                 .foregroundStyle(ThemeManager.shared.colors.accent)
@@ -42,78 +114,21 @@ struct ContentView: View {
                             .tint(ThemeManager.shared.colors.accent)
                             .buttonStyle(.bordered)
                         }
-                        .padding(.vertical, 4)
-                        .listRowBackground(ThemeManager.shared.colors.accent.opacity(0.15))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            ThemeManager.shared.colors.accent.opacity(0.15)
+                                .background(.ultraThinMaterial)
+                        )
+                        .cornerRadius(12)
+                        .shadow(radius: 4)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        Spacer()
                     }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
                 }
-                
-                if authorizationModel.authorizationDescription != "Authorized" {
-                    authorizationSection
-                }
-
-                Section("Alarms") {
-                    if coordinator.alarms.isEmpty {
-                        ContentUnavailableView("No Alarms", systemImage: "alarm", description: Text("Tap + to create one."))
-                    }
-                    ForEach(coordinator.alarms) { alarm in
-                        alarmRow(alarm)
-                    }
-                    .onDelete { offsets in
-                        for offset in offsets {
-                            let id = coordinator.alarms[offset].id
-                            Task { await coordinator.delete(id: id) }
-                        }
-                    }
-                }
-
-                if let error = coordinator.lastError {
-                    Section("Scheduling Error") {
-                        Text(error).foregroundStyle(ThemeManager.shared.colors.destructive)
-                    }
-                }
-
-                Section {
-                    Button("AlarmKit Diagnostics") { showingDiagnostics = true }
-                    Button("Themes") { showingAppearance = true }
-                    Button("Play History") { showingHistory = true }
-                }
-
-                Section("Smart Wake") {
-                    Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
-                    if smartWakeService.isSmartWakeEnabled {
-                        Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        // Status label that updates every 2 seconds while visible
-                        let _ = smartWakeStatusTick
-                        if alarmPlaybackService.isPlaying {
-                            Label("Ringing — playing your music", systemImage: "music.note")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        } else if smartWakeService.isRunning {
-                            Label("Active — silent loop running", systemImage: "waveform.badge.checkmark")
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        } else {
-                            Label("Waiting for next alarm...", systemImage: "clock.badge.questionmark")
-                                .font(.caption)
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        }
-                    }
-                }
-                .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
-                    smartWakeStatusTick.toggle()
-                    // Validate the ringing alarm still exists and is enabled
-                    if alarmPlaybackService.isPlaying {
-                        if !alarmPlaybackService.validateStillRinging() {
-                            currentRingSongName = nil
-                        }
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(ThemeManager.shared.colors.background)
-            .navigationTitle("Alarm Clock")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -211,8 +226,12 @@ struct ContentView: View {
 
         // SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
         if let result = coordinator.currentlyRingingAlarm() {
-            currentRingSongName = result.songName
-        } else {
+            let newSongName = result.songName
+            // Only assign if value actually differs to prevent render churn
+            if currentRingSongName != newSongName {
+                currentRingSongName = newSongName
+            }
+        } else if currentRingSongName != nil {
             currentRingSongName = nil
         }
     }
@@ -590,10 +609,36 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)
-                    Button("Copy Smart Wake Log") {
-                        if let text = SmartWakeDebugLog.read() {
-                            UIPasteboard.general.string = text
+                    Button {
+                        var text = SmartWakeDebugLog.read()
+                        if text == nil {
+                            // Retry once against Application Support fallback
+                            if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                                let fallbackURL = appSupport.appendingPathComponent("AlarmClock/SmartWakeDebugLog.txt")
+                                if FileManager.default.fileExists(atPath: fallbackURL.path) {
+                                    text = try? String(contentsOf: fallbackURL, encoding: .utf8)
+                                }
+                            }
                         }
+                        if let text {
+                            UIPasteboard.general.string = text
+                            smartWakeLogCopied = true
+                            smartWakeLogUnavailable = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                smartWakeLogCopied = false
+                            }
+                        } else {
+                            smartWakeLogUnavailable = true
+                            smartWakeLogCopied = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                smartWakeLogUnavailable = false
+                            }
+                        }
+                    } label: {
+                        Label(
+                            smartWakeLogCopied ? "Copied ✓" : (smartWakeLogUnavailable ? "Log unavailable" : "Copy Smart Wake Log"),
+                            systemImage: smartWakeLogCopied ? "checkmark" : "doc.on.doc"
+                        )
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)

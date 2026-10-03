@@ -29,6 +29,12 @@ final class SmartWakeService {
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
 
+    // Status string for UI - only updates when value changes to prevent render churn
+    private var statusText: String = "Waiting for next alarm..."
+    var statusTextPublished: String {
+        statusText
+    }
+
     var isRunning: Bool {
         isSessionActive && player?.isPlaying == true
     }
@@ -36,6 +42,41 @@ final class SmartWakeService {
     init() {
         loadPreference()
         prepareSilentLoop()
+        startStatusTick()
+    }
+    
+    private var statusTickTask: Task<Void, Never>?
+    
+    private func startStatusTick() {
+        statusTickTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                guard !Task.isCancelled else { break }
+                
+                // Update status text only when it changes to prevent render churn
+                let newStatus: String
+                if AlarmPlaybackService.shared.isPlaying {
+                    newStatus = "Ringing — playing your music"
+                } else if isRunning {
+                    newStatus = "Active — silent loop running"
+                } else {
+                    newStatus = "Waiting for next alarm..."
+                }
+                
+                if newStatus != statusText {
+                    statusText = newStatus
+                }
+                
+                // Validate the ringing alarm still exists and is enabled
+                if AlarmPlaybackService.shared.isPlaying {
+                    if !AlarmPlaybackService.shared.validateStillRinging() {
+                        // Alarm was disabled/deleted - stop playback
+                        AlarmPlaybackService.shared.stop()
+                        SmartWakeDebugLog.log("PLAYBACK stopped: alarm disabled/deleted (tick)")
+                    }
+                }
+            }
+        }
     }
 
     private func loadPreference() {
@@ -320,6 +361,8 @@ final class SmartWakeService {
 
     /// Stop the background audio session
     func stop() {
+        statusTickTask?.cancel()
+        statusTickTask = nil
         player?.stop()
         player = nil
         isSessionActive = false
