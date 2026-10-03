@@ -127,22 +127,16 @@ final class AlarmPlaybackService: NSObject {
     /// Ensure the audio session is active (for background playback)
     private func ensureAudioSessionActive() throws {
         let session = AVAudioSession.sharedInstance()
-        // If already active (silent loop running or already activated), skip to avoid throwing while backgrounded
-        if session.isActive {
-            os_log(.info, log: log, "Audio session already active, skipping activation")
+        // If other audio is playing, session is already active - just ensure category
+        if session.isOtherAudioPlaying {
+            os_log(.info, log: log, "Audio session already active (other audio playing), skipping activation")
             SmartWakeDebugLog.log("PLAYBACK: session already active, skipping activation")
-            // Still ensure category is correct
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             return
         }
         // Only activate if not already active - never deactivate
-        if session.isOtherAudioPlaying {
-            // Session is already active from SmartWake, just ensure category
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        } else {
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try session.setActive(true)
-        }
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try session.setActive(true)
     }
     
     /// Activate primary audio session for lock-screen Now Playing visibility
