@@ -290,8 +290,10 @@ final class AlarmPlaybackService: NSObject {
             
             // Re-publish Now Playing info with playbackState = .playing
             if let trackName = currentTrackName,
-               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }) {
-                publishNowPlayingInfo(for: sound, player: player!)
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }),
+               let currentPlayer = player {
+                let displayTrackName = displayName(for: sound.name)
+                publishNowPlayingInfo(for: sound, player: currentPlayer, displayName: displayTrackName)
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
                 SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
             }
@@ -355,7 +357,8 @@ final class AlarmPlaybackService: NSObject {
         if let currentTrackName = currentTrackName,
            let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }),
            let currentPlayer = player {
-            publishNowPlayingInfo(for: sound, player: currentPlayer)
+            let displayTrackName = displayName(for: sound.name)
+            publishNowPlayingInfo(for: sound, player: currentPlayer, displayName: displayTrackName)
             MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
             SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
         }
