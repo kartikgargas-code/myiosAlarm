@@ -2,6 +2,7 @@
 import UIKit
 import AlarmKit
 import AlarmClockShared
+import os.log
 
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
