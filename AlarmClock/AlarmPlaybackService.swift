@@ -238,8 +238,8 @@ final class AlarmPlaybackService: NSObject {
             if !(player?.isPlaying ?? false) {
                 // Player stopped during promotion - restart current track
                 SmartWakeDebugLog.log("PRIMARY PROMOTE: player stopped during promotion, restarting track")
-                if let trackName = currentTrack, let index = selectedSoundIDs.firstIndex(where: { 
-                    SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name == trackName 
+                if let trackName = currentTrack, let index = selectedSoundIDs.firstIndex(where: { soundID in 
+                    SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == trackName 
                 }) {
                     playTrack(at: index)
                 }
@@ -266,8 +266,8 @@ final class AlarmPlaybackService: NSObject {
                 SmartWakeDebugLog.log("PRIMARY PROMOTE REVERTED")
                 
                 // Restart current track if it was playing
-                if let trackName = currentTrackName, let index = selectedSoundIDs.firstIndex(where: { 
-                    SoundLibrary.shared.importedSounds.first(where: { $0.id == $0 })?.name == currentTrackName 
+                if let trackName = currentTrackName, let index = selectedSoundIDs.firstIndex(where: { soundID in 
+                    SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == currentTrackName 
                 }) {
                     playTrack(at: currentTrackIndex)
                 }
