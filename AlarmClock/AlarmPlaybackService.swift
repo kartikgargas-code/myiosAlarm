@@ -36,6 +36,8 @@ final class AlarmPlaybackService: NSObject {
     private var companionAlarmID: UUID?
     private var companionSnoozeDurationMinutes: Int = 10
     private var companionTask: Task<Void, Never>?
+    private var companionResumeAttempts = 0
+    private var companionMaxResumeAttempts = 3
     
     // Published state
     private(set) var isPlaying = false
@@ -667,7 +669,7 @@ final class AlarmPlaybackService: NSObject {
         // Cancel companion alarm if scheduled
         if let companionID = companionAlarmID {
             SmartWakeDebugLog.log("COMPANION cancel on stop: \(companionID.uuidString)")
-            Task {
+            Task.detached {
                 try? await AlarmManager.shared.cancel(id: companionID)
             }
             companionAlarmID = nil
@@ -750,11 +752,7 @@ final class AlarmPlaybackService: NSObject {
             return
         }
         
-        guard let coordinator = AlarmCoordinator.sharedInstance else {
-            SmartWakeDebugLog.log("COMPANION: no coordinator available")
-            return
-        }
-        
+        // No coordinator needed for scheduling companion alarms
         let companionID = UUID()
         companionAlarmID = companionID
         companionSnoozeDurationMinutes = alarm.snoozeDurationMinutes ?? 10
@@ -845,47 +843,44 @@ final class AlarmPlaybackService: NSObject {
                         }
                     }
                 }
-            } catch {
-                SmartWakeDebugLog.log("COMPANION observation error: \(error.localizedDescription)")
-            }
+            } // for await doesn't throw, so no catch needed
         }
     }
     
     /// Attempt to resume playback with retry logic
     private func attemptPlaybackResume() {
-        var attempts = 0
-        let maxAttempts = 3
+        companionResumeAttempts = 0
+        companionMaxResumeAttempts = 3
+        tryResumePlayback()
+    }
+    
+    private func tryResumePlayback() {
+        companionResumeAttempts += 1
+        SmartWakeDebugLog.log("PLAYBACK RESUME attempt \(companionResumeAttempts)/\(companionMaxResumeAttempts)")
         
-        func tryResume() {
-            attempts += 1
-            SmartWakeDebugLog.log("PLAYBACK RESUME attempt \(attempts)/\(maxAttempts)")
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setActive(true)
             
-            do {
-                let session = AVAudioSession.sharedInstance()
-                try session.setActive(true)
-                
-                if player?.play() == true {
-                    SmartWakeDebugLog.log("PLAYBACK RESUMED ok")
-                    return
-                } else {
-                    SmartWakeDebugLog.log("PLAYBACK RESUMED failed (play returned false)")
-                }
-            } catch {
-                SmartWakeDebugLog.log("PLAYBACK RESUMED error: \(error.localizedDescription)")
-            }
-            
-            if attempts < maxAttempts {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    self?.tryResume()
-                }
+            if player?.play() == true {
+                SmartWakeDebugLog.log("PLAYBACK RESUMED ok")
+                return
             } else {
-                // All attempts failed - trigger revert safety
-                SmartWakeDebugLog.log("PLAYBACK RESUMED: all \(maxAttempts) attempts failed")
-                revertCompanionAndRestartPlayback()
+                SmartWakeDebugLog.log("PLAYBACK RESUMED failed (play returned false)")
             }
+        } catch {
+            SmartWakeDebugLog.log("PLAYBACK RESUMED error: \(error.localizedDescription)")
         }
         
-        tryResume()
+        if companionResumeAttempts < companionMaxResumeAttempts {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.tryResumePlayback()
+            }
+        } else {
+            // All attempts failed - trigger revert safety
+            SmartWakeDebugLog.log("PLAYBACK RESUMED: all \(companionMaxResumeAttempts) attempts failed")
+            revertCompanionAndRestartPlayback()
+        }
     }
     
     /// Revert safety: cancel companion and restart playback
@@ -893,7 +888,8 @@ final class AlarmPlaybackService: NSObject {
         SmartWakeDebugLog.log("COMPANION REVERTED")
         
         if let companionID = companionAlarmID {
-            Task {
+            // Fire and forget - we don't need to await here
+            Task.detached {
                 try? await AlarmManager.shared.cancel(id: companionID)
             }
             companionAlarmID = nil
