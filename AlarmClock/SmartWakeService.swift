@@ -655,7 +655,7 @@ final class SmartWakeService {
                 }
                 
                 armedOccurrences.insert(armingKey)
-                os_log(.info, log: log, "ARMING %@ %@ fire in %.1fs", alarmID.uuidString.prefix(8), occurrenceKey, timeToFire)
+                os_log(.info, log: log, "ARMING %@ %@ fire in %.1fs", String(alarmID.uuidString.prefix(8)), occurrenceKey, timeToFire)
                 SmartWakeDebugLog.log("ARMING \(alarmID.uuidString.prefix(8)) \(occurrenceKey) fire in \(Int(timeToFire))s")
                 
                 // Schedule precise wake at fire time
