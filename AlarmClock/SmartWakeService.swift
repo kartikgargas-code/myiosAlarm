@@ -56,6 +56,11 @@ final class SmartWakeService {
         startStatusTick()
     }
     
+    /// Generate composite arming key from alarm ID and occurrence key
+    private func makeArmingKey(alarmID: UUID, occurrenceKey: String) -> String {
+        "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
+    }
+    
     private var statusTickTask: Task<Void, Never>?
     
     private func startStatusTick() {
@@ -637,8 +642,6 @@ final class SmartWakeService {
                 os_log(.info, log: log, "No upcoming occurrences in ring window")
                 return
             }
-            
-            let now = Date()
             
             // Arm EVERY upcoming occurrence with 0 < timeToFire <= 60 that is not already armed
             for occurrence in upcomingOccurrences {
