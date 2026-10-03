@@ -455,21 +455,11 @@ final class SmartWakeService {
         // Do NOT unregister for interruptions/route changes
     }
 
-    @MainActor private func logInterruptionBegan() {
+    @MainActor private func logInterruptionBegan(reason: UInt? = nil) {
         os_log(.info, log: log, "Audio interruption began")
         
-        // Get the reason if available
-        let reasonString: String
-        if let info = AVAudioSession.sharedInstance().interruptionNotification,
-           let userInfo = info.userInfo,
-           let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt {
-            reasonString = "\(reasonValue)"
-        } else {
-            reasonString = "unknown"
-        }
-        
-        // Check if session was suspended
-        let wasSuspended = (AVAudioSession.sharedInstance().otherAudioPlaying == false)
+        let reasonString = reason != nil ? "\(reason!)" : "unknown"
+        let wasSuspended = !AVAudioSession.sharedInstance().isOtherAudioPlaying
         
         SmartWakeDebugLog.log("INTERRUPTION began reason=\(reasonString) wasSuspended=\(wasSuspended)")
     }
@@ -539,7 +529,7 @@ final class SmartWakeService {
             let wasSuspended = !AVAudioSession.sharedInstance().isOtherAudioPlaying
             SmartWakeDebugLog.log("INTERRUPTION began reason=\(reasonString) wasSuspended=\(wasSuspended)")
             
-            logInterruptionBegan()
+            logInterruptionBegan(reason: reasonValue)
             // Log interruption affecting playback if AlarmPlaybackService is playing
             if AlarmPlaybackService.shared.isPlaying {
                 SmartWakeDebugLog.log("PLAYBACK: audio session interrupted (reason: began)")
