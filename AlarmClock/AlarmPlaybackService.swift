@@ -148,7 +148,7 @@ final class AlarmPlaybackService: NSObject {
     
     /// Log a complete session state dump for debugging
     /// Call at: start() entry, after play() returns false, after each retry in retry-B
-    private func logSessionDump(_ tag: String) {
+    func logSessionDump(_ tag: String) {
         let session = AVAudioSession.sharedInstance()
         let appState = UIApplication.shared.applicationState.rawValue
         let sceneState = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first?.activationState.rawValue ?? -1
