@@ -85,6 +85,8 @@ final class AlarmPlaybackService: NSObject {
             
             // Ensure audio session is active (don't deactivate, only activate if needed)
             try ensureAudioSessionActive()
+            // Then claim primary session for lock-screen Now Playing visibility
+            try activatePrimaryAudioSession()
             
             SmartWakeDebugLog.log("PLAYBACK started track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
             
@@ -130,6 +132,35 @@ final class AlarmPlaybackService: NSObject {
         } else {
             try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
+        }
+    }
+    
+    /// Activate primary audio session for lock-screen Now Playing visibility
+    /// Called when takeover playback starts - removes .mixWithOthers to claim primary session
+    private func activatePrimaryAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        // Re-activate as PRIMARY session (no .mixWithOthers) so iOS shows Now Playing on lock screen
+        try session.setCategory(.playback, mode: .default, options: [])
+        try session.setActive(true)
+        os_log(.info, log: log, "Audio session activated as PRIMARY (no mixWithOthers) for lock-screen Now Playing")
+        SmartWakeDebugLog.log("PLAYBACK: audio session activated as PRIMARY for lock-screen Now Playing")
+    }
+    
+    /// Restore mixable audio session when playback stops
+    /// If Smart Wake's silent loop is running, reactivate with .mixWithOthers
+    private func restoreMixableAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        if SmartWakeService.shared.isRunning {
+            // Smart Wake's silent loop is running - reactivate with mixWithOthers
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+            os_log(.info, log: log, "Audio session restored to MIXABLE for Smart Wake silent loop")
+            SmartWakeDebugLog.log("PLAYBACK: audio session restored to MIXABLE for Smart Wake")
+        } else {
+            // No silent loop running - just ensure category is mixable (don't activate)
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            os_log(.info, log: log, "Audio session category set to MIXABLE (no activation needed)")
+            SmartWakeDebugLog.log("PLAYBACK: audio session category set to MIXABLE (no silent loop)")
         }
     }
 
@@ -352,9 +383,11 @@ final class AlarmPlaybackService: NSObject {
         os_log(.info, log: log, "Seeked to %{public}.1f", time)
     }
 
-    /// Stop playback and clean up (but keep audio session active)
-    func stop() {
-        os_log(.info, log: log, "stop() called")
+    /// Stop playback and clean up, restoring mixable audio session
+    /// - Parameter reason: Reason for stopping (e.g., "user", "alarm disabled/deleted (tick)", "song-finish validation", "takeover transition")
+    func stop(reason: String = "user") {
+        os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
+        SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
         
         player?.stop()
         player = nil
@@ -375,15 +408,20 @@ final class AlarmPlaybackService: NSObject {
         selectedSoundIDs = []
         currentTrackIndex = 0
         
-        // Note: We do NOT deactivate the audio session - that's managed by SmartWake
-        os_log(.info, log: log, "Playback stopped, audio session kept active")
+        // Restore mixable audio session (for Smart Wake silent loop if running)
+        do {
+            try restoreMixableAudioSession()
+        } catch {
+            os_log(.error, log: log, "Failed to restore mixable audio session: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("PLAYBACK: failed to restore mixable session: \(error.localizedDescription)")
+        }
     }
 
     /// Advance to next track in playlist
     private func advanceToNextTrack() {
         // Validate the alarm still exists and is enabled before continuing
         guard validateStillRinging() else {
-            stop()
+            stop(reason: "alarm disabled/deleted (tick)")
             return
         }
         

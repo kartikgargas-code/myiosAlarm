@@ -453,12 +453,21 @@ final class SmartWakeService {
         switch type {
         case .began:
             logInterruptionBegan()
+            // Log interruption affecting playback if AlarmPlaybackService is playing
+            if AlarmPlaybackService.shared.isPlaying {
+                SmartWakeDebugLog.log("PLAYBACK: audio session interrupted (reason: began)")
+            }
         case .ended:
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             logInterruptionEnded(options: options)
             if options.contains(.shouldResume) {
                 handleInterruptionEnded(shouldResume: true)
+            } else {
+                // Interruption ended without resume - log for playback visibility
+                if AlarmPlaybackService.shared.isPlaying {
+                    SmartWakeDebugLog.log("PLAYBACK: audio session interrupted (reason: ended without resume)")
+                }
             }
         @unknown default:
             break
