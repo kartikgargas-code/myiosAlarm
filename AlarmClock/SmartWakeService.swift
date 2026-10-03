@@ -645,19 +645,11 @@ final class SmartWakeService {
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
                 if isPlaylistSound(soundToUse) {
-                    // Takeover: silence AlarmKit's alarm sound first, then play the
-                    // playlist in-app. If AlarmKit refuses to cancel (the alarm keeps
-                    // ringing), do NOT start in-app playback â€” double audio is worse
-                    // than the system alarm sound alone.
-                    SmartWakeDebugLog.log("TAKEOVER: playlist sound for \(occurrenceKey), silencing AlarmKit first")
-                    let silenced = await silenceAlarmKitAlarm(for: alarm)
-                    guard silenced else {
-                        os_log(.info, log: log, "AlarmKit cancel failed; keeping system alarm sound only")
-                        SmartWakeDebugLog.log("TAKEOVER STOPPED: AlarmKit cancel failed â€” system alarm keeps ringing, no in-app playback")
-                        return
-                    }
+                    // NEW TAKEOVER ORDER: Start playback FIRST, confirm playing, THEN silence ALL alerting alarms
+                    // This ensures: never total silence (floor sound kept if playback fails), no double audio
+                    SmartWakeDebugLog.log("TAKEOVER: starting in-app playback first for \(occurrenceKey)")
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
-                        os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s after silencing AlarmKit", resolvedPlaylistID.uuidString)
+                        os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s", resolvedPlaylistID.uuidString)
                         SmartWakeDebugLog.log("TAKEOVER: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
                         AlarmPlaybackService.shared.start(
                             playlistID: resolvedPlaylistID,
@@ -666,8 +658,40 @@ final class SmartWakeService {
                             occurrence: occurrence
                         )
                     }
-                    stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
-                    SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
+                    
+                    // Wait up to 1s for playback to actually start
+                    var playbackStarted = false
+                    for attempt in 0..<10 {
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                        if AlarmPlaybackService.shared.isPlaying {
+                            playbackStarted = true
+                            break
+                        }
+                    }
+                    
+                    if playbackStarted {
+                        SmartWakeDebugLog.log("TAKEOVER: playback confirmed, now silencing ALL alerting alarms")
+                        // Silence ALL alerting alarms (not just matched one)
+                        let alerting = (try? AlarmManager.shared.alarms.filter { $0.state == .alerting }) ?? []
+                        var allCancelled = true
+                        for kitAlarm in alerting {
+                            do {
+                                try AlarmManager.shared.cancel(id: kitAlarm.id)
+                                SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
+                            } catch {
+                                allCancelled = false
+                                SmartWakeDebugLog.log("SILENCE: cancel FAILED for \(kitAlarm.id.uuidString): \(error.localizedDescription)")
+                            }
+                        }
+                        os_log(.info, log: log, "Cancelled %d alerting alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
+                        stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
+                        SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
+                    } else {
+                        // Playback failed to start — keep floor sound, log fallback
+                        os_log(.error, log: log, "TAKEOVER FALLBACK: playback failed to start, leaving AlarmKit alarms ringing")
+                        SmartWakeDebugLog.log("TAKEOVER FALLBACK: playback failed, AlarmKit alarms left ringing")
+                        // Don't stop silent player either - let it continue
+                    }
                     
                     // Re-arm check: if there's another alarm coming up, restart the silent loop
                     Task {

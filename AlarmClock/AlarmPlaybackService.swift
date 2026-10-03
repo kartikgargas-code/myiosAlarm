@@ -96,6 +96,7 @@ final class AlarmPlaybackService: NSObject {
         } catch {
             lastError = error.localizedDescription
             os_log(.error, log: log, "Failed to start playback: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("PLAYBACK FAILED: \(error.localizedDescription)")
             isArmedForOccurrence.remove(occurrenceKey)
         }
     }
@@ -136,14 +137,24 @@ final class AlarmPlaybackService: NSObject {
     }
     
     /// Activate primary audio session for lock-screen Now Playing visibility
-    /// Called when takeover playback starts - removes .mixWithOthers to claim primary session
+    /// Called when takeover playback starts - claims primary session ONLY when app is foregroundActive
+    /// When backgrounded/locked, keeps mixable posture to avoid 561015905 (nonmixable activation in background)
     private func activatePrimaryAudioSession() throws {
+        // Check scene state - only claim primary when foregroundActive
+        let scenes = UIApplication.shared.connectedScenes
+        let foregroundActive = scenes.compactMap { $0 as? UIWindowScene }.first?.activationState == .foregroundActive
+        
+        guard foregroundActive else {
+            SmartWakeDebugLog.log("PLAYBACK: keep MIXABLE session (scene=\(scenes.compactMap { $0 as? UIWindowScene }.first?.activationState.rawValue ?? -1))")
+            return
+        }
+        
         let session = AVAudioSession.sharedInstance()
-        // Re-activate as PRIMARY session (no .mixWithOthers) so iOS shows Now Playing on lock screen
+        // Claim PRIMARY session (no .mixWithOthers) so iOS shows Now Playing on lock screen
         try session.setCategory(.playback, mode: .default, options: [])
         try session.setActive(true)
         os_log(.info, log: log, "Audio session activated as PRIMARY (no mixWithOthers) for lock-screen Now Playing")
-        SmartWakeDebugLog.log("PLAYBACK: audio session activated as PRIMARY for lock-screen Now Playing")
+        SmartWakeDebugLog.log("PLAYBACK: audio session activated as PRIMARY (scene=foregroundActive)")
     }
     
     /// Restore mixable audio session when playback stops
