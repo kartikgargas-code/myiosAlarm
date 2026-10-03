@@ -461,7 +461,7 @@ final class AlarmCoordinator {
         }
     }
 
-    private func alarmKitSound(for sound: AlarmSound, loudness: AlarmLoudness = .hundred) async throws -> AlertConfiguration.AlertSound {
+    func alarmKitSound(for sound: AlarmSound, loudness: AlarmLoudness = .hundred) async throws -> AlertConfiguration.AlertSound {
         switch sound {
         case .systemDefault:
             return .default
