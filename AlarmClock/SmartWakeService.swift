@@ -892,7 +892,6 @@ final class SmartWakeService {
                                 os_log(.error, log: log, "EMERGENCY RE-RING scheduling FAILED: %{public}s", error.localizedDescription)
                             }
                         }
-                        }
                     }
                     
                     // Re-arm check: if there's another alarm coming up, restart the silent loop

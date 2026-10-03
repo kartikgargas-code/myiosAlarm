@@ -158,7 +158,8 @@ final class AlarmPlaybackService: NSObject {
         dump += "cat=\(session.category.rawValue) mode=\(session.mode.rawValue) opts=\(session.categoryOptions.rawValue) "
         dump += "isOtherAudioPlaying=\(session.isOtherAudioPlaying) secondaryAudioShouldBeSilencedHint=\(session.secondaryAudioShouldBeSilencedHint) "
         dump += "outputVolume=\(session.outputVolume) "
-        dump += "routeOutputs=\(session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: \",\")) "
+        let routeOutputs = session.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+        dump += "routeOutputs=\(routeOutputs) "
         dump += "silentPlayer=\(silentPlayerRunning) appState=\(appState) sceneState=\(sceneState)"
         
         lastSessionDump = dump
