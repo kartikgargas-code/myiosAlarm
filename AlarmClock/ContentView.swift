@@ -153,6 +153,8 @@ struct ContentView: View {
                 }
                 // Set shared instance for AlarmPlaybackService access
                 AlarmCoordinator.sharedInstance = coordinator
+                // Attach coordinator to SmartWakeService for foreground/background triggers
+                await smartWakeService.startIfAlarmArmed(coordinator: coordinator)
                 // Start Smart Wake in foreground if enabled (idempotent)
                 if smartWakeService.isSmartWakeEnabled {
                     await smartWakeService.startIfReadyForeground()
