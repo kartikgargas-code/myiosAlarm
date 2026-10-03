@@ -864,7 +864,7 @@ final class SmartWakeService {
                                             countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min")),
                                             paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
                                         ),
-                                        metadata: AlarmKitScheduleMetadata(
+                                        metadata: ScheduledOccurrenceMetadata(
                                             alarmID: alarm.id,
                                             occurrenceKey: "EMERGENCY-\(occurrenceKey)",
                                             baseDate: emergencyFireDate

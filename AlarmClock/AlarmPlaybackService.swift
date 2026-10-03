@@ -130,7 +130,7 @@ final class AlarmPlaybackService: NSObject {
     }
 
     /// Ensure the audio session is active (for background playback)
-    private func ensureAudioSessionActive() throws {
+    func ensureAudioSessionActive() throws {
         let session = AVAudioSession.sharedInstance()
         // ALWAYS set category and activate - no shortcuts. isOtherAudioPlaying is true due to AlarmKit sound, not our active session.
         do {
