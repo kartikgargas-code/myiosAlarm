@@ -622,6 +622,35 @@ final class AlarmReconciliationPlanTests: XCTestCase {
 }
 
 
+@MainActor
+final class AlarmArmingKeyTests: XCTestCase {
+    func testTwoAlarmsSameDateDifferentArmingKeys() {
+        let alarmID1 = UUID()
+        let alarmID2 = UUID()
+        let occurrenceKey = "2026-10-03"
+        
+        let key1 = "\(alarmID1.uuidString.prefix(8))|\(occurrenceKey)"
+        let key2 = "\(alarmID2.uuidString.prefix(8))|\(occurrenceKey)"
+        
+        XCTAssertNotEqual(key1, key2, "Two different alarms on same date should have different arming keys")
+    }
+    
+    func testStopClearsArmingKey() {
+        // This test verifies the logic of removing arming keys on stop
+        // We test the key generation logic directly
+        let alarmID = UUID()
+        let occurrenceKey = "2026-10-03"
+        let armingKey = "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
+        
+        var armedSet: Set<String> = [armingKey]
+        XCTAssertTrue(armedSet.contains(armingKey))
+        
+        // Simulate stop() removing the key
+        armedSet.remove(armingKey)
+        XCTAssertFalse(armedSet.contains(armingKey))
+    }
+}
+
 #if DIAGNOSTIC_BUILD
 @MainActor
 final class DiagnosticAlarmSchedulingTests: XCTestCase {

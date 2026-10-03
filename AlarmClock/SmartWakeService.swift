@@ -24,7 +24,7 @@ final class SmartWakeService {
     
     // Transition arming
     private var transitionCheckTask: Task<Void, Never>?
-    private var armedOccurrences: Set<String> = []
+    private var armedOccurrences: Set<String> = [] // Composite keys: "alarmID|occurrenceKey"
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -627,7 +627,7 @@ final class SmartWakeService {
             let now = Date()
             let ringWindowEnd = now.addingTimeInterval(8 * 3600) // 8 hours
             
-            // Find all unskipped occurrences within the ring window
+            // Find ALL unskipped occurrences within the ring window
             let desiredOccurrences = engine.desiredOccurrences(now: now, perAlarmLimit: 5)
             let upcomingOccurrences = desiredOccurrences.filter { occ in
                 occ.effectiveDate > now && occ.effectiveDate <= ringWindowEnd
@@ -638,31 +638,40 @@ final class SmartWakeService {
                 return
             }
             
-            // Find the earliest unskipped occurrence
-            let earliestOccurrence = upcomingOccurrences.min { $0.effectiveDate < $1.effectiveDate }
-            guard let earliest = earliestOccurrence else { return }
+            let now = Date()
             
-            let timeToFire = earliest.effectiveDate.timeIntervalSince(now)
-            let occurrenceKey = earliest.occurrenceKey
-            
-            os_log(.info, log: log, "Next occurrence: %{public}s in %{public}.1fs (armed: %{public}d)", 
-                   occurrenceKey, timeToFire, armedOccurrences.contains(occurrenceKey) ? 1 : 0)
-            
-            // If within 60 seconds and not yet armed, arm it
-            if timeToFire <= 60 && timeToFire > 0 && !armedOccurrences.contains(occurrenceKey) {
-                armedOccurrences.insert(occurrenceKey)
-                os_log(.info, log: log, "ARMING transition for occurrence %{public}s (fire in %{public}.1fs)", 
-                       occurrenceKey, timeToFire)
+            // Arm EVERY upcoming occurrence with 0 < timeToFire <= 60 that is not already armed
+            for occurrence in upcomingOccurrences {
+                let timeToFire = occurrence.effectiveDate.timeIntervalSince(now)
+                let occurrenceKey = occurrence.occurrenceKey
+                let alarmID = occurrence.alarmID
+                let armingKey = makeArmingKey(alarmID: alarmID, occurrenceKey: occurrenceKey)
+                
+                guard timeToFire > 0 && timeToFire <= 60 && !armedOccurrences.contains(armingKey) else {
+                    continue
+                }
+                
+                armedOccurrences.insert(armingKey)
+                os_log(.info, log: log, "ARMING %@ %@ fire in %.1fs", alarmID.uuidString.prefix(8), occurrenceKey, timeToFire)
+                SmartWakeDebugLog.log("ARMING \(alarmID.uuidString.prefix(8)) \(occurrenceKey) fire in \(Int(timeToFire))s")
                 
                 // Schedule precise wake at fire time
-                scheduleTransitionWake(for: earliest, snapshot: snapshot, engine: engine)
+                scheduleTransitionWake(for: occurrence, snapshot: snapshot, engine: engine)
             }
             
             // Clean up old armed occurrences (past fire time + tolerance)
             let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
             let keysToRemove = armedOccurrences.filter { key in
+                // Parse the composite key: "alarmID|occurrenceKey"
+                let components = key.split(separator: "|")
+                guard components.count == 2 else { return true } // Remove if malformed
+                let alarmIDString = String(components[0])
+                let occurrenceKey = String(components[1])
+                
                 // Find the occurrence for this key and check if it's past
-                if let occ = desiredOccurrences.first(where: { $0.occurrenceKey == key }) {
+                if let occ = desiredOccurrences.first(where: { 
+                    $0.occurrenceKey == occurrenceKey && $0.alarmID.uuidString.prefix(8) == alarmIDString 
+                }) {
                     return occ.effectiveDate < cleanupThreshold
                 }
                 return true // Remove if not found
@@ -774,7 +783,8 @@ final class SmartWakeService {
                         os_log(.error, log: log, "TAKEOVER ATTEMPT-A FAILED: playback failed to start, leaving AlarmKit alarms ringing")
                         SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A FALLBACK: playback failed, AlarmKit alarms left ringing")
                         // Remove from isArmedForOccurrence so we can retry
-                        armedOccurrences.remove(occurrenceKey)
+                        let armingKey = makeArmingKey(alarmID: alarm.id, occurrenceKey: occurrenceKey)
+                        armedOccurrences.remove(armingKey)
                         
                         // ATTEMPT B: Cancel ALL alerting alarms first, then reclaim session and retry
                         SmartWakeDebugLog.log("TAKEOVER RETRY-B: cancelling alerting alarms then reclaiming session")

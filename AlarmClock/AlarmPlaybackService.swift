@@ -26,7 +26,8 @@ final class AlarmPlaybackService: NSObject {
     private var currentTrackIndex = 0
     private var selectedSoundIDs: [UUID] = []
     private weak var coordinator: AlarmCoordinator?
-    private var isArmedForOccurrence: Set<String> = [] // Track armed occurrences to prevent double-start
+    // Track armed occurrences to prevent double-start using composite keys: "alarmID|occurrenceKey"
+    private var isArmedForOccurrence: Set<String> = []
     private var transitionCheckTask: Task<Void, Never>?
     private var consecutiveFailures = 0 // Track consecutive play failures to prevent infinite recursion
     
@@ -60,13 +61,13 @@ final class AlarmPlaybackService: NSObject {
         // Log session state at start entry
         logSessionDump("START")
 
-        // Guard against double-start for same occurrence
-        let occurrenceKey = occurrence.occurrenceKey
-        guard !isArmedForOccurrence.contains(occurrenceKey) else {
-            os_log(.info, log: log, "Already armed for occurrence %{public}s, skipping", occurrenceKey)
+        // Guard against double-start for same occurrence using composite key
+        let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
+        guard !isArmedForOccurrence.contains(armingKey) else {
+            os_log(.info, log: log, "Already armed for occurrence %{public}s, skipping", occurrence.occurrenceKey)
             return
         }
-        isArmedForOccurrence.insert(occurrenceKey)
+        isArmedForOccurrence.insert(armingKey)
 
         // Reset consecutive failures on new start
         consecutiveFailures = 0
@@ -104,7 +105,8 @@ final class AlarmPlaybackService: NSObject {
             lastError = error.localizedDescription
             os_log(.error, log: log, "Failed to start playback: %{public}s (domain=%{public}s code=%{public}d)", error.localizedDescription, nsError.domain, nsError.code)
             SmartWakeDebugLog.log("PLAYBACK FAILED: \(nsError.domain) code=\(nsError.code) \(error.localizedDescription)")
-            isArmedForOccurrence.remove(occurrenceKey)
+            let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
+            isArmedForOccurrence.remove(armingKey)
         }
     }
     
@@ -620,6 +622,12 @@ final class AlarmPlaybackService: NSObject {
     func stop(reason: String = "user") {
         os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
+        
+        // Remove from armed occurrences set using composite key
+        if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
+            let armingKey = "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
+            isArmedForOccurrence.remove(armingKey)
+        }
         
         player?.stop()
         player = nil
