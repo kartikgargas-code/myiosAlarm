@@ -138,7 +138,7 @@ struct ContentView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(
-                            ThemeManager.shared.colors.primaryBackground.opacity(0.95)
+                            ThemeManager.shared.colors.background.opacity(0.95)
                         )
                         .cornerRadius(12)
                         .shadow(radius: 4)
