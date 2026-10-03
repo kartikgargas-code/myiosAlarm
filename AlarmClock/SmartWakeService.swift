@@ -873,7 +873,7 @@ final class SmartWakeService {
                                     ),
                                     stopIntent: nil,
                                     secondaryIntent: nil,
-                                    sound: alarm.alarmKitSound // reuse the same floor sound
+                                    sound: (try? await AlarmCoordinator.sharedInstance?.alarmKitSound(for: alarm.sound, loudness: alarm.loudness)) ?? .default
                                 )
                                 _ = try await AlarmManager.shared.schedule(id: emergencyID, configuration: emergencyConfig)
                                 SmartWakeDebugLog.log("EMERGENCY RE-RING scheduled id=\(emergencyID.uuidString) at \(emergencyFireDate)")
