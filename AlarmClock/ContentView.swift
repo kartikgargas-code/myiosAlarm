@@ -1,5 +1,6 @@
 ﻿import SwiftUI
 import UIKit
+import AlarmKit
 import AlarmClockShared
 
 struct ContentView: View {
@@ -95,7 +96,9 @@ struct ContentView: View {
                 }
                 
                 // Now Ringing banner as pinned overlay (stable, not in List)
-                if let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName {
+                // Shows during in-app playback OR system alarm rings (via smartWakeService.alertingSongName)
+                let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName ?? smartWakeService.alertingSongName
+                if let songName = songName {
                     VStack {
                         HStack {
                             Image(systemName: "speaker.wave.3.fill")
@@ -105,8 +108,25 @@ struct ContentView: View {
                                 .foregroundStyle(ThemeManager.shared.colors.primaryText)
                             Spacer()
                             Button {
+                                // Stop in-app playback AND cancel all alerting AlarmKit alarms
                                 alarmPlaybackService.stop()
                                 currentRingSongName = nil
+                                
+                                // Cancel all alerting alarms (for system rings)
+                                Task {
+                                    do {
+                                        let alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                                        for kitAlarm in alerting {
+                                            try AlarmManager.shared.cancel(id: kitAlarm.id)
+                                            SmartWakeDebugLog.log("BANNER STOP: cancelled alerting alarm \(kitAlarm.id.uuidString)")
+                                        }
+                                        if !alerting.isEmpty {
+                                            os_log(.info, log: OSLog(subsystem: "com.example.alarmclock", category: "AlarmPlayback"), "BANNER STOP: cancelled %d alerting alarm(s)", alerting.count)
+                                        }
+                                    } catch {
+                                        os_log(.error, log: OSLog(subsystem: "com.example.alarmclock", category: "AlarmPlayback"), "BANNER STOP failed: %{public}s", error.localizedDescription)
+                                    }
+                                }
                             } label: {
                                 Label("Stop", systemImage: "stop.fill")
                                     .labelStyle(.iconOnly)

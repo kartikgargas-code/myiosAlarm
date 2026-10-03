@@ -94,9 +94,10 @@ final class AlarmPlaybackService: NSObject {
             playTrack(at: 0)
             
         } catch {
+            let nsError = error as NSError
             lastError = error.localizedDescription
-            os_log(.error, log: log, "Failed to start playback: %{public}s", error.localizedDescription)
-            SmartWakeDebugLog.log("PLAYBACK FAILED: \(error.localizedDescription)")
+            os_log(.error, log: log, "Failed to start playback: %{public}s (domain=%{public}s code=%{public}d)", error.localizedDescription, nsError.domain, nsError.code)
+            SmartWakeDebugLog.log("PLAYBACK FAILED: \(nsError.domain) code=\(nsError.code) \(error.localizedDescription)")
             isArmedForOccurrence.remove(occurrenceKey)
         }
     }
@@ -126,6 +127,14 @@ final class AlarmPlaybackService: NSObject {
     /// Ensure the audio session is active (for background playback)
     private func ensureAudioSessionActive() throws {
         let session = AVAudioSession.sharedInstance()
+        // If already active (silent loop running or already activated), skip to avoid throwing while backgrounded
+        if session.isActive {
+            os_log(.info, log: log, "Audio session already active, skipping activation")
+            SmartWakeDebugLog.log("PLAYBACK: session already active, skipping activation")
+            // Still ensure category is correct
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            return
+        }
         // Only activate if not already active - never deactivate
         if session.isOtherAudioPlaying {
             // Session is already active from SmartWake, just ensure category

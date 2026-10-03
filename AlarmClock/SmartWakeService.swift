@@ -34,6 +34,17 @@ final class SmartWakeService {
     var statusTextPublished: String {
         statusText
     }
+    
+    // Alerting song name for banner visibility during system rings (updated by status tick)
+    private var _alertingSongName: String? = nil
+    var alertingSongName: String? {
+        get { _alertingSongName }
+        set {
+            if _alertingSongName != newValue {
+                _alertingSongName = newValue
+            }
+        }
+    }
 
     var isRunning: Bool {
         isSessionActive && player?.isPlaying == true
@@ -52,6 +63,32 @@ final class SmartWakeService {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 guard !Task.isCancelled else { break }
+                
+                // Check for any alerting AlarmKit alarm (system ring) - for banner visibility during system rings
+                do {
+                    let alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                    if !alerting.isEmpty {
+                        // Try to get song name from the first alerting alarm via coordinator
+                        if let coordinator = AlarmCoordinator.sharedInstance {
+                            for kitAlarm in alerting {
+                                if let result = coordinator.currentlyRingingAlarm() {
+                                    // Update the published property to trigger banner
+                                    if _alertingSongName != result.songName {
+                                        _alertingSongName = result.songName
+                                    }
+                                    break
+                                }
+                            }
+                        }
+                    } else {
+                        // No alerting alarms - clear the song name
+                        if _alertingSongName != nil {
+                            _alertingSongName = nil
+                        }
+                    }
+                } catch {
+                    // Ignore errors
+                }
                 
                 // Update status text only when it changes to prevent render churn
                 let newStatus: String
