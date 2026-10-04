@@ -446,7 +446,7 @@ final class AlarmCoordinator {
                         playlistID = pid
                     } else {
                         // Should not reach here since we checked isPlaylistSound
-                        throw AudioProcessingError.processingFailed("Expected playlist sound for backup")
+                        fatalError("Expected playlist sound for backup")
                     }
                     
                     // Create short floor sound for backup (cap at 60s total duration)
