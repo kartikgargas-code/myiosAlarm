@@ -536,7 +536,8 @@ struct ContentView: View {
             }
         }
     }
-    
+    }
+
     var widgetDiagnosticsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Current snapshot in memory
@@ -794,5 +795,4 @@ struct ContentView: View {
         let log = SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet."
         return "=== SMART WAKE LOG ===\n\(log)\n"
     }
-}
 }
