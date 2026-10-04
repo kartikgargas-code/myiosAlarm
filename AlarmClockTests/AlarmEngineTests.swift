@@ -685,26 +685,29 @@ final class NativeAlarmStateMachineTests: XCTestCase {
     /// Pure state machine: (previousState?, currentState?) -> action
     /// This mirrors the logic in SmartWakeService.startNativeAlarmObservation
     func nativeAlarmAction(previous: NativeAlarmState?, current: NativeAlarmState?) -> NativeAlarmAction {
-        guard let current = current else {
-            // Current is nil (alarm gone)
+        // Handle current being nil or .gone (alarm gone)
+        if current == nil || current == .gone {
             if previous == .alerting {
                 return .stopDetected
             }
             return .ignore
         }
         
+        // Unwrap current for switch
+        let currentState = current!
+        
         // Ignore scheduled
-        if current == .scheduled {
+        if currentState == .scheduled {
             return .ignore
         }
         
         // First time seeing alerting
-        if current == .alerting && previous != .alerting {
+        if currentState == .alerting && previous != .alerting {
             return .logAlerting
         }
         
         // Snooze: alerting -> countdown
-        if previous == .alerting && current == .countdown {
+        if previous == .alerting && currentState == .countdown {
             return .snoozeDetected
         }
         
