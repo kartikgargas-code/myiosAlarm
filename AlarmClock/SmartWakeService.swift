@@ -710,21 +710,27 @@ final class SmartWakeService {
         }
     }
     
-    /// Cancel every AlarmKit alarm that belongs to the given alarm (metadata match)
-    /// or is currently alerting.
-    func cancelScheduledAlarms(forAlarmID alarmID: UUID) {
+    /// Cancel the coordinator-scheduled -BACKUP alarm for this occurrence (computed the
+    /// same way AlarmCoordinator builds its SystemScheduleID) plus any AlarmKit alarm
+    /// still alerting.
+    func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String) {
+        let backupSystemID = SystemScheduleID.make(
+            for: backupOccurrence,
+            label: label,
+            sound: sound,
+            loudness: loudness,
+            selectionHash: selectionHash
+        )
         do {
-            let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
-            for kitAlarm in kitAlarms {
-                let isAlerting = kitAlarm.state == .alerting
-                let metaAlarmID = (kitAlarm.attributes?.metadata as? ExtensionAlarmSchedulingService.ScheduledOccurrenceMetadata)?.alarmID
-                if isAlerting || metaAlarmID == alarmID {
-                    try AlarmManager.shared.cancel(id: kitAlarm.id)
-                    SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(kitAlarm.id.uuidString) alerting=\(isAlerting)")
-                }
-            }
+            try AlarmManager.shared.cancel(id: backupSystemID)
+            SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(backupSystemID.uuidString)")
         } catch {
             SmartWakeDebugLog.log("BACKUP ALARM cancel FAILED: \(error.localizedDescription)")
+        }
+        let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+        for kitAlarm in kitAlarms where kitAlarm.state == .alerting {
+            try? AlarmManager.shared.cancel(id: kitAlarm.id)
+            SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
         }
     }
 
@@ -796,7 +802,14 @@ final class SmartWakeService {
                         // TAKEOVER SHARED: another same-minute alarm already owns playback.
                         // Keep its playlist running; drop ONLY our own backup alarms.
                         SmartWakeDebugLog.log("TAKEOVER SHARED: playback owner active; cancelling backups for \(occurrenceKey)")
-                        cancelScheduledAlarms(forAlarmID: alarm.id)
+                        cancelScheduledAlarms(
+                            forAlarmID: alarm.id,
+                            backupOccurrence: backupOccurrenceForCancel,
+                            label: alarm.label.isEmpty ? "Alarm" : alarm.label,
+                            sound: soundToUse,
+                            loudness: alarm.loudness,
+                            selectionHash: desiredSelectionHash(for: soundToUse)
+                        )
                         return
                     }
 
@@ -811,6 +824,15 @@ final class SmartWakeService {
                         )
                     }
                     
+                    // Build the -BACKUP occurrence for cancel (same shape as AlarmCoordinator)
+                    let backupOccurrenceForCancel = AlarmOccurrence(
+                        alarmID: alarm.id,
+                        occurrenceKey: "\(occurrenceKey)-BACKUP",
+                        baseDate: occurrence.baseDate,
+                        effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
+                        isAdjusted: false
+                    )
+
                     // Wait up to 1s for playback to actually start
                     var playbackStarted = false
                     for attempt in 0..<10 {
@@ -832,11 +854,14 @@ final class SmartWakeService {
                             effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
                             isAdjusted: false
                         )
-                        // Bulletproof cancel: drop every AlarmKit alarm that belongs to this
-                        // alarm (metadata match) plus anything still alerting. Computed-ID
-                        // matching is fragile: selection-hash/label can drift between commit
-                        // and wake, so a recomputed ID may not equal the scheduled ID.
-                        cancelScheduledAlarms(forAlarmID: alarm.id)
+                        cancelScheduledAlarms(
+                            forAlarmID: alarm.id,
+                            backupOccurrence: backupOccurrenceForCancel,
+                            label: alarm.label.isEmpty ? "Alarm" : alarm.label,
+                            sound: soundToUse,
+                            loudness: alarm.loudness,
+                            selectionHash: desiredSelectionHash(for: soundToUse)
+                        )
                         
                         // Promote to primary session for lock screen controls (if not foreground)
                         AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
