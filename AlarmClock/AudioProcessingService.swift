@@ -6,7 +6,7 @@ import CryptoKit
 /// Service for non-destructive audio gain adjustment
 /// Creates modified audio files at different loudness levels without modifying the originals
 @MainActor
-public final class AudioProcessingService {
+final class AudioProcessingService {
     static let shared = AudioProcessingService()
 
     private let fileManager = FileManager.default

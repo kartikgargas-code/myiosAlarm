@@ -4,7 +4,6 @@ import Foundation
 import Observation
 import WidgetKit
 import os.log
-import AudioProcessingService
 
 @MainActor
 @Observable
