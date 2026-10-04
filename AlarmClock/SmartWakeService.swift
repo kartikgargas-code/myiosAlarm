@@ -954,6 +954,14 @@ final class SmartWakeService {
         }
     }
     
+    static func isPlaylistSound(_ sound: AlarmSound) -> Bool {
+        switch sound {
+        case .precomposedPlaylist: return true
+        case .random: return true
+        default: return false
+        }
+    }
+    
     /// Start observing native AlarmKit alarm for Stop/Snooze detection (NATIVE-FIRST path)
     /// State machine: (previous, current) -> action
     /// - .scheduled -> ignore

@@ -426,7 +426,7 @@ final class AlarmCoordinator {
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
                 // Backup fires at occurrence.effectiveDate + backupDelaySeconds with short floor sound
-                if smartWakeEnabled && isPlaylistSound(soundToUse) {
+                if smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse) {
                     let backupOccurrenceKey = "\(occurrence.occurrenceKey)-BACKUP"
                     let backupDate = occurrence.effectiveDate.addingTimeInterval(TimeInterval(AlarmCoordinator.backupDelaySeconds))
                     let backupOccurrence = AlarmOccurrence(
