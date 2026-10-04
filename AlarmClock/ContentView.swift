@@ -502,7 +502,7 @@ struct ContentView: View {
                                 Button {
                                     coordinator.playHistoryEntry(entry)
                                 } label: {
-                                    Image(systemName: "play.circle.fill")
+                                    Image(systemName: SoundPreviewService.shared.playingSoundID == "history-\(entry.id.uuidString)" ? "stop.circle.fill" : "play.circle.fill")
                                         .font(.title2)
                                 }
                                 .buttonStyle(.bordered)

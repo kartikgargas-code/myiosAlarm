@@ -973,8 +973,13 @@ final class AlarmCoordinator {
         }
     }
 
-    /// Play a song by ID (for history playback)
+    /// Toggle playback of a history entry: press plays, press again stops.
     func playHistoryEntry(_ entry: PlayHistoryEntry) {
+        if SoundPreviewService.shared.playingSoundID == historySoundID(for: entry) {
+            SoundPreviewService.shared.stop()
+            return
+        }
+        stopHistoryPlayback()
         // Find the sound in the library
         let soundName = entry.songName
         var soundURL: URL?
@@ -1004,7 +1009,17 @@ final class AlarmCoordinator {
             lastError = "Could not find sound file for: \(soundName)"
             return
         }
-        
-        SoundPreviewService.shared.play(url: url, id: id)
+
+        SoundPreviewService.shared.play(url: url, id: historySoundID(for: entry))
+    }
+
+    /// Stable ID identifying the sound used for a history entry playback.
+    private func historySoundID(for entry: PlayHistoryEntry) -> String {
+        "history-\(entry.id.uuidString)"
+    }
+
+    /// Stop any history/preview playback started from Play History.
+    func stopHistoryPlayback() {
+        SoundPreviewService.shared.stop()
     }
 }

@@ -37,6 +37,7 @@ final class SoundPreviewService {
             try configureSessionIfNeeded()
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.prepareToPlay()
+            newPlayer.delegate = self
             guard newPlayer.play() else {
                 lastError = "Preview could not start for \(url.lastPathComponent)."
                 return
@@ -62,5 +63,14 @@ final class SoundPreviewService {
         try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
         sessionConfigured = true
+    }
+}
+
+extension SoundPreviewService: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.player = nil
+            self.playingSoundID = nil
+        }
     }
 }
