@@ -153,11 +153,13 @@ final class AudioProcessingService {
     /// Precompose a playlist into a single WAV file for AlarmKit
     /// Selects multiple random songs (or uses sequence order), concatenates them with loudness applied
     /// Returns the URL of the combined file
+    /// If maxDuration is provided, the total duration is capped at that value (for backup alarms)
     func precomposePlaylist(
         playlistID: UUID,
         loudness: AlarmLoudness,
         songCount: Int = 5,
-        alarmID: UUID? = nil
+        alarmID: UUID? = nil,
+        maxDuration: TimeInterval? = nil  // Cap total duration (e.g., 60s for backup alarms)
     ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {
         // Capture MainActor-isolated values before detaching
         let soundsDir = SoundLibrary.shared.soundsDirectory
@@ -297,6 +299,19 @@ final class AudioProcessingService {
                 do {
                     let audioFile = try AVAudioFile(forReading: soundURL)
                     let sourceFormat = audioFile.processingFormat
+                    
+                    // Calculate duration of this song
+                    let songDuration = Double(audioFile.length) / sourceFormat.sampleRate
+                    
+                    // Check if adding this song would exceed maxDuration
+                    if let maxDuration = maxDuration {
+                        let currentDuration = Double(outputFile.length) / outputFormat.sampleRate
+                        if currentDuration + songDuration > maxDuration {
+                            // Skip this song, we've hit the cap
+                            SmartWakeDebugLog.log("BACKUP: skipping song \(sound.name) (would exceed \(maxDuration)s cap, current=\(currentDuration)s)")
+                            break
+                        }
+                    }
 
                     if sourceFormat == outputFormat {
                         // Fast path: same format, straight chunk copy.

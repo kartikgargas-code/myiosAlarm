@@ -4,6 +4,7 @@ import Foundation
 import Observation
 import WidgetKit
 import os.log
+import SmartWakeService
 
 @MainActor
 @Observable
@@ -433,8 +434,29 @@ final class AlarmCoordinator {
                         isAdjusted: false
                     )
                     
-                    // Create short floor sound for backup (will be handled by alarmKitSound for precomposedPlaylist)
-                    let backupAlarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+                    // Create short floor sound for backup (cap at 60s total duration)
+                    let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
+                        playlistID: playlistID,
+                        loudness: alarm.loudness,
+                        songCount: 5,
+                        maxDuration: 60  // Cap total duration at 60s for backup
+                    )
+                    let backupPrecomposedURL = backupPrecomposedTuple.0
+                    
+                    // Record diagnostics
+                    playlistDiagnostics.addPreparation(backupPrecomposedTuple.1)
+                    playlistDiagnostics.addGeneratedFile(backupPrecomposedTuple.2)
+                    
+                    // Copy to Library/Sounds for AlarmKit access
+                    let processedFileName = backupPrecomposedURL.lastPathComponent
+                    let soundsDir = SoundLibrary.shared.soundsDirectory!
+                    let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+                    
+                    if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+                        try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
+                    }
+                    
+                    let backupAlarmKitSound = .named(processedFileName)
                     
                     results.append(DesiredSystemAlarm(
                         id: SystemScheduleID.make(
