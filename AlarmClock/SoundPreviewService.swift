@@ -13,7 +13,7 @@ enum StableSoundID {
 
 @MainActor
 @Observable
-final class SoundPreviewService {
+final class SoundPreviewService: NSObject {
     static let shared = SoundPreviewService()
 
     private(set) var playingSoundID: String?
