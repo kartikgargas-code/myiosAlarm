@@ -81,39 +81,39 @@ final class AlarmCoordinator {
     }
 
     func synchronize() async {
-        await commit { _ in }
+        await commit({ _ in }, reason: "synchronize")
     }
 
     func save(_ alarm: AlarmRecord) async {
-        await commit { try $0.upsert(alarm, now: self.now()) }
+        await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
     }
 
     func delete(id: UUID) async {
-        await commit { $0.delete(id: id) }
+        await commit({ $0.delete(id: id) }, reason: "delete")
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
-        await commit { try $0.setEnabled(enabled, id: id) }
+        await commit({ try $0.setEnabled(enabled, id: id) }, reason: "toggle")
     }
 
     func adjustNext(id: UUID, minutes: Int) async {
-        await commit { try $0.adjustNext(id: id, byMinutes: minutes, now: self.now()) }
+        await commit({ try $0.adjustNext(id: id, byMinutes: minutes, now: self.now()) }, reason: "adjust")
     }
 
     func setNextTime(id: UUID, date: Date) async {
-        await commit { try $0.setNextTime(id: id, date: date, now: self.now()) }
+        await commit({ try $0.setNextTime(id: id, date: date, now: self.now()) }, reason: "setNextTime")
     }
 
     func resetNext(id: UUID) async {
-        await commit { try $0.resetNext(id: id, now: self.now()) }
+        await commit({ try $0.resetNext(id: id, now: self.now()) }, reason: "resetNext")
     }
 
     func skipNext(id: UUID) async {
-        await commit { try $0.skipNext(id: id, now: self.now()) }
+        await commit({ try $0.skipNext(id: id, now: self.now()) }, reason: "skipNext")
     }
 
     func undoSkip(id: UUID) async {
-        await commit { try $0.undoSkip(id: id, now: self.now()) }
+        await commit({ try $0.undoSkip(id: id, now: self.now()) }, reason: "undoSkip")
     }
 
     func occurrence(for alarmID: UUID) -> AlarmOccurrence? {
@@ -231,13 +231,26 @@ final class AlarmCoordinator {
             if alarms.isEmpty {
                 os_log(.info, log: alarmKitStateOSLog, "STATE DUMP: no AlarmKit alarms exist")
                 SmartWakeDebugLog.log("STATE DUMP: no AlarmKit alarms exist")
+                return
             }
-            for a in alarms {
-                os_log(.info, log: alarmKitStateOSLog,
-                       "STATE DUMP: id=%{public}s state=%{public}s",
-                       a.id.uuidString,
-                       String(describing: a.state))
-                SmartWakeDebugLog.log("STATE DUMP: id=\(a.id.uuidString) state=\(String(describing: a.state))")
+            
+            let total = alarms.count
+            let scheduled = alarms.filter { $0.state == .scheduled }.count
+            let alerting = alarms.filter { $0.state == .alerting }.count
+            let countdown = alarms.filter { $0.state == .countdown }.count
+            let paused = alarms.filter { $0.state == .paused }.count
+            
+            let summary = "STATE DUMP: total=\(total) scheduled=\(scheduled) alerting=\(alerting) countdown=\(countdown) paused=\(paused)"
+            os_log(.info, log: alarmKitStateOSLog, "%{public}s", summary)
+            SmartWakeDebugLog.log(summary)
+            
+            // Only list alerting and countdown alarm IDs with their state
+            if alerting > 0 || countdown > 0 {
+                for a in alarms where a.state == .alerting || a.state == .countdown {
+                    let detail = "  id=\(a.id.uuidString) state=\(String(describing: a.state))"
+                    os_log(.info, log: alarmKitStateOSLog, "%{public}s", detail)
+                    SmartWakeDebugLog.log(detail)
+                }
             }
         } catch {
             os_log(.error, log: alarmKitStateOSLog, "STATE DUMP FAILED: %{public}s", error.localizedDescription)
@@ -300,17 +313,17 @@ final class AlarmCoordinator {
     /// queued and applied afterwards, never silently dropped.
     private var commitQueue: Task<Void, Never>?
 
-    func commit(_ mutation: @escaping (inout AlarmEngine) throws -> Void) async {
+    func commit(_ mutation: @escaping (inout AlarmEngine) throws -> Void, reason: String = "unknown") async {
         let previous = commitQueue
         let task = Task { @MainActor in
             await previous?.value
-            await performCommit(mutation)
+            await performCommit(mutation, reason: reason)
         }
         commitQueue = task
         await task.value
     }
 
-    private func performCommit(_ mutation: (inout AlarmEngine) throws -> Void) async {
+    private func performCommit(_ mutation: (inout AlarmEngine) throws -> Void, reason: String) async {
         var candidate = engine
         do {
             try mutation(&candidate)
@@ -336,7 +349,8 @@ final class AlarmCoordinator {
             
             candidate.snapshot.managedSystemAlarmIDs = try await scheduler.reconcile(
                 desired: desired,
-                managedIDs: managedIDs
+                managedIDs: managedIDs,
+                reason: reason
             )
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory

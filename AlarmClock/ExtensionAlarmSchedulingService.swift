@@ -13,7 +13,7 @@ public struct ExtensionAlarmSchedulingService {
     
     /// Reconcile desired alarms with AlarmKit
     /// This is the same logic as AlarmKitSchedulingService.reconcile but usable from extensions
-    public func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>) async throws -> Set<UUID> {
+    public func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>, reason: String) async throws -> Set<UUID> {
         guard manager.authorizationState == .authorized else {
             throw AlarmSynchronizationError.notAuthorized
         }
@@ -27,11 +27,12 @@ public struct ExtensionAlarmSchedulingService {
         )
         let missing = desired.filter { plan.schedule.contains($0.id) }
         
-        // Log reconciliation details
-        os_log(.info, log: reconcileLog, "RECONCILE: existing=%{public}d desired=%{public}d cancelling=%{public}d", existingIDs.count, desiredIDs.count, plan.cancel.count)
-        SmartWakeDebugLog.log("RECONCILE: existing=\(existingIDs.count) desired=\(desiredIDs.count) cancelling=\(plan.cancel.count)")
+        // Log reconciliation details with reason
+        let scheduleCount = plan.schedule.count
+        os_log(.info, log: reconcileLog, "RECONCILE(%{public}s): existing=%{public}d desired=%{public}d schedule=%{public}d cancelling=%{public}d", reason, existingIDs.count, desiredIDs.count, scheduleCount, plan.cancel.count)
+        SmartWakeDebugLog.log("RECONCILE(\(reason)): existing=\(existingIDs.count) desired=\(desiredIDs.count) schedule=\(scheduleCount) cancelling=\(plan.cancel.count)")
         for cancelID in plan.cancel {
-            SmartWakeDebugLog.log("RECONCILE CANCEL: \(cancelID.uuidString)")
+            SmartWakeDebugLog.log("RECONCILE(\(reason)) CANCEL: \(cancelID.uuidString)")
         }
         
         var newlyScheduled: [UUID] = []

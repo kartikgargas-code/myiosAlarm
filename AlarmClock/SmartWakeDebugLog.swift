@@ -9,6 +9,7 @@ enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
     static let maxLines = 300
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
+    private static var inMemoryBuffer: [String] = []
 
     static func log(_ message: String) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
@@ -23,6 +24,9 @@ enum SmartWakeDebugLog {
             }
             let text = lines.joined(separator: "\n") + "\n"
             try? text.write(to: url, atomically: true, encoding: .utf8)
+            
+            // Update in-memory buffer
+            inMemoryBuffer = lines
         }
     }
 
@@ -31,10 +35,21 @@ enum SmartWakeDebugLog {
         return try? String(contentsOf: url, encoding: .utf8)
     }
 
+    static func readFilteredForCopy() -> String? {
+        guard let url = logURL() else { return nil }
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+            .filter { !$0.contains("STATE DUMP:") }
+            .suffix(150)
+        return lines.joined(separator: "\n")
+    }
+
     static func clear() {
         queue.async {
             guard let url = logURL() else { return }
             try? FileManager.default.removeItem(at: url)
+            inMemoryBuffer.removeAll()
         }
     }
 

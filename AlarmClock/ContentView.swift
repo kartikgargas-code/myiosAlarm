@@ -608,22 +608,18 @@ struct ContentView: View {
                     Text("Smart Wake Debug Log")
                         .font(.headline)
                     Spacer()
+                    Button("Refresh") {
+                        // Force re-read from file - triggers view update via @State
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
                     Button("Clear Smart Wake Log") {
                         SmartWakeDebugLog.clear()
                     }
                     .buttonStyle(.bordered)
                     .font(.caption)
                     Button {
-                        var text = SmartWakeDebugLog.read()
-                        if text == nil {
-                            // Retry once against Application Support fallback
-                            if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-                                let fallbackURL = appSupport.appendingPathComponent("AlarmClock/SmartWakeDebugLog.txt")
-                                if FileManager.default.fileExists(atPath: fallbackURL.path) {
-                                    text = try? String(contentsOf: fallbackURL, encoding: .utf8)
-                                }
-                            }
-                        }
+                        let text = SmartWakeDebugLog.readFilteredForCopy()
                         if let text {
                             UIPasteboard.general.string = text
                             smartWakeLogCopied = true

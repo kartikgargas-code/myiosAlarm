@@ -21,7 +21,7 @@ struct DesiredSystemAlarm: Equatable {
 
 @MainActor
 protocol AlarmSystemScheduling {
-    func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>) async throws -> Set<UUID>
+    func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>, reason: String) async throws -> Set<UUID>
 }
 
 struct AlarmReconciliationPlan: Equatable {
@@ -44,7 +44,7 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
     
     private let reconcileLog = OSLog(subsystem: "com.example.alarmclock", category: "AlarmKitScheduling")
 
-    func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>) async throws -> Set<UUID> {
+    func reconcile(desired: [DesiredSystemAlarm], managedIDs: Set<UUID>, reason: String) async throws -> Set<UUID> {
         guard manager.authorizationState == .authorized else {
             throw AlarmSynchronizationError.notAuthorized
         }
@@ -58,11 +58,12 @@ struct AlarmKitSchedulingService: AlarmSystemScheduling {
         )
         let missing = desired.filter { plan.schedule.contains($0.id) }
         
-        // Log reconciliation details
-        os_log(.info, log: reconcileLog, "RECONCILE: existing=%{public}d desired=%{public}d cancelling=%{public}d", existingIDs.count, desiredIDs.count, plan.cancel.count)
-        SmartWakeDebugLog.log("RECONCILE: existing=\(existingIDs.count) desired=\(desiredIDs.count) cancelling=\(plan.cancel.count)")
+        // Log reconciliation details with reason
+        let scheduleCount = plan.schedule.count
+        os_log(.info, log: reconcileLog, "RECONCILE(%{public}s): existing=%{public}d desired=%{public}d schedule=%{public}d cancelling=%{public}d", reason, existingIDs.count, desiredIDs.count, scheduleCount, plan.cancel.count)
+        SmartWakeDebugLog.log("RECONCILE(\(reason)): existing=\(existingIDs.count) desired=\(desiredIDs.count) schedule=\(scheduleCount) cancelling=\(plan.cancel.count)")
         for cancelID in plan.cancel {
-            SmartWakeDebugLog.log("RECONCILE CANCEL: \(cancelID.uuidString)")
+            SmartWakeDebugLog.log("RECONCILE(\(reason)) CANCEL: \(cancelID.uuidString)")
         }
 
         var newlyScheduled: [UUID] = []

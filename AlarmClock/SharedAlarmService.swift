@@ -60,7 +60,7 @@ public struct SharedAlarmService: LiveActivityAlarmService {
         // Reconcile with AlarmKit immediately
         let desired = await desiredSystemAlarms(from: engine, now: now())
         let managedIDs = engine.snapshot.managedSystemAlarmIDs
-        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs, reason: "adjust")
         
         try saveSnapshot(engine.snapshot)
         
@@ -110,7 +110,7 @@ public struct SharedAlarmService: LiveActivityAlarmService {
         // Reconcile with AlarmKit immediately
         let desired = await desiredSystemAlarms(from: engine, now: now())
         let managedIDs = engine.snapshot.managedSystemAlarmIDs
-        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs, reason: "resetNext")
         
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)
@@ -137,7 +137,7 @@ public struct SharedAlarmService: LiveActivityAlarmService {
         // Reconcile with AlarmKit immediately
         let desired = await desiredSystemAlarms(from: engine, now: now())
         let managedIDs = engine.snapshot.managedSystemAlarmIDs
-        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs, reason: "skipNext")
         
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)
@@ -164,7 +164,7 @@ public struct SharedAlarmService: LiveActivityAlarmService {
         // Reconcile with AlarmKit immediately
         let desired = await desiredSystemAlarms(from: engine, now: now())
         let managedIDs = engine.snapshot.managedSystemAlarmIDs
-        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs)
+        _ = try await extensionScheduler.reconcile(desired: desired, managedIDs: managedIDs, reason: "undoSkip")
         
         try saveSnapshot(engine.snapshot)
         writeNextAlarmSnapshot(engine: engine)

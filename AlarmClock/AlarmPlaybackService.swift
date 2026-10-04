@@ -44,6 +44,10 @@ final class AlarmPlaybackService: NSObject {
     private var companionHasAlerted = false
     private var companionAlertingLogged = false
     private var companionScheduledLogged = false
+    private var companionAlertingTimestamp: Date? = nil
+    private var companionPlusOneLogged = false
+    private var companionPlusThreeLogged = false
+    private var companionKilledAudioLogged = false
     
     // Published state
     private(set) var isPlaying = false
@@ -74,6 +78,8 @@ final class AlarmPlaybackService: NSObject {
         
         switch type {
         case .began:
+            let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt ?? 0
+            SmartWakeDebugLog.log("AVAUDIOSESSION INTERRUPTION began reason=\(reasonValue)")
             SmartWakeDebugLog.log("PLAYBACK INTERRUPTED")
         case .ended:
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
@@ -854,12 +860,33 @@ final class AlarmPlaybackService: NSObject {
                         }
                         
                     case .alerting:
+                        // Log every emission with full state
+                        let session = AVAudioSession.sharedInstance()
+                        SmartWakeDebugLog.log("COMPANION state=\(companion.state) playing=\(player?.isPlaying ?? false) sessionActive=\(session.isOtherAudioPlaying)")
+                        
                         if !companionAlertingLogged {
                             SmartWakeDebugLog.log("COMPANION alerting; playing=\(player?.isPlaying ?? false)")
                             companionAlertingLogged = true
                         }
                         if !companionHasAlerted {
                             companionHasAlerted = true
+                            companionAlertingTimestamp = Date()
+                        }
+                        // Check +1s and +3s after alerting
+                        if let ts = companionAlertingTimestamp {
+                            let elapsed = Date().timeIntervalSince(ts)
+                            if elapsed >= 1.0 && !companionPlusOneLogged {
+                                SmartWakeDebugLog.log("COMPANION +1s playing=\(player?.isPlaying ?? false)")
+                                companionPlusOneLogged = true
+                            }
+                            if elapsed >= 3.0 && !companionPlusThreeLogged {
+                                SmartWakeDebugLog.log("COMPANION +3s playing=\(player?.isPlaying ?? false)")
+                                companionPlusThreeLogged = true
+                            }
+                            if elapsed >= 3.0 && !(player?.isPlaying ?? false) && !companionKilledAudioLogged {
+                                SmartWakeDebugLog.log("COMPANION KILLED AUDIO")
+                                companionKilledAudioLogged = true
+                            }
                         }
                         // If playback is not running, attempt resume
                         if player?.isPlaying != true {
