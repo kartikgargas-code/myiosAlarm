@@ -386,6 +386,9 @@ final class AlarmCoordinator {
         var results: [DesiredSystemAlarm] = []
         var warnings: [String] = []
         
+        let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
+        let backupDelay = SmartWakeService.backupDelaySeconds
+        
         for occurrence in occurrences {
             guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
@@ -400,6 +403,8 @@ final class AlarmCoordinator {
                     }
                 }
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+                
+                // Primary alarm at the effective date
                 results.append(DesiredSystemAlarm(
                     id: SystemScheduleID.make(
                         for: occurrence,
@@ -414,6 +419,38 @@ final class AlarmCoordinator {
                     alarmKitSound: alarmKitSound,
                     snoozeDurationMinutes: alarm.snoozeDurationMinutes
                 ))
+                
+                // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
+                // Backup fires at occurrence.effectiveDate + backupDelaySeconds with short floor sound
+                if smartWakeEnabled && isPlaylistSound(soundToUse) {
+                    let backupOccurrenceKey = "\(occurrence.occurrenceKey)-BACKUP"
+                    let backupDate = occurrence.effectiveDate.addingTimeInterval(TimeInterval(SmartWakeService.backupDelaySeconds))
+                    let backupOccurrence = AlarmOccurrence(
+                        alarmID: occurrence.alarmID,
+                        occurrenceKey: backupOccurrenceKey,
+                        baseDate: occurrence.baseDate,
+                        effectiveDate: backupDate,
+                        isAdjusted: false
+                    )
+                    
+                    // Create short floor sound for backup (will be handled by alarmKitSound for precomposedPlaylist)
+                    let backupAlarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+                    
+                    results.append(DesiredSystemAlarm(
+                        id: SystemScheduleID.make(
+                            for: backupOccurrence,
+                            label: label,
+                            sound: soundToUse,
+                            loudness: alarm.loudness,
+                            selectionHash: desiredSelectionHash(for: soundToUse)
+                        ),
+                        occurrence: backupOccurrence,
+                        label: label,
+                        sound: soundToUse,
+                        alarmKitSound: backupAlarmKitSound,
+                        snoozeDurationMinutes: alarm.snoozeDurationMinutes
+                    ))
+                }
             } catch {
                 warnings.append("\(label): \(error.localizedDescription)")
             }

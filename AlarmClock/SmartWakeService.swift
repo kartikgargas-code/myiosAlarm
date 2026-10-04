@@ -19,7 +19,11 @@ final class SmartWakeService {
     // AlarmManager.alarmUpdates for .alerting -> .gone (Stop) or .countdown (Snooze).
     // If Stop: wait 300ms, then start in-app playback for that alarm's playlist.
     // If Snooze: log and let AlarmKit handle re-ring.
-    static let nativeFirstWhenLocked = true
+    static let nativeFirstWhenLocked = false
+    
+    // Phase 7a: Delayed backup for playlist alarms when Smart Wake is enabled
+    // Schedule AlarmKit backup at occurrence.effectiveDate + backupDelaySeconds
+    static let backupDelaySeconds = 30
     
     private let log = OSLog(subsystem: "com.example.alarmclock", category: "SmartWake")
     private let fileManager = FileManager.default
