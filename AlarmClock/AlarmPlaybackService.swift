@@ -584,15 +584,30 @@ final class AlarmPlaybackService: NSObject {
             nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
         }
         
-        // Artwork: use embedded artwork from the track
+        // Artwork: embedded art from the track, else the app icon as fallback
+        var artworkImage: UIImage?
         if let artworkItem = metadata.first(where: { $0.commonKey == .commonKeyArtwork }),
-           let data = artworkItem.dataValue,
-           let image = UIImage(data: data) {
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+           let data = artworkItem.dataValue {
+            artworkImage = UIImage(data: data)
+        }
+        if artworkImage == nil {
+            artworkImage = Self.appIconImage()
+        }
+        if let artwork = artworkImage {
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         os_log(.info, log: log, "Published Now Playing info for: %{public}s", displayName)
+    }
+
+    /// Best-effort app icon for artwork fallback
+    private static func appIconImage() -> UIImage? {
+        guard let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
+              let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+              let files = primary["CFBundleIconFiles"] as? [String],
+              let last = files.last else { return nil }
+        return UIImage(named: last)
     }
 
     /// Update elapsed time in Now Playing info
@@ -638,6 +653,14 @@ final class AlarmPlaybackService: NSObject {
             return .success
         }
         
+        // Real Stop button (iOS draws a square icon when shown)
+        commandCenter.stopCommand.isEnabled = true
+        commandCenter.stopCommand.addTarget { [weak self] _ in
+            SmartWakeDebugLog.log("REMOTE COMMAND: stop (STOP) fired")
+            self?.handleStopCommand()
+            return .success
+        }
+
         // Previous track = STOP alarm (stop playback, cancel backup, end alarm state, re-arm next day, restart silent loop)
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
@@ -675,6 +698,7 @@ final class AlarmPlaybackService: NSObject {
         commandCenter.changePlaybackPositionCommand.isEnabled = false
         commandCenter.previousTrackCommand.isEnabled = false
         commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.stopCommand.isEnabled = false
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.changePlaybackRateCommand.isEnabled = false

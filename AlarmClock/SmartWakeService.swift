@@ -710,6 +710,24 @@ final class SmartWakeService {
         }
     }
     
+    /// Cancel every AlarmKit alarm that belongs to the given alarm (metadata match)
+    /// or is currently alerting.
+    func cancelScheduledAlarms(forAlarmID alarmID: UUID) {
+        do {
+            let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+            for kitAlarm in kitAlarms {
+                let isAlerting = kitAlarm.state == .alerting
+                let metaAlarmID = (kitAlarm.attributes?.metadata as? ExtensionAlarmSchedulingService.ScheduledOccurrenceMetadata)?.alarmID
+                if isAlerting || metaAlarmID == alarmID {
+                    try AlarmManager.shared.cancel(id: kitAlarm.id)
+                    SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(kitAlarm.id.uuidString) alerting=\(isAlerting)")
+                }
+            }
+        } catch {
+            SmartWakeDebugLog.log("BACKUP ALARM cancel FAILED: \(error.localizedDescription)")
+        }
+    }
+
     /// Schedule a precise wake at the exact fire time
     private func scheduleTransitionWake(
         for occurrence: AlarmOccurrence,
@@ -742,13 +760,14 @@ final class SmartWakeService {
                 return
             }
             
-            // WAKE DUPLICATE GUARD: only one wake run per occurrence key
-            if firedTransitionWakes.contains(occurrenceKey) {
-                os_log(.info, log: log, "WAKE DUPLICATE ignored for %{public}s", occurrenceKey)
-                SmartWakeDebugLog.log("WAKE DUPLICATE ignored for \(occurrenceKey)")
+            // WAKE DUPLICATE GUARD: one wake run per alarm+occurrence (two alarms may share a minute)
+            let wakeKey = "\(occurrence.alarmID.uuidString)|\(occurrenceKey)"
+            if firedTransitionWakes.contains(wakeKey) {
+                os_log(.info, log: log, "WAKE DUPLICATE ignored for %{public}s", wakeKey)
+                SmartWakeDebugLog.log("WAKE DUPLICATE ignored for \(wakeKey)")
                 return
             }
-            firedTransitionWakes.insert(occurrenceKey)
+            firedTransitionWakes.insert(wakeKey)
             
             os_log(.info, log: log, "TRANSITION WAKE: Firing for occurrence %{public}s at %{public}s", 
                    occurrenceKey, actualNow.formatted(date: .omitted, time: .standard))
@@ -772,7 +791,15 @@ final class SmartWakeService {
                     // Start playlist immediately (silent loop already running)
                     // The backup alarm is scheduled by AlarmCoordinator as a -BACKUP occurrence
                     SmartWakeDebugLog.log("PLAYLIST-FIRST: starting playlist for \(occurrenceKey)")
-                    
+
+                    if AlarmPlaybackService.shared.isPlaying {
+                        // TAKEOVER SHARED: another same-minute alarm already owns playback.
+                        // Keep its playlist running; drop ONLY our own backup alarms.
+                        SmartWakeDebugLog.log("TAKEOVER SHARED: playback owner active; cancelling backups for \(occurrenceKey)")
+                        cancelScheduledAlarms(forAlarmID: alarm.id)
+                        return
+                    }
+
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
                         os_log(.info, log: log, "PLAYLIST-FIRST: starting playlist %{public}s", resolvedPlaylistID.uuidString)
                         SmartWakeDebugLog.log("PLAYLIST-FIRST: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
@@ -805,25 +832,14 @@ final class SmartWakeService {
                             effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
                             isAdjusted: false
                         )
-                        // Compute the SystemScheduleID that AlarmCoordinator would have created for the backup
-                        let backupSystemID = SystemScheduleID.make(
-                            for: backupOccurrence,
-                            label: alarm.label.isEmpty ? "Alarm" : alarm.label,
-                            sound: soundToUse,
-                            loudness: alarm.loudness,
-                            selectionHash: desiredSelectionHash(for: soundToUse)
-                        )
-                        do {
-                            try AlarmManager.shared.cancel(id: backupSystemID)
-                            SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(backupSystemID.uuidString)")
-                        } catch {
-                            SmartWakeDebugLog.log("BACKUP ALARM cancel FAILED: \(error.localizedDescription)")
-                        }
+                        // Bulletproof cancel: drop every AlarmKit alarm that belongs to this
+                        // alarm (metadata match) plus anything still alerting. Computed-ID
+                        // matching is fragile: selection-hash/label can drift between commit
+                        // and wake, so a recomputed ID may not equal the scheduled ID.
+                        cancelScheduledAlarms(forAlarmID: alarm.id)
                         
                         // Promote to primary session for lock screen controls (if not foreground)
                         AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
-                        // Setup local notification with Stop action
-                        AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
                         stopSilentPlayerOnly(reason: "playlist-first takeover completed for \(occurrenceKey)")
                         SmartWakeDebugLog.log("PLAYLIST-FIRST complete for \(occurrenceKey); silent player stopped")
                     } else {
