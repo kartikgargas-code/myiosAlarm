@@ -696,10 +696,8 @@ final class AlarmPlaybackService: NSObject {
         
         // Re-arm next day and restart silent loop via SmartWakeService
         Task { @MainActor in
-            if let coordinator = AlarmCoordinator.sharedInstance {
-                await coordinator.checkAndArmUpcomingAlarms()
-            }
-            SmartWakeService.shared.startIfReadyForeground()
+            await SmartWakeService.shared.checkAndArmUpcomingAlarms()
+            await SmartWakeService.shared.startIfReadyForeground()
         }
     }
     
@@ -791,7 +789,7 @@ final class AlarmPlaybackService: NSObject {
         // PAUSE TRAP: Start silent loop to keep session active and app alive
         // Never deactivate the session on pause
         SmartWakeDebugLog.log("PAUSE TRAP: starting silent loop to keep session alive")
-        SmartWakeService.shared.startIfReadyForeground()
+        Task { await SmartWakeService.shared.startIfReadyForeground() }
         
         os_log(.info, log: log, "Playback paused (pause trap: silent loop started)")
     }

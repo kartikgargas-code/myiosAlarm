@@ -623,7 +623,7 @@ final class SmartWakeService {
     }
     
     /// Check App Group alarms.json for upcoming occurrences and arm if within 60 seconds
-    private func checkAndArmUpcomingAlarms() async {
+    func checkAndArmUpcomingAlarms() async {
         guard let coordinator = self.coordinator else {
             os_log(.error, log: log, "No coordinator available for transition arming")
             return
