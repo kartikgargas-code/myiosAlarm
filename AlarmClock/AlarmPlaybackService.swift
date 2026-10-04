@@ -39,8 +39,6 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
-    private var currentAlarm: AlarmRecord?
-    private var currentOccurrence: AlarmOccurrence?
     
     // Published state
     private(set) var isPlaying = false
