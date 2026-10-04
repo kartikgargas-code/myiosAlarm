@@ -4,6 +4,7 @@ import Foundation
 import Observation
 import WidgetKit
 import os.log
+import AudioProcessingService
 
 @MainActor
 @Observable
@@ -428,7 +429,7 @@ final class AlarmCoordinator {
                 // Backup fires at occurrence.effectiveDate + backupDelaySeconds with short floor sound
                 if smartWakeEnabled && isPlaylistSound(soundToUse) {
                     let backupOccurrenceKey = "\(occurrence.occurrenceKey)-BACKUP"
-                    let backupDate = occurrence.effectiveDate.addingTimeInterval(TimeInterval(SmartWakeService.backupDelaySeconds))
+                    let backupDate = occurrence.effectiveDate.addingTimeInterval(TimeInterval(AlarmCoordinator.backupDelaySeconds))
                     let backupOccurrence = AlarmOccurrence(
                         alarmID: occurrence.alarmID,
                         occurrenceKey: backupOccurrenceKey,
@@ -436,6 +437,17 @@ final class AlarmCoordinator {
                         effectiveDate: backupDate,
                         isAdjusted: false
                     )
+                    
+                    // Extract playlistID from soundToUse for backup precompose
+                    let playlistID: UUID
+                    if case .precomposedPlaylist(let pid, _) = soundToUse {
+                        playlistID = pid
+                    } else if case .random(let pid) = soundToUse {
+                        playlistID = pid
+                    } else {
+                        // Should not reach here since we checked isPlaylistSound
+                        throw AudioProcessingError.processingFailed("Expected playlist sound for backup")
+                    }
                     
                     // Create short floor sound for backup (cap at 60s total duration)
                     let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
@@ -459,7 +471,7 @@ final class AlarmCoordinator {
                         try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
                     }
                     
-                    let backupAlarmKitSound = .named(processedFileName)
+                    let backupAlarmKitSound: AlertConfiguration.AlertSound = .named(processedFileName)
                     
                     results.append(DesiredSystemAlarm(
                         id: SystemScheduleID.make(
