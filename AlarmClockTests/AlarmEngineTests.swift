@@ -664,3 +664,80 @@ final class DiagnosticAlarmSchedulingTests: XCTestCase {
     }
 }
 #endif
+
+@MainActor
+final class NativeAlarmStateMachineTests: XCTestCase {
+    enum NativeAlarmState: Equatable {
+        case scheduled
+        case alerting
+        case countdown
+        case paused
+        case gone
+    }
+    
+    enum NativeAlarmAction: Equatable {
+        case ignore
+        case logAlerting
+        case stopDetected
+        case snoozeDetected
+    }
+    
+    /// Pure state machine: (previousState?, currentState?) -> action
+    /// This mirrors the logic in SmartWakeService.startNativeAlarmObservation
+    func nativeAlarmAction(previous: NativeAlarmState?, current: NativeAlarmState?) -> NativeAlarmAction {
+        guard let current = current else {
+            // Current is nil (alarm gone)
+            if previous == .alerting {
+                return .stopDetected
+            }
+            return .ignore
+        }
+        
+        // Ignore scheduled
+        if current == .scheduled {
+            return .ignore
+        }
+        
+        // First time seeing alerting
+        if current == .alerting && previous != .alerting {
+            return .logAlerting
+        }
+        
+        // Snooze: alerting -> countdown
+        if previous == .alerting && current == .countdown {
+            return .snoozeDetected
+        }
+        
+        // Ignore other transitions (paused, countdown without alerting->countdown)
+        return .ignore
+    }
+    
+    func testScheduledIgnored() {
+        XCTAssertEqual(nativeAlarmAction(previous: nil, current: .scheduled), .ignore)
+        XCTAssertEqual(nativeAlarmAction(previous: .alerting, current: .scheduled), .ignore)
+    }
+    
+    func testAlertingLoggedOnce() {
+        XCTAssertEqual(nativeAlarmAction(previous: nil, current: .alerting), .logAlerting)
+        XCTAssertEqual(nativeAlarmAction(previous: .scheduled, current: .alerting), .logAlerting)
+        XCTAssertEqual(nativeAlarmAction(previous: .alerting, current: .alerting), .ignore)
+    }
+    
+    func testStopDetected() {
+        XCTAssertEqual(nativeAlarmAction(previous: .alerting, current: .gone), .stopDetected)
+        XCTAssertEqual(nativeAlarmAction(previous: .scheduled, current: .gone), .ignore)
+        XCTAssertEqual(nativeAlarmAction(previous: nil, current: .gone), .ignore)
+    }
+    
+    func testSnoozeDetected() {
+        XCTAssertEqual(nativeAlarmAction(previous: .alerting, current: .countdown), .snoozeDetected)
+        XCTAssertEqual(nativeAlarmAction(previous: .scheduled, current: .countdown), .ignore)
+        XCTAssertEqual(nativeAlarmAction(previous: .paused, current: .countdown), .ignore)
+    }
+    
+    func testPausedIgnored() {
+        XCTAssertEqual(nativeAlarmAction(previous: .alerting, current: .paused), .ignore)
+        XCTAssertEqual(nativeAlarmAction(previous: .scheduled, current: .paused), .ignore)
+        XCTAssertEqual(nativeAlarmAction(previous: .countdown, current: .paused), .ignore)
+    }
+}

@@ -13,7 +13,14 @@ import UIKit
 @Observable
 final class SmartWakeService {
     static let shared = SmartWakeService()
-
+    
+    // Configuration: when true, locked/background devices use native AlarmKit alarm first
+    // (our floor WAV plays user's songs with native Stop/Snooze). Our process observes
+    // AlarmManager.alarmUpdates for .alerting -> .gone (Stop) or .countdown (Snooze).
+    // If Stop: wait 300ms, then start in-app playback for that alarm's playlist.
+    // If Snooze: log and let AlarmKit handle re-ring.
+    static let nativeFirstWhenLocked = true
+    
     private let log = OSLog(subsystem: "com.example.alarmclock", category: "SmartWake")
     private let fileManager = FileManager.default
     private var player: AVAudioPlayer?
@@ -736,6 +743,17 @@ final class SmartWakeService {
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
                 if isPlaylistSound(soundToUse) {
+                    // Check if we should use native-first approach for locked/background devices
+                    let scenePhase = UIApplication.shared.applicationState
+                    let isForeground = scenePhase == .active
+                    
+                    if Self.nativeFirstWhenLocked && !isForeground {
+                        // NATIVE-FIRST: leave AlarmKit ringing, observe for Stop/Snooze
+                        SmartWakeDebugLog.log("NATIVE-FIRST: leaving AlarmKit ringing for \(occurrenceKey)")
+                        startNativeAlarmObservation(alarm: alarm, occurrence: occurrence)
+                        return
+                    }
+                    
                     // ATTEMPT A: Start playback FIRST, confirm playing, THEN silence ALL alerting alarms
                     // This ensures: never total silence (floor sound kept if playback fails), no double audio
                     SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A: starting in-app playback first for \(occurrenceKey)")
@@ -929,6 +947,119 @@ final class SmartWakeService {
         case .precomposedPlaylist: return true
         case .random: return true
         default: return false
+        }
+    }
+    
+    /// Start observing native AlarmKit alarm for Stop/Snooze detection (NATIVE-FIRST path)
+    /// State machine: (previous, current) -> action
+    /// - .scheduled -> ignore
+    /// - .alerting -> log once
+    /// - .alerting -> .gone (Stop): wait 300ms, ensure mixable session, start in-app playback
+    /// - .alerting -> .countdown (Snooze): log, do nothing (AlarmKit re-rings)
+    /// - .alerting -> .paused -> ignore
+    /// - .countdown -> ignore
+    private func startNativeAlarmObservation(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
+        let alarmKitID = SystemScheduleID.make(
+            for: occurrence,
+            label: alarm.label.isEmpty ? "Alarm" : alarm.label,
+            sound: alarm.sound,
+            loudness: alarm.loudness
+        )
+        
+        var previousState: Alarm.State? = nil
+        var hasLoggedAlerting = false
+        var stopHandled = false
+        
+        Task { @MainActor in
+            for await alarms in AlarmManager.shared.alarmUpdates {
+                guard let nativeAlarm = alarms.first(where: { $0.id == alarmKitID }) else {
+                    // Native alarm gone - could be Stop
+                    if let prev = previousState, prev == .alerting && !stopHandled {
+                        SmartWakeDebugLog.log("NATIVE STOP detected for \(occurrence.occurrenceKey)")
+                        stopHandled = true
+                        
+                        // Wait 300ms then start in-app playback
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        
+                        // Ensure mixable audio session (as retry-B does)
+                        do {
+                            try AlarmPlaybackService.shared.ensureAudioSessionActive()
+                            
+                            // Start in-app playback for this alarm's playlist
+                            if case .precomposedPlaylist(let resolvedPlaylistID, _) = alarm.sound {
+                                AlarmPlaybackService.shared.start(
+                                    playlistID: resolvedPlaylistID,
+                                    loudness: alarm.loudness,
+                                    alarm: alarm,
+                                    occurrence: occurrence
+                                )
+                            }
+                            
+                            // Wait up to 1s for playback to start
+                            var playbackStarted = false
+                            for attempt in 0..<10 {
+                                try? await Task.sleep(nanoseconds: 100_000_000)
+                                if AlarmPlaybackService.shared.isPlaying {
+                                    playbackStarted = true
+                                    break
+                                }
+                            }
+                            
+                            if playbackStarted {
+                                SmartWakeDebugLog.log("CONTINUE-AFTER-STOP SUCCESS for \(occurrence.occurrenceKey)")
+                                // Publish lock-screen controls (existing code)
+                                AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
+                                // Note: we don't stop silent player here - it's already running
+                                // Ensure Smart Wake re-arms
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                                    await checkAndArmUpcomingAlarms()
+                                    SmartWakeDebugLog.log("REARM after native stop")
+                                }
+                            } else {
+                                // Retry up to 3 times at 250ms
+                                for retry in 1...3 {
+                                    try? await Task.sleep(nanoseconds: 250_000_000)
+                                    if AlarmPlaybackService.shared.isPlaying {
+                                        SmartWakeDebugLog.log("CONTINUE-AFTER-STOP SUCCESS (retry \(retry)) for \(occurrence.occurrenceKey)")
+                                        AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
+                                        break
+                                    }
+                                }
+                                SmartWakeDebugLog.log("CONTINUE-AFTER-STOP FAILED for \(occurrence.occurrenceKey)")
+                            }
+                        } catch {
+                            SmartWakeDebugLog.log("CONTINUE-AFTER-STOP FAILED code=\((error as NSError).code) for \(occurrence.occurrenceKey)")
+                        }
+                    }
+                    return
+                }
+                
+                let currentState = nativeAlarm.state
+                
+                // Only log alerting once
+                if currentState == .alerting && !hasLoggedAlerting {
+                    SmartWakeDebugLog.log("NATIVE alarm alerting: \(alarmKitID.uuidString.prefix(8))")
+                    hasLoggedAlerting = true
+                }
+                
+                // Detect Snooze
+                if previousState == .alerting && currentState == .countdown {
+                    SmartWakeDebugLog.log("NATIVE SNOOZE for \(occurrence.occurrenceKey)")
+                    // AlarmKit handles re-ring, do nothing
+                    // Ensure Smart Wake re-arms
+                    Task {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        await checkAndArmUpcomingAlarms()
+                        SmartWakeDebugLog.log("REARM after native snooze")
+                    }
+                    return
+                }
+                
+                previousState = currentState
+                
+                // Ignore .scheduled, .paused, .countdown (unless from alerting)
+            }
         }
     }
 
