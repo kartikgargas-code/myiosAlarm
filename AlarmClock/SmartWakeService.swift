@@ -40,6 +40,17 @@ final class SmartWakeService {
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
 
+    /// Stable per-selection hash so schedule identity changes when the chosen
+    /// song set changes — reconcile then reschedules with the fresh precomposed file.
+    private func desiredSelectionHash(for sound: AlarmSound) -> String? {
+        if case .precomposedPlaylist(let playlistID, _) = sound,
+           let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
+            let key = playlist.selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
+            return SoundSelectionHash.make(from: key)
+        }
+        return nil
+    }
+
     // Status string for UI - only updates when value changes to prevent render churn
     private var statusText: String = "Waiting for next alarm..."
     var statusTextPublished: String {
@@ -747,23 +758,14 @@ final class SmartWakeService {
                 
                 // Determine if it's a playlist (random/precomposedPlaylist) or single imported sound
                 if isPlaylistSound(soundToUse) {
-                    // Check if we should use native-first approach for locked/background devices
-                    let scenePhase = UIApplication.shared.applicationState
-                    let isForeground = scenePhase == .active
+                    // PHASE 7: Playlist-first with delayed backup alarm
+                    // Start playlist immediately (silent loop already running)
+                    // The backup alarm is scheduled by AlarmCoordinator as a -BACKUP occurrence
+                    SmartWakeDebugLog.log("PLAYLIST-FIRST: starting playlist for \(occurrenceKey)")
                     
-                    if Self.nativeFirstWhenLocked && !isForeground {
-                        // NATIVE-FIRST: leave AlarmKit ringing, observe for Stop/Snooze
-                        SmartWakeDebugLog.log("NATIVE-FIRST: leaving AlarmKit ringing for \(occurrenceKey)")
-                        startNativeAlarmObservation(alarm: alarm, occurrence: occurrence)
-                        return
-                    }
-                    
-                    // ATTEMPT A: Start playback FIRST, confirm playing, THEN silence ALL alerting alarms
-                    // This ensures: never total silence (floor sound kept if playback fails), no double audio
-                    SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A: starting in-app playback first for \(occurrenceKey)")
                     if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
-                        os_log(.info, log: log, "TAKEOVER: starting playlist %{public}s", resolvedPlaylistID.uuidString)
-                        SmartWakeDebugLog.log("TAKEOVER: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
+                        os_log(.info, log: log, "PLAYLIST-FIRST: starting playlist %{public}s", resolvedPlaylistID.uuidString)
+                        SmartWakeDebugLog.log("PLAYLIST-FIRST: starting in-app playlist playback (\(resolvedPlaylistID.uuidString))")
                         AlarmPlaybackService.shared.start(
                             playlistID: resolvedPlaylistID,
                             loudness: alarm.loudness,
@@ -783,26 +785,37 @@ final class SmartWakeService {
                     }
                     
                     if playbackStarted {
-                        SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A SUCCESS: playback confirmed, now silencing ALL alerting alarms")
-                        // Silence ALL alerting alarms (not just matched one)
-                        let alerting = (try? AlarmManager.shared.alarms.filter { $0.state == .alerting }) ?? []
-                        var allCancelled = true
-                        for kitAlarm in alerting {
-                            do {
-                                try AlarmManager.shared.cancel(id: kitAlarm.id)
-                                SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
-                            } catch {
-                                allCancelled = false
-                                SmartWakeDebugLog.log("SILENCE: cancel FAILED for \(kitAlarm.id.uuidString): \(error.localizedDescription)")
-                            }
+                        SmartWakeDebugLog.log("PLAYLIST-FIRST SUCCESS: playback confirmed, cancelling backup alarm")
+                        // Cancel the backup alarm using its SystemScheduleID (same as AlarmCoordinator creates)
+                        let backupOccurrenceKey = "\(occurrenceKey)-BACKUP"
+                        let backupOccurrence = AlarmOccurrence(
+                            alarmID: alarm.id,
+                            occurrenceKey: backupOccurrenceKey,
+                            baseDate: occurrence.baseDate,
+                            effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
+                            isAdjusted: false
+                        )
+                        // Compute the SystemScheduleID that AlarmCoordinator would have created for the backup
+                        let backupSystemID = SystemScheduleID.make(
+                            for: backupOccurrence,
+                            label: alarm.label.isEmpty ? "Alarm" : alarm.label,
+                            sound: soundToUse,
+                            loudness: alarm.loudness,
+                            selectionHash: desiredSelectionHash(for: soundToUse)
+                        )
+                        do {
+                            try AlarmManager.shared.cancel(id: backupSystemID)
+                            SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(backupSystemID.uuidString)")
+                        } catch {
+                            SmartWakeDebugLog.log("BACKUP ALARM cancel FAILED: \(error.localizedDescription)")
                         }
-                        os_log(.info, log: log, "Cancelled %d alerting alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
+                        
                         // Promote to primary session for lock screen controls (if not foreground)
                         AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
                         // Setup local notification with Stop action
                         AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
-                        stopSilentPlayerOnly(reason: "takeover completed for \(occurrenceKey)")
-                        SmartWakeDebugLog.log("TAKEOVER complete for \(occurrenceKey); silent player stopped")
+                        stopSilentPlayerOnly(reason: "playlist-first takeover completed for \(occurrenceKey)")
+                        SmartWakeDebugLog.log("PLAYLIST-FIRST complete for \(occurrenceKey); silent player stopped")
                     } else {
                         // ATTEMPT A FAILED - log and remove occurrence key to allow retry
                         os_log(.error, log: log, "TAKEOVER ATTEMPT-A FAILED: playback failed to start, leaving AlarmKit alarms ringing")

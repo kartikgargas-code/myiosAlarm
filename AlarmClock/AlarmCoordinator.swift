@@ -409,20 +409,26 @@ final class AlarmCoordinator {
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                 
                 // Primary alarm at the effective date
-                results.append(DesiredSystemAlarm(
-                    id: SystemScheduleID.make(
-                        for: occurrence,
+                // For playlist alarms with Smart Wake enabled, we SKIP the primary alarm at wake time
+                // and only schedule the backup alarm (which fires at wakeTime + 30s)
+                let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
+                
+                if shouldSchedulePrimaryAtWake {
+                    results.append(DesiredSystemAlarm(
+                        id: SystemScheduleID.make(
+                            for: occurrence,
+                            label: label,
+                            sound: soundToUse,
+                            loudness: alarm.loudness,
+                            selectionHash: desiredSelectionHash(for: soundToUse)
+                        ),
+                        occurrence: occurrence,
                         label: label,
                         sound: soundToUse,
-                        loudness: alarm.loudness,
-                        selectionHash: desiredSelectionHash(for: soundToUse)
-                    ),
-                    occurrence: occurrence,
-                    label: label,
-                    sound: soundToUse,
-                    alarmKitSound: alarmKitSound,
-                    snoozeDurationMinutes: alarm.snoozeDurationMinutes
-                ))
+                        alarmKitSound: alarmKitSound,
+                        snoozeDurationMinutes: alarm.snoozeDurationMinutes
+                    ))
+                }
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
                 // Backup fires at occurrence.effectiveDate + backupDelaySeconds with short floor sound
