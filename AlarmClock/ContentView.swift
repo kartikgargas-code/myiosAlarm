@@ -520,19 +520,23 @@ struct ContentView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Diagnostics")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Copy All Diagnostics") { 
-                        let widgetDiagnosticsText = generateWidgetDiagnosticsText()
-                        let smartWakeLogText = smartWakeLogForDiagnostics()
-                        let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText + "\n\n" + widgetDiagnosticsText + "\n\n" + readLiveActivityDebugLog() + "\n\n" + smartWakeLogText
-                        UIPasteboard.general.string = combined
-                    }
+        }
+        .font(.caption.monospaced())
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .navigationTitle("Diagnostics")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Copy All Diagnostics") { 
+                    let widgetDiagnosticsText = generateWidgetDiagnosticsText()
+                    let smartWakeLogText = smartWakeLogForDiagnostics()
+                    let combined = authorizationModel.diagnosticsText + "\n\n" + coordinator.playlistDiagnostics.diagnosticsText + "\n\n" + widgetDiagnosticsText + "\n\n" + readLiveActivityDebugLog() + "\n\n" + smartWakeLogText
+                    UIPasteboard.general.string = combined
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showingDiagnostics = false }
-                }
+            }
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { showingDiagnostics = false }
             }
         }
     }
