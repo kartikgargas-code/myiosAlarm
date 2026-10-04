@@ -6,7 +6,7 @@ import os.log
 import AlarmKit
 import AlarmClockShared
 import UIKit
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
 /// Integrates with system Now Playing and remote command center for lock screen control.
@@ -676,12 +676,12 @@ final class AlarmPlaybackService: NSObject {
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
         
         // Cancel companion alarm if scheduled
-        if let companionID = companionAlarmID {
+        if let companionID = _companionAlarmID {
             SmartWakeDebugLog.log("COMPANION cancel on stop: \(companionID.uuidString)")
             Task.detached {
                 try? await AlarmManager.shared.cancel(id: companionID)
             }
-            companionAlarmID = nil
+            _companionAlarmID = nil
             // Clear companion ID in coordinator
             AlarmCoordinator.sharedInstance?.setCompanionAlarmID(nil)
         }
