@@ -537,7 +537,7 @@ struct ContentView: View {
         }
     }
     
-    private var widgetDiagnosticsSection: some View {
+    var widgetDiagnosticsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Current snapshot in memory
             if let snapshot = coordinator.nextAlarmSnapshot {
@@ -711,7 +711,7 @@ struct ContentView: View {
 
 
 
-    private func readLiveActivityDebugLog() -> String {
+    func readLiveActivityDebugLog() -> String {
         let fileManager = FileManager.default
         guard let appGroupURL = AppGroupResolver.resolve().flatMap({
             fileManager.containerURL(forSecurityApplicationGroupIdentifier: $0)
@@ -733,7 +733,7 @@ struct ContentView: View {
         }
     }
     
-    private func generateWidgetDiagnosticsText() -> String {
+    func generateWidgetDiagnosticsText() -> String {
         var text = "=== WIDGET PIPELINE DIAGNOSTICS ===\n\n"
         
         // Current snapshot in memory
@@ -790,7 +790,7 @@ struct ContentView: View {
     }
     
     // MARK: - Smart Wake Log for copy-all diagnostics
-    private func smartWakeLogForDiagnostics() -> String {
+    func smartWakeLogForDiagnostics() -> String {
         let log = SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet."
         return "=== SMART WAKE LOG ===\n\(log)\n"
     }
