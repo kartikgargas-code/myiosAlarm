@@ -713,7 +713,7 @@ final class SmartWakeService {
     /// Cancel the coordinator-scheduled -BACKUP alarm for this occurrence (computed the
     /// same way AlarmCoordinator builds its SystemScheduleID) plus any AlarmKit alarm
     /// still alerting.
-    func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String) {
+    func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String?) {
         let backupSystemID = SystemScheduleID.make(
             for: backupOccurrence,
             label: label,
@@ -798,6 +798,15 @@ final class SmartWakeService {
                     // The backup alarm is scheduled by AlarmCoordinator as a -BACKUP occurrence
                     SmartWakeDebugLog.log("PLAYLIST-FIRST: starting playlist for \(occurrenceKey)")
 
+                    // Build the -BACKUP occurrence for cancel (same shape as AlarmCoordinator)
+                    let backupOccurrenceForCancel = AlarmOccurrence(
+                        alarmID: alarm.id,
+                        occurrenceKey: "\(occurrenceKey)-BACKUP",
+                        baseDate: occurrence.baseDate,
+                        effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
+                        isAdjusted: false
+                    )
+
                     if AlarmPlaybackService.shared.isPlaying {
                         // TAKEOVER SHARED: another same-minute alarm already owns playback.
                         // Keep its playlist running; drop ONLY our own backup alarms.
@@ -824,15 +833,6 @@ final class SmartWakeService {
                         )
                     }
                     
-                    // Build the -BACKUP occurrence for cancel (same shape as AlarmCoordinator)
-                    let backupOccurrenceForCancel = AlarmOccurrence(
-                        alarmID: alarm.id,
-                        occurrenceKey: "\(occurrenceKey)-BACKUP",
-                        baseDate: occurrence.baseDate,
-                        effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
-                        isAdjusted: false
-                    )
-
                     // Wait up to 1s for playback to actually start
                     var playbackStarted = false
                     for attempt in 0..<10 {
