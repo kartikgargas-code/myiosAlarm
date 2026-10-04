@@ -40,6 +40,9 @@ final class AlarmCoordinator {
     /// Diagnostic: last WidgetCenter reload request timestamp
     private(set) var lastWidgetReloadRequest: Date? = nil
 
+    /// Live Activity / Dynamic Island toggle — when false, never request and end all existing on launch
+    static let liveActivityEnabled = false
+
     /// Live Activity for Dynamic Island
     private var liveActivity: Activity<NextAlarmAttributes>?
 
@@ -81,6 +84,8 @@ final class AlarmCoordinator {
             lastError = "Could not load alarms: \(error.localizedDescription)"
         }
         publish()
+        // End all Live Activities on launch if disabled
+        endAllLiveActivitiesOnLaunch()
     }
 
     func synchronize() async {
@@ -682,6 +687,13 @@ final class AlarmCoordinator {
     
     /// Update or start the Live Activity for Dynamic Island
     private func updateLiveActivity() {
+        // Respect the liveActivityEnabled toggle
+        guard Self.liveActivityEnabled else {
+            // If disabled, ensure any existing activity is ended
+            endLiveActivity()
+            return
+        }
+        
         guard let snapshot = nextAlarmSnapshot else {
             // No upcoming alarm - end any existing activity
             endLiveActivity()
@@ -738,6 +750,16 @@ final class AlarmCoordinator {
             }
             await MainActor.run {
                 self.liveActivity = nil
+            }
+        }
+    }
+    
+    /// End all existing Live Activities on launch if disabled
+    private func endAllLiveActivitiesOnLaunch() {
+        guard !Self.liveActivityEnabled else { return }
+        Task {
+            for activity in Activity<NextAlarmAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
     }

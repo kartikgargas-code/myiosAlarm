@@ -484,6 +484,41 @@ struct ContentView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
+            
+            // Play History Section
+            if !coordinator.playHistory.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Play History")
+                        .font(.headline)
+                    
+                    ForEach(coordinator.playHistory) { entry in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.songName)
+                                    .font(.subheadline)
+                                Text("Alarm: \(entry.alarmLabel) • \(entry.timestamp.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            // Toggle play/stop button for this history entry
+                            Button {
+                                coordinator.playHistoryEntry(entry)
+                            } label: {
+                                Image(systemName: "play.circle.fill")
+                                    .font(.title2)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    }
+                }
+                .padding()
             }
             .navigationTitle("Diagnostics")
             .toolbar {

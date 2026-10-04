@@ -36,6 +36,12 @@ final class AlarmPlaybackService: NSObject {
     private var resumeAttempts = 0
     private var maxResumeAttempts = 3
     
+    // Remote command state
+    private var pendingBackupAlarmID: UUID?
+    private var pendingSnoozeAlarmID: UUID?
+    private var currentAlarm: AlarmRecord?
+    private var currentOccurrence: AlarmOccurrence?
+    
     // Published state
     private(set) var isPlaying = false
     private(set) var currentTrackName: String?
@@ -125,6 +131,23 @@ final class AlarmPlaybackService: NSObject {
             currentOccurrence = occurrence
             currentTrackIndex = 0
             coordinator = AlarmCoordinator.sharedInstance // Will need access to coordinator for play history
+            
+            // Compute and store the backup alarm SystemScheduleID for remote commands to cancel
+            let backupOccurrenceKey = "\(occurrence.occurrenceKey)-BACKUP"
+            let backupOccurrence = AlarmOccurrence(
+                alarmID: alarm.id,
+                occurrenceKey: backupOccurrenceKey,
+                baseDate: occurrence.baseDate,
+                effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
+                isAdjusted: false
+            )
+            pendingBackupAlarmID = SystemScheduleID.make(
+                for: backupOccurrence,
+                label: alarm.label.isEmpty ? "Alarm" : alarm.label,
+                sound: alarm.sound,
+                loudness: alarm.loudness,
+                selectionHash: nil // Selection hash computed in AlarmCoordinator
+            )
             
             // Ensure audio session is active (don't deactivate, only activate if needed)
             try ensureAudioSessionActive()
@@ -563,7 +586,7 @@ final class AlarmPlaybackService: NSObject {
             nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
         }
         
-        // Artwork
+        // Artwork: use embedded artwork from the track
         if let artworkItem = metadata.first(where: { $0.commonKey == .commonKeyArtwork }),
            let data = artworkItem.dataValue,
            let image = UIImage(data: data) {
@@ -617,9 +640,23 @@ final class AlarmPlaybackService: NSObject {
             return .success
         }
         
-        // Disable unsupported commands
-        commandCenter.nextTrackCommand.isEnabled = false
-        commandCenter.previousTrackCommand.isEnabled = false
+        // Previous track = STOP alarm (stop playback, cancel backup, end alarm state, re-arm next day, restart silent loop)
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            SmartWakeDebugLog.log("REMOTE COMMAND: previousTrack (STOP) fired")
+            self?.handleStopCommand()
+            return .success
+        }
+        
+        // Next track = SNOOZE (stop playback, cancel backup, schedule AlarmKit at now + snooze minutes with floor sound)
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            SmartWakeDebugLog.log("REMOTE COMMAND: nextTrack (SNOOZE) fired")
+            self?.handleSnoozeCommand()
+            return .success
+        }
+        
+        // Disable skip forward/backward default handlers (we use next/previous instead)
         commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.changePlaybackRateCommand.isEnabled = false
@@ -632,12 +669,111 @@ final class AlarmPlaybackService: NSObject {
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.isEnabled = false
         commandCenter.playCommand.isEnabled = false
         commandCenter.pauseCommand.isEnabled = false
         commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackRateCommand.isEnabled = false
     }
-
+    
+    /// Handle STOP command from lock screen (previous track)
+    private func handleStopCommand() {
+        // Cancel pending backup alarm
+        if let backupID = pendingBackupAlarmID {
+            Task {
+                try? await AlarmManager.shared.cancel(id: backupID)
+                SmartWakeDebugLog.log("STOP: cancelled pending backup alarm \(backupID.uuidString)")
+            }
+            pendingBackupAlarmID = nil
+        }
+        
+        // Stop playback and clean up
+        stop(reason: "remote-stop")
+        
+        // Re-arm next day and restart silent loop via SmartWakeService
+        Task { @MainActor in
+            if let coordinator = AlarmCoordinator.sharedInstance {
+                await coordinator.checkAndArmUpcomingAlarms()
+            }
+            SmartWakeService.shared.startIfReadyForeground()
+        }
+    }
+    
+    /// Handle SNOOZE command from lock screen (next track)
+    private func handleSnoozeCommand() {
+        // Cancel pending backup alarm
+        if let backupID = pendingBackupAlarmID {
+            Task {
+                try? await AlarmManager.shared.cancel(id: backupID)
+                SmartWakeDebugLog.log("SNOOZE: cancelled pending backup alarm \(backupID.uuidString)")
+            }
+            pendingBackupAlarmID = nil
+        }
+        
+        guard let alarm = currentAlarm,
+              let occurrence = currentOccurrence,
+              let coordinator = AlarmCoordinator.sharedInstance else {
+            SmartWakeDebugLog.log("SNOOZE: missing alarm/occurrence/coordinator")
+            return
+        }
+        
+        let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
+        let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
+        
+        // Stop playback
+        stop(reason: "remote-snooze")
+        
+        // Schedule one-shot AlarmKit alarm with floor sound
+        Task { @MainActor in
+            do {
+                // Get the floor sound for this alarm
+                let floorSound = try await coordinator.alarmKitSound(for: alarm.sound, loudness: alarm.loudness)
+                
+                let snoozeID = UUID()
+                let snoozeConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
+                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
+                    schedule: .fixed(snoozeFireDate),
+                    attributes: AlarmAttributes(
+                        presentation: AlarmPresentation(
+                            alert: AlarmPresentation.Alert(
+                                title: LocalizedStringResource(stringLiteral: alarm.label.isEmpty ? "Alarm" : alarm.label),
+                                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+                                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+                                secondaryButtonBehavior: .countdown
+                            ),
+                            countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min")),
+                            paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                        ),
+                        metadata: ScheduledOccurrenceMetadata(
+                            alarmID: alarm.id,
+                            occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)",
+                            baseDate: snoozeFireDate
+                        ),
+                        tintColor: .orange
+                    ),
+                    stopIntent: nil,
+                    secondaryIntent: nil,
+                    sound: floorSound
+                )
+                _ = try await AlarmManager.shared.schedule(id: snoozeID, configuration: snoozeConfig)
+                
+                // Register with coordinator for reconcile exclusion
+                coordinator.addEmergencyReRingID(snoozeID)
+                pendingSnoozeAlarmID = snoozeID
+                
+                SmartWakeDebugLog.log("SNOOZE: scheduled AlarmKit snooze id=\(snoozeID.uuidString) at \(snoozeFireDate) for \(snoozeMinutes) min")
+            } catch {
+                SmartWakeDebugLog.log("SNOOZE: scheduling FAILED: \(error.localizedDescription)")
+            }
+        }
+    }
+    
     /// Toggle play/pause
     private func togglePlayPause() {
         guard let player = player else { return }
@@ -647,22 +783,32 @@ final class AlarmPlaybackService: NSObject {
             resumePlayback()
         }
     }
-
-    /// Pause playback
+    
+    /// Pause playback - PAUSE TRAP: start silent loop, session stays active, app stays alive
     private func pausePlayback() {
         player?.pause()
         isPlaying = false
         updateElapsedTime()
-        os_log(.info, log: log, "Playback paused")
+        
+        // PAUSE TRAP: Start silent loop to keep session active and app alive
+        // Never deactivate the session on pause
+        SmartWakeDebugLog.log("PAUSE TRAP: starting silent loop to keep session alive")
+        SmartWakeService.shared.startIfReadyForeground()
+        
+        os_log(.info, log: log, "Playback paused (pause trap: silent loop started)")
     }
-
-    /// Resume playback
+    
+    /// Resume playback - stop silent loop and continue playlist
     private func resumePlayback() {
         guard let player = player else { return }
         player.play()
         isPlaying = true
         updateElapsedTime()
-        os_log(.info, log: log, "Playback resumed")
+        
+        // Stop silent loop since we're playing again
+        SmartWakeService.shared.stopSilentPlayerOnly(reason: "playback resumed from pause")
+        
+        os_log(.info, log: log, "Playback resumed (silent loop stopped)")
     }
 
     /// Seek to position

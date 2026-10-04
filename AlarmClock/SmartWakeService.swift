@@ -36,6 +36,8 @@ final class SmartWakeService {
     // Transition arming
     private var transitionCheckTask: Task<Void, Never>?
     private var armedOccurrences: Set<String> = [] // Composite keys: "alarmID|occurrenceKey"
+    /// Track which occurrence keys have already fired transition wake to prevent duplicates
+    private var firedTransitionWakes: Set<String> = []
 
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
@@ -739,6 +741,14 @@ final class SmartWakeService {
                 SmartWakeDebugLog.log("TRANSITION WAKE MISSED WINDOW for \(occurrenceKey) (diff \(Int(actualNow.timeIntervalSince(fireDate)))s)")
                 return
             }
+            
+            // WAKE DUPLICATE GUARD: only one wake run per occurrence key
+            if firedTransitionWakes.contains(occurrenceKey) {
+                os_log(.info, log: log, "WAKE DUPLICATE ignored for %{public}s", occurrenceKey)
+                SmartWakeDebugLog.log("WAKE DUPLICATE ignored for \(occurrenceKey)")
+                return
+            }
+            firedTransitionWakes.insert(occurrenceKey)
             
             os_log(.info, log: log, "TRANSITION WAKE: Firing for occurrence %{public}s at %{public}s", 
                    occurrenceKey, actualNow.formatted(date: .omitted, time: .standard))
