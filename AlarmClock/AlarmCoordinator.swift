@@ -4,12 +4,15 @@ import Foundation
 import Observation
 import WidgetKit
 import os.log
-import SmartWakeService
 
 @MainActor
 @Observable
 final class AlarmCoordinator {
     static var sharedInstance: AlarmCoordinator?
+    
+    // Phase 7a: Delayed backup for playlist alarms when Smart Wake is enabled
+    // Schedule AlarmKit backup at occurrence.effectiveDate + backupDelaySeconds
+    static let backupDelaySeconds = 30
 
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
@@ -388,7 +391,7 @@ final class AlarmCoordinator {
         var warnings: [String] = []
         
         let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
-        let backupDelay = SmartWakeService.backupDelaySeconds
+        let backupDelay = AlarmCoordinator.backupDelaySeconds
         
         for occurrence in occurrences {
             guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
