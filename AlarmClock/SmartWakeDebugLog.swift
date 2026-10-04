@@ -8,10 +8,41 @@ import os.log
 enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
     static let maxLines = 300
+    static let copyMaxLines = 80
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
+    private static var hasLoggedInterruption = false
 
-    static func log(_ message: String) {
+    static func log(_ message: String, force: Bool = false) {
+        // Log diet: suppress verbose messages unless forced
+        let suppressedPrefixes = [
+            "FOREGROUND START attempt: declined",
+            "START attempt: declined",
+            "FOREGROUND START: silent loop already running",
+            "FOREGROUND: loop already running"
+        ]
+        if !force && suppressedPrefixes.contains(where: message.hasPrefix) {
+            return
+        }
+        
+        // Suppress per-id RECONCILE CANCEL lines
+        if !force && message.contains("RECONCILE(") && message.contains("CANCEL:") && !message.contains("FAILED") {
+            return
+        }
+        
+        // Suppress RECONCILE CANCEL SUCCESS lines
+        if !force && message.contains("RECONCILE CANCEL SUCCESS") {
+            return
+        }
+        
+        // Suppress duplicate interruption logs
+        if message.contains("INTERRUPTION") || message.contains("AVAUDIOSESSION INTERRUPTION") {
+            if hasLoggedInterruption {
+                return
+            }
+            hasLoggedInterruption = true
+        }
+        
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let line = "[\(timestamp)] \(message)"
         queue.async {
@@ -29,6 +60,11 @@ enum SmartWakeDebugLog {
             inMemoryBuffer = lines
         }
     }
+    
+    static func logSessionDump(_ message: String) {
+        // Only log SESSION DUMP when something failed
+        log(message, force: true)
+    }
 
     static func read() -> String? {
         guard let url = logURL() else { return nil }
@@ -41,7 +77,7 @@ enum SmartWakeDebugLog {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
             .filter { !$0.contains("STATE DUMP:") }
-            .suffix(150)
+            .suffix(copyMaxLines)
         return lines.joined(separator: "\n")
     }
 
@@ -50,7 +86,12 @@ enum SmartWakeDebugLog {
             guard let url = logURL() else { return }
             try? FileManager.default.removeItem(at: url)
             inMemoryBuffer.removeAll()
+            hasLoggedInterruption = false
         }
+    }
+    
+    static func resetInterruptionLogFlag() {
+        hasLoggedInterruption = false
     }
 
     private static func logURL() -> URL? {

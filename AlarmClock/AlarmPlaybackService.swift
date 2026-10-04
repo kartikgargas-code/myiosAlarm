@@ -32,22 +32,9 @@ final class AlarmPlaybackService: NSObject {
     private var transitionCheckTask: Task<Void, Never>?
     private var consecutiveFailures = 0 // Track consecutive play failures to prevent infinite recursion
     
-    // Companion alarm for lock-screen UI (Stop/Snooze buttons while our songs play)
-    private var _companionAlarmID: UUID?
-    var companionAlarmID: UUID? { _companionAlarmID }
-    private var companionSnoozeDurationMinutes: Int = 10
-    private var companionTask: Task<Void, Never>?
-    private var companionResumeAttempts = 0
-    private var companionMaxResumeAttempts = 3
-    
-    // Companion state machine state
-    private var companionHasAlerted = false
-    private var companionAlertingLogged = false
-    private var companionScheduledLogged = false
-    private var companionAlertingTimestamp: Date? = nil
-    private var companionPlusOneLogged = false
-    private var companionPlusThreeLogged = false
-    private var companionKilledAudioLogged = false
+    // Resume state (no companion)
+    private var resumeAttempts = 0
+    private var maxResumeAttempts = 3
     
     // Published state
     private(set) var isPlaying = false
@@ -111,9 +98,6 @@ final class AlarmPlaybackService: NSObject {
                playlistID.uuidString, loudness.percentage, alarm.id.uuidString, occurrence.occurrenceKey)
         SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8))")
         
-        // Log session state at start entry
-        logSessionDump("START")
-
         // Guard against double-start for same occurrence using composite key
         let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
         guard !isArmedForOccurrence.contains(armingKey) else {
@@ -203,7 +187,8 @@ final class AlarmPlaybackService: NSObject {
     }
     
     /// Log a complete session state dump for debugging
-    /// Call at: start() entry, after play() returns false, after each retry in retry-B
+    /// Call at: after play() returns false, after each retry in retry-B, promote failed, activation failed
+    /// Do NOT call at start() entry - that's not a failure
     func logSessionDump(_ tag: String) {
         let session = AVAudioSession.sharedInstance()
         let appState = UIApplication.shared.applicationState.rawValue
@@ -219,7 +204,7 @@ final class AlarmPlaybackService: NSObject {
         dump += "silentPlayer=\(silentPlayerRunning) appState=\(appState) sceneState=\(sceneState)"
         
         lastSessionDump = dump
-        SmartWakeDebugLog.log(dump)
+        SmartWakeDebugLog.logSessionDump(dump)
     }
     
     /// Activate primary audio session for lock-screen Now Playing visibility
@@ -376,9 +361,10 @@ final class AlarmPlaybackService: NSObject {
         }
     }
     
-    /// Setup local notification with Stop action for background
+    /// Setup local notification with Stop and Snooze actions for background
     func setupStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
         let center = UNUserNotificationCenter.current()
+        let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
         
         // Create stop action
         let stopAction = UNNotificationAction(
@@ -387,10 +373,17 @@ final class AlarmPlaybackService: NSObject {
             options: [] // No .foreground - runs in background
         )
         
-        // Create category with stop action
+        // Create snooze action
+        let snoozeAction = UNNotificationAction(
+            identifier: "SNOOZE_ALARM",
+            title: "Snooze \(snoozeMinutes) min",
+            options: []
+        )
+        
+        // Create category with stop and snooze actions
         let category = UNNotificationCategory(
             identifier: "ALARM_RINGING",
-            actions: [stopAction],
+            actions: [stopAction, snoozeAction],
             intentIdentifiers: [],
             options: [.customDismissAction]
         )
@@ -425,10 +418,15 @@ final class AlarmPlaybackService: NSObject {
     private func postStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
         let content = UNMutableNotificationContent()
         content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
-        content.body = "Alarm ringing - tap Stop"
+        let trackName = currentTrackName != nil ? displayName(for: currentTrackName!) : "ringing"
+        content.body = "Alarm ringing - \(trackName)"
         content.sound = nil // We handle audio ourselves
         content.categoryIdentifier = "ALARM_RINGING"
         content.interruptionLevel = .active // Not .timeSensitive
+        content.userInfo = [
+            "alarmID": alarm.id.uuidString,
+            "occurrenceKey": occurrence.occurrenceKey
+        ]
         
         let request = UNNotificationRequest(
             identifier: "ALARM_RINGING_\(alarm.id.uuidString)_\(occurrence.occurrenceKey)",
@@ -681,19 +679,10 @@ final class AlarmPlaybackService: NSObject {
         os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
         
-        // Cancel companion alarm if scheduled
-        if let companionID = _companionAlarmID {
-            SmartWakeDebugLog.log("COMPANION cancel on stop: \(companionID.uuidString)")
-            Task.detached {
-                try? await AlarmManager.shared.cancel(id: companionID)
-            }
-            _companionAlarmID = nil
-            // Clear companion ID in coordinator
-            AlarmCoordinator.sharedInstance?.setCompanionAlarmID(nil)
+        // Remove stop notification if we have alarm ID and occurrence key
+        if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
+            removeStopNotification(alarmID: alarmID, occurrenceKey: occurrenceKey)
         }
-        
-        companionTask?.cancel()
-        companionTask = nil
         
         // Remove from armed occurrences set using composite key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
@@ -757,192 +746,22 @@ final class AlarmPlaybackService: NSObject {
         )
     }
 
-    /// Schedule a companion AlarmKit alarm ~2s in the future for lock-screen UI (Stop/Snooze)
-    /// Called after successful takeover when scene is not foregroundActive
-    func scheduleCompanionAlarm(for alarm: AlarmRecord, occurrence: AlarmOccurrence) async {
-        // Only schedule companion when not foreground (locked/background)
-        let scenes = UIApplication.shared.connectedScenes
-        let foregroundActive = scenes.compactMap { $0 as? UIWindowScene }.first?.activationState == .foregroundActive
-        
-        guard !foregroundActive else {
-            SmartWakeDebugLog.log("COMPANION: skipped (foregroundActive)")
+    /// Resume playback after interruption - only while playback is active (currentAlarmID set and stop() not run)
+    private func attemptPlaybackResume() {
+        // Only resume if we have an active alarm and haven't been stopped
+        guard currentAlarmID != nil, isPlaying || (player?.isPlaying ?? false) else {
+            SmartWakeDebugLog.log("PLAYBACK RESUME skipped: not active (currentAlarmID=\(currentAlarmID?.uuidString ?? "nil") isPlaying=\(isPlaying))")
             return
         }
         
-        // No coordinator needed for scheduling companion alarms
-        let companionID = UUID()
-        _companionAlarmID = companionID
-        companionSnoozeDurationMinutes = alarm.snoozeDurationMinutes ?? 10
-        
-        do {
-            // Get the silent companion sound file name
-            let silentFileName = SoundLibrary.shared.silentCompanionAlarmKitFileName()
-            
-            // Create companion alarm configuration
-            let snoozeInterval = TimeInterval(companionSnoozeDurationMinutes * 60)
-            let alert = AlarmPresentation.Alert(
-                title: LocalizedStringResource(stringLiteral: alarm.label.isEmpty ? "Alarm" : alarm.label),
-                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
-                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
-                secondaryButtonBehavior: .countdown
-            )
-            
-            let attributes = AlarmAttributes(
-                presentation: AlarmPresentation(
-                    alert: alert,
-                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(companionSnoozeDurationMinutes) min")),
-                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(companionSnoozeDurationMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
-                ),
-                metadata: ScheduledOccurrenceMetadata(
-                    alarmID: alarm.id,
-                    occurrenceKey: "COMPANION-\(occurrence.occurrenceKey)",
-                    baseDate: Date()
-                ),
-                tintColor: .orange
-            )
-            
-            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
-                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeInterval),
-                schedule: .fixed(Date().addingTimeInterval(2.0)), // ~2s in future
-                attributes: attributes,
-                stopIntent: nil,
-                secondaryIntent: nil,
-                sound: .named(silentFileName)
-            )
-            
-            _ = try await AlarmManager.shared.schedule(id: companionID, configuration: configuration)
-            SmartWakeDebugLog.log("COMPANION scheduled id=\(companionID.uuidString)")
-            
-            // Start observing companion lifecycle
-            startCompanionObservation()
-            
-        } catch {
-            SmartWakeDebugLog.log("COMPANION scheduling FAILED: \(error.localizedDescription)")
-            _companionAlarmID = nil
-        }
-    }
-    
-    /// Start observing companion alarm lifecycle via AlarmManager.alarmUpdates
-    /// State machine for companion alarm states:
-    /// - .scheduled: ignore (log once "COMPANION waiting")
-    /// - .alerting: log ONCE per transition; if player not playing, run resume attempts
-    /// - .countdown: log "COMPANION snoozed", stop playback (reason "companion-snooze")
-    /// - Missing AFTER alerting: treat as user pressed Stop -> stop(reason:"alarmkit-ui")
-    /// - Missing BEFORE alerting: ignore for up to 10s (log "COMPANION never alerted" then cancel nothing)
-    private func startCompanionObservation() {
-        companionTask?.cancel()
-        companionHasAlerted = false
-        companionAlertingLogged = false
-        companionScheduledLogged = false
-        
-        var companionFirstSeenDate: Date? = nil
-        var companionNeverAlertedLogged = false
-        
-        companionTask = Task { @MainActor in
-            for await alarms in AlarmManager.shared.alarmUpdates {
-                guard let companionID = companionAlarmID else {
-                    // Companion was cancelled/cleared externally
-                    return
-                }
-                
-                let companion = alarms.first(where: { $0.id == companionID })
-                
-                if let companion = companion {
-                    // Companion exists - reset the "never alerted" timer
-                    companionFirstSeenDate = nil
-                    companionNeverAlertedLogged = false
-                    
-                    switch companion.state {
-                    case .scheduled:
-                        if !companionScheduledLogged {
-                            SmartWakeDebugLog.log("COMPANION waiting (scheduled)")
-                            companionScheduledLogged = true
-                        }
-                        
-                    case .alerting:
-                        // Log every emission with full state
-                        let session = AVAudioSession.sharedInstance()
-                        SmartWakeDebugLog.log("COMPANION state=\(companion.state) playing=\(player?.isPlaying ?? false) sessionActive=\(session.isOtherAudioPlaying)")
-                        
-                        if !companionAlertingLogged {
-                            SmartWakeDebugLog.log("COMPANION alerting; playing=\(player?.isPlaying ?? false)")
-                            companionAlertingLogged = true
-                        }
-                        if !companionHasAlerted {
-                            companionHasAlerted = true
-                            companionAlertingTimestamp = Date()
-                        }
-                        // Check +1s and +3s after alerting
-                        if let ts = companionAlertingTimestamp {
-                            let elapsed = Date().timeIntervalSince(ts)
-                            if elapsed >= 1.0 && !companionPlusOneLogged {
-                                SmartWakeDebugLog.log("COMPANION +1s playing=\(player?.isPlaying ?? false)")
-                                companionPlusOneLogged = true
-                            }
-                            if elapsed >= 3.0 && !companionPlusThreeLogged {
-                                SmartWakeDebugLog.log("COMPANION +3s playing=\(player?.isPlaying ?? false)")
-                                companionPlusThreeLogged = true
-                            }
-                            if elapsed >= 3.0 && !(player?.isPlaying ?? false) && !companionKilledAudioLogged {
-                                SmartWakeDebugLog.log("COMPANION KILLED AUDIO")
-                                companionKilledAudioLogged = true
-                            }
-                        }
-                        // If playback is not running, attempt resume
-                        if player?.isPlaying != true {
-                            attemptPlaybackResume()
-                        }
-                        
-                    case .countdown:
-                        // User pressed Snooze
-                        SmartWakeDebugLog.log("COMPANION snoozed")
-                        stop(reason: "companion-snooze")
-                        return
-                        
-                    case .paused:
-                        // Could be user interaction or system pause - don't treat as stop unless we already alerted
-                        if companionHasAlerted {
-                            SmartWakeDebugLog.log("COMPANION paused after alerting; stopping (alarmkit-ui)")
-                            stop(reason: "alarmkit-ui")
-                            return
-                        }
-                        // If not yet alerted, just log
-                        SmartWakeDebugLog.log("COMPANION paused (pre-alerting)")
-                        
-                    default:
-                        break
-                    }
-                } else {
-                    // Companion not in alarms list
-                    if companionHasAlerted {
-                        // Was alerting before, now missing = user pressed Stop
-                        SmartWakeDebugLog.log("COMPANION stopped by user (missing after alerting)")
-                        stop(reason: "alarmkit-ui")
-                        return
-                    } else {
-                        // Never alerted yet - wait up to 10s
-                        if companionFirstSeenDate == nil {
-                            companionFirstSeenDate = Date()
-                        } else if !companionNeverAlertedLogged && Date().timeIntervalSince(companionFirstSeenDate!) > 10.0 {
-                            SmartWakeDebugLog.log("COMPANION never alerted after 10s; keeping playback running")
-                            companionNeverAlertedLogged = true
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    /// Attempt to resume playback with retry logic
-    private func attemptPlaybackResume() {
-        companionResumeAttempts = 0
-        companionMaxResumeAttempts = 3
+        resumeAttempts = 0
+        maxResumeAttempts = 3
         tryResumePlayback()
     }
     
     private func tryResumePlayback() {
-        companionResumeAttempts += 1
-        SmartWakeDebugLog.log("PLAYBACK RESUME attempt \(companionResumeAttempts)/\(companionMaxResumeAttempts)")
+        resumeAttempts += 1
+        SmartWakeDebugLog.log("PLAYBACK RESUME attempt \(resumeAttempts)/\(maxResumeAttempts)")
         
         do {
             let session = AVAudioSession.sharedInstance()
@@ -958,42 +777,14 @@ final class AlarmPlaybackService: NSObject {
             SmartWakeDebugLog.log("PLAYBACK RESUMED error: \(error.localizedDescription)")
         }
         
-        if companionResumeAttempts < companionMaxResumeAttempts {
+        if resumeAttempts < maxResumeAttempts {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.tryResumePlayback()
             }
         } else {
-            // All attempts failed - trigger revert safety
-            SmartWakeDebugLog.log("PLAYBACK RESUMED: all \(companionMaxResumeAttempts) attempts failed")
-            revertCompanionAndRestartPlayback()
-        }
-    }
-    
-    /// Revert safety: cancel companion and restart playback
-    private func revertCompanionAndRestartPlayback() {
-        SmartWakeDebugLog.log("COMPANION REVERTED")
-        
-        if let companionID = _companionAlarmID {
-            // Fire and forget - we don't need to await here
-            Task.detached {
-                try? await AlarmManager.shared.cancel(id: companionID)
-            }
-            _companionAlarmID = nil
-            // Clear companion ID in coordinator
-            AlarmCoordinator.sharedInstance?.setCompanionAlarmID(nil)
-        }
-        
-        companionTask?.cancel()
-        companionTask = nil
-        
-        // Restart current track
-        if let currentTrack = currentTrackName,
-           let index = selectedSoundIDs.firstIndex(where: { soundID in 
-                SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == currentTrack 
-            }) {
-            playTrack(at: index)
-        } else if currentTrackIndex < selectedSoundIDs.count {
-            playTrack(at: currentTrackIndex)
+            // All attempts failed - log and stop
+            SmartWakeDebugLog.log("PLAYBACK RESUMED: all \(maxResumeAttempts) attempts failed")
+            stop(reason: "resume-failed")
         }
     }
     
