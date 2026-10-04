@@ -367,12 +367,6 @@ final class SoundLibrary {
         return sound.fileName
     }
 
-    /// Get the silent companion alarm sound file name for AlarmKit
-    /// This is a near-silent WAV file (>=1s) in Library/Sounds for companion alarms
-    func silentCompanionAlarmKitFileName() -> String {
-        return silentCompanionFileName
-    }
-
     func playlist(for id: UUID) throws -> Playlist {
         guard let playlist = playlists.first(where: { $0.id == id }) else {
             throw SoundLibraryError.playlistNotFound(id)
