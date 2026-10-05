@@ -30,12 +30,12 @@ struct SoundPickerView: View {
             }
             return "Imported"
         case .random(let playlistID):
-            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+            if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
                 return "Random — \(playlist.name)"
             }
             return "Random"
         case .precomposedPlaylist(let playlistID, _):
-            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+            if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
                 return "Precomposed — \(playlist.name)"
             }
             return "Precomposed"
@@ -48,12 +48,12 @@ struct SoundPickerView: View {
         case .builtIn: return "Bundled alarm sound"
         case .imported: return "Imported from Files"
         case .random(let playlistID):
-            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+            if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
                 return "Random from \(playlist.selectedSoundIDs.count) songs in \(playlist.name)"
             }
             return "Random from playlist"
         case .precomposedPlaylist(let playlistID, _):
-            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+            if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
                 return "Precomposed playlist: \(playlist.name)"
             }
             return "Precomposed playlist"
@@ -71,7 +71,7 @@ struct SoundPickerView: View {
             }
             return nil
         case .random(let playlistID):
-            if let playlist = SoundLibrary.shared.playlist(for: playlistID),
+            if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                let firstSoundID = playlist.selectedSoundIDs.first,
                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
                 return sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
@@ -346,28 +346,20 @@ struct SoundPickerView: View {
     private func importSound(from url: URL) async {
         do {
             let sound = try await SoundLibrary.shared.importMP3(from: url)
-            pickerEventLog.append("[\(timestamp())] Import succeeded: \(sound.fileName)")
-            importStatus = "Imported \(sound.name)"
             importError = nil
             selectedSound = .imported(sound.id)
         } catch {
-            pickerEventLog.append("[\(timestamp())] Import failed: \(error.localizedDescription)")
             importError = error.localizedDescription
-            importStatus = nil
         }
     }
 
     private func importFolder(from url: URL) async {
         do {
             let playlist = try await SoundLibrary.shared.importFolder(from: url)
-            pickerEventLog.append("[\(timestamp())] Folder import succeeded: \(playlist.name) (\(playlist.soundIDs.count) songs)")
-            importStatus = "Imported folder \"\(playlist.name)\" with \(playlist.soundIDs.count) songs"
             importError = nil
             selectedSound = .random(playlist.id)
         } catch {
-            pickerEventLog.append("[\(timestamp())] Folder import failed: \(error.localizedDescription)")
             importError = error.localizedDescription
-            importStatus = nil
         }
     }
 
