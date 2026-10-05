@@ -505,6 +505,15 @@ private func reconcileAlarmKitForAlarm(
 
     let label = alarm.label.isEmpty ? "Alarm" : alarm.label
 
+    // NEVER cancel anything unless scheduling is going to be attempted:
+    // when AlarmKit is not authorized from the extension, cancel-then-throw
+    // left the alarm cancelled with no replacement (skip = alarm lost).
+    let authState = AlarmManager.shared.authorizationState
+    guard authState == .authorized else {
+        SmartWakeDebugLog.log("WIDGET RECONCILE ABORT: not authorized (state=\(authState.rawValue)); nothing cancelled, nothing scheduled")
+        throw ExtensionAlarmSchedulingService.AlarmSynchronizationError.notAuthorized
+    }
+
     // Cancel AlarmKit alarms from BEFORE the mutation (old fire time).
     // Backup IDs use the "-BACKUP" occurrenceKey suffix; SystemScheduleID.make
     // derives the kind from that suffix.
@@ -581,7 +590,13 @@ private func reconcileAlarmKitForAlarm(
         snoozeDurationMinutes: alarm.snoozeDurationMinutes
     )
 
-    _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: [], reason: reason)
+    do {
+        _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: [], reason: reason)
+    } catch {
+        let nsError = error as NSError
+        SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) authState=\(AlarmManager.shared.authorizationState.rawValue)")
+        throw error
+    }
 
     SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE: \(newDesired.id.uuidString) at \(occurrence.effectiveDate) for \(reason)")
 }
