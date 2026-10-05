@@ -94,6 +94,8 @@ final class SmartWakeService {
             var lastLoopRunning = isRunning
             var lastScenePhase: UIApplication.State = .background
             var lastAlertingCount = 0
+            var lastSnoozeWatchPhase: String? = nil
+            var lastSnoozeWatchLogAt = Date.distantPast
             
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -112,10 +114,15 @@ final class SmartWakeService {
                         let kitStillExists = (try? AlarmManager.shared.alarms.contains { $0.id == snoozeID }) ?? false
                         if let kit {
                             _ = kit
-                            // Loop visibility: one line per tick while the snooze
-                            // window is pending, so we can see whether the loop
-                            // survived and why the takeover is early/late.
-                            SmartWakeDebugLog.log("SNOOZE-WATCH: kit alerting, loopRunning=\(isRunning) scene=\(scenePhaseString(UIApplication.shared.applicationState))")
+                            // Loop visibility: log on phase change or every 30s
+                            // (per-tick logging flooded the 300-line ring buffer
+                            // and evicted the evidence).
+                            let nowTs = Date()
+                            if lastSnoozeWatchPhase != "alerting" || nowTs.timeIntervalSince(lastSnoozeWatchLogAt) >= 30 {
+                                lastSnoozeWatchPhase = "alerting"
+                                lastSnoozeWatchLogAt = nowTs
+                                SmartWakeDebugLog.log("SNOOZE-WATCH: kit alerting, loopRunning=\(isRunning) scene=\(scenePhaseString(UIApplication.shared.applicationState))")
+                            }
                             SmartWakeDebugLog.log("SNOOZE-TAKEOVER: removing banner, starting playlist for \(context.occurrenceKey)")
                             // Remove the snooze banner FIRST (deterministic ID;
                             // synchronous — no async callback to race the cancel).
@@ -191,9 +198,14 @@ final class SmartWakeService {
                             SmartWakeDebugLog.log("SNOOZE-WATCH: kit snooze alarm gone (user stopped?), clearing takeover context")
                             AlarmPlaybackService.shared.consumeSnoozeForTakeover()
                         } else {
-                            // Waiting for the snooze alarm to fire; log loop liveness
-                            // once per tick for the snooze window.
-                            SmartWakeDebugLog.log("SNOOZE-WATCH: waiting, loopRunning=\(isRunning) kitExists=\(kitStillExists) alerting=\(alerting.count)")
+                            // Waiting for the snooze alarm to fire; log on phase
+                            // change or every 30s (was every tick — flooded log).
+                            let nowTs = Date()
+                            if lastSnoozeWatchPhase != "waiting" || nowTs.timeIntervalSince(lastSnoozeWatchLogAt) >= 30 {
+                                lastSnoozeWatchPhase = "waiting"
+                                lastSnoozeWatchLogAt = nowTs
+                                SmartWakeDebugLog.log("SNOOZE-WATCH: waiting, loopRunning=\(isRunning) kitExists=\(kitStillExists) alerting=\(alerting.count)")
+                            }
                         }
                     }
 
