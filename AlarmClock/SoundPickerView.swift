@@ -10,18 +10,119 @@ struct SoundPickerView: View {
     @State private var showingPlaylistPicker = false
     @State private var importError: String?
     @State private var importStatus: String?
-    @State private var pickerEventLog: [String] = []
+    // pickerEventLog removed - diagnostics section deleted
     @State private var showingDeleteConfirmation = false
     // Single fileImporter driven by enum — avoids SwiftUI conflict of two modifiers
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
 
     private let preview = SoundPreviewService.shared
+    
+    // Computed properties for Selected section
+    private var selectedSoundDisplayName: String {
+        switch selectedSound {
+        case .systemDefault: return "Default"
+        case .builtIn(let name): return name
+        case .imported(let id):
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                return sound.name
+            }
+            return "Imported"
+        case .random(let playlistID):
+            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+                return "Random — \(playlist.name)"
+            }
+            return "Random"
+        case .precomposedPlaylist(let playlistID, _):
+            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+                return "Precomposed — \(playlist.name)"
+            }
+            return "Precomposed"
+        }
+    }
+    
+    private var selectedSoundDescription: String {
+        switch selectedSound {
+        case .systemDefault: return "System default alarm sound"
+        case .builtIn: return "Bundled alarm sound"
+        case .imported: return "Imported from Files"
+        case .random(let playlistID):
+            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+                return "Random from \(playlist.selectedSoundIDs.count) songs in \(playlist.name)"
+            }
+            return "Random from playlist"
+        case .precomposedPlaylist(let playlistID, _):
+            if let playlist = SoundLibrary.shared.playlist(for: playlistID) {
+                return "Precomposed playlist: \(playlist.name)"
+            }
+            return "Precomposed playlist"
+        }
+    }
+    
+    private var selectedSoundPreviewURL: URL? {
+        switch selectedSound {
+        case .systemDefault: return nil
+        case .builtIn(let name):
+            return SoundPreviewService.bundledSoundURL(for: BuiltInSound.fileName(for: name) ?? "")
+        case .imported(let id):
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                return sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+            }
+            return nil
+        case .random(let playlistID):
+            if let playlist = SoundLibrary.shared.playlist(for: playlistID),
+               let firstSoundID = playlist.selectedSoundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+            }
+            return nil
+        case .precomposedPlaylist(let playlistID, _):
+            // Precomposed playlists don't have a single preview URL
+            return nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                diagnosticsSection
+                // Selected sound at top (pinned) - only show if not system default
+                if selectedSound != .systemDefault {
+                    Section("Selected") {
+                        soundRow(
+                            sound: selectedSound,
+                            label: selectedSoundDisplayName,
+                            description: selectedSoundDescription,
+                            previewURL: selectedSoundPreviewURL
+                        )
+                    }
+                }
+
+                // Import actions at top for easy access
+                Section("Import") {
+                    Button {
+                        pickerMode = .files
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Import MP3 from Files")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                        }
+                    }
+
+                    Button {
+                        pickerMode = .folder
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Import MP3 Folder as Playlist")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                        }
+                    }
+                }
 
                 Section("Default") {
                     soundRow(
@@ -43,45 +144,16 @@ struct SoundPickerView: View {
                     }
                 }
 
-                // Import actions at top for easy access
-            Section("Import") {
-                Button {
-                    pickerEventLog.append("[\(timestamp())] Import MP3 button tapped")
-                    pickerMode = .files
-                    showingDocumentPicker = true
-                } label: {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                        Text("Import MP3 from Files")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                Section("Imported Sounds") {
+                    ForEach(SoundLibrary.shared.importedSounds) { sound in
+                        soundRow(
+                            sound: .imported(sound.id),
+                            label: sound.name,
+                            description: "Imported from Files",
+                            previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                        )
                     }
                 }
-
-                Button {
-                    pickerEventLog.append("[\(timestamp())] Import Folder button tapped")
-                    pickerMode = .folder
-                    showingDocumentPicker = true
-                } label: {
-                    HStack {
-                        Image(systemName: "folder.badge.plus")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                        Text("Import MP3 Folder as Playlist")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                    }
-                }
-            }
-
-            Section("Imported Sounds") {
-                ForEach(SoundLibrary.shared.importedSounds) { sound in
-                    soundRow(
-                        sound: .imported(sound.id),
-                        label: sound.name,
-                        description: "Imported from Files",
-                        previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
-                    )
-                }
-            }
 
                 Section("Random from Playlist") {
                     if SoundLibrary.shared.playlists.isEmpty {
@@ -96,7 +168,6 @@ struct SoundPickerView: View {
 
                     if !SoundLibrary.shared.playlists.isEmpty {
                         Button {
-                            pickerEventLog.append("[\(timestamp())] Create Playlist button tapped")
                             showingPlaylistPicker = true
                         } label: {
                             HStack {
@@ -169,21 +240,7 @@ struct SoundPickerView: View {
         }
     }
 
-    private var diagnosticsSection: some View {
-        Section("Import Diagnostics") {
-            Text("Import status: \(importStatus ?? (importError == nil ? "none yet" : "failed"))")
-            if let importError {
-                Text(importError)
-                    .foregroundStyle(ThemeManager.shared.colors.destructive)
-            }
-            ForEach(Array(pickerEventLog.suffix(6).enumerated().reversed()), id: \.offset) { _, line in
-                Text(line)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-            }
-        }
-        .font(.caption)
-    }
+    
 
     private func soundRow(sound: AlarmSound, label: String, description: String, previewURL: URL?) -> some View {
         let isSelected = selectedSound.id == sound.id
