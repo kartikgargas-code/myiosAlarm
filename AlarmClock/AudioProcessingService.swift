@@ -504,7 +504,7 @@ final class AudioProcessingService {
         let suffix = "_\(loudness.percentage)pct\(capPart).wav"
         let allFiles = (try? fileManager.contentsOfDirectory(
             at: processedDir,
-            includingPropertiesForKeys: [.contentModificationDateKey]
+            includingPropertiesForKeys: [URLResourceKey.contentModificationDateKey]
         )) ?? []
         return allFiles
             .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(suffix) }
