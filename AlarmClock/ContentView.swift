@@ -207,6 +207,11 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
+                    // Apply any Control Center widget action queued while the
+                    // app was closed/backgrounded (app is the sole AlarmKit party).
+                    Task {
+                        await coordinator.applyPendingWidgetActions()
+                    }
                     checkForActiveRing()
                 } else if newPhase == .background {
                     // Start Smart Wake when app backgrounds if enabled and alarm armed

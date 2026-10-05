@@ -407,28 +407,7 @@ struct SkipNextAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let service = WidgetAlarmService()
-        // Resolve the next alarm at perform time
-        let snapshot = try service.loadSnapshot()
-        guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
-            SmartWakeDebugLog.log("WIDGET ACTION: skipNext no enabled alarm (count=\(snapshot.alarms.count))")
-            return .result()
-        }
-        let alarmID = alarm.id
-        SmartWakeDebugLog.log("WIDGET ACTION TARGET: skipNext picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
-        // Capture the occurrence BEFORE mutation so old AlarmKit IDs can be cancelled
-        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
-        
-        // 1. Mutate engine + persist
-        _ = try await service.skipNextAlarm(alarmID: alarmID)
-        
-        // 2. Reconcile AlarmKit for this alarm
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "skip")
-        
-        // 3. Log to App Group debug log
-        SmartWakeDebugLog.log("WIDGET ACTION: skipNext alarmID=\(alarmID.uuidString)")
-        
-        postDarwinNotification("com.example.alarmclock.widget.changed")
+        try await queuePendingWidgetAction(PendingWidgetAction.skip, reason: "skipNext")
         return .result()
     }
 }
@@ -441,22 +420,7 @@ struct AlarmMinus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let service = WidgetAlarmService()
-        let snapshot = try service.loadSnapshot()
-        guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
-            SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 no enabled alarm (count=\(snapshot.alarms.count))")
-            return .result()
-        }
-        let alarmID = alarm.id
-        SmartWakeDebugLog.log("WIDGET ACTION TARGET: adjust-10 picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
-        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
-        
-        _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: -10)
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "adjust-10")
-        
-        SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 alarmID=\(alarmID.uuidString)")
-        
-        postDarwinNotification("com.example.alarmclock.widget.changed")
+        try await queuePendingWidgetAction(PendingWidgetAction.adjustEarlier, reason: "adjust-10")
         return .result()
     }
 }
@@ -469,143 +433,62 @@ struct AlarmPlus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        let service = WidgetAlarmService()
-        let snapshot = try service.loadSnapshot()
-        guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
-            SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 no enabled alarm (count=\(snapshot.alarms.count))")
-            return .result()
-        }
-        let alarmID = alarm.id
-        SmartWakeDebugLog.log("WIDGET ACTION TARGET: adjust+10 picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
-        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
-        
-        _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: 10)
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "adjust+10")
-        
-        SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 alarmID=\(alarmID.uuidString)")
-        
-        postDarwinNotification("com.example.alarmclock.widget.changed")
+        try await queuePendingWidgetAction(PendingWidgetAction.adjustLater, reason: "adjust+10")
         return .result()
     }
 }
 
-/// Reconcile AlarmKit for a single alarm after widget intent mutation
-/// Builds minimal DesiredSystemAlarm set for the affected occurrence.
-/// AlarmKit's Alarm type exposes no metadata members — cancellation works by
-/// recomputing the stable schedule IDs (alarmID|fireTime|label|loudness|kind)
-/// that were used when the app scheduled the alarm, plus cancelling the
-/// SNOOZE- one-shot IDs passed in explicitly.
+/// Shared Control Center intent flow: resolve the actual NEXT alarm (earliest
+/// occurrence, not snapshot order), record the AlarmKit authorization probe,
+/// queue a pending action file for the app to apply, and wake the app.
+/// The widget never rewrites alarms.json (the app would overwrite it) and no
+/// longer touches AlarmKit directly — the app is the only party that can be
+/// authorized, so it is the only canceller/scheduler.
 @MainActor
-private func reconcileAlarmKitForAlarm(
-    alarmID: UUID,
-    preMutationOccurrence: AlarmOccurrence?,
-    pendingSnoozeID: UUID?,
-    reason: String
-) async throws {
+private func queuePendingWidgetAction(_ action: String, reason: String) async throws {
     let service = WidgetAlarmService()
     let snapshot = try service.loadSnapshot()
-    guard let alarm = snapshot.alarms.first(where: { $0.id == alarmID }),
-          let occurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date()) else {
+    let engine = AlarmEngine(snapshot: snapshot)
+
+    // Target the alarm the user means: the one with the earliest occurrence.
+    guard let occurrence = engine.earliestOccurrence(now: Date()),
+          let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+        SmartWakeDebugLog.log("WIDGET ACTION: \(reason) no enabled alarm (count=\(snapshot.alarms.count))")
         return
     }
 
-    let label = alarm.label.isEmpty ? "Alarm" : alarm.label
+    var orderSummary = ""
+    if let next = snapshot.alarms.first(where: { $0.isEnabled }) {
+        orderSummary = " first-enabled-in-order=\(next.label.isEmpty ? "?" : next.label)/id=\(next.id.uuidString.prefix(8))"
+    }
+    SmartWakeDebugLog.log("WIDGET ACTION TARGET: \(reason) action=\(action) picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarm.id.uuidString.prefix(8)) at \(occurrence.effectiveDate) (count=\(snapshot.alarms.count)\(orderSummary))")
 
-    // NEVER cancel anything unless scheduling is going to be attempted:
-    // when AlarmKit is not authorized from the extension, cancel-then-throw
-    // left the alarm cancelled with no replacement (skip = alarm lost).
+    // Authorization probe: the extension historically stayed notDetermined.
+    // Log the full state and the request result once per press so we learn
+    // whether an extension can ever obtain AlarmKit authorization. The queued
+    // action applies through the app regardless of this outcome.
     let authState = AlarmManager.shared.authorizationState
-    guard authState == .authorized else {
-        SmartWakeDebugLog.log("WIDGET RECONCILE ABORT: not authorized (state=\(String(describing: authState))); nothing cancelled, nothing scheduled")
-        throw ExtensionAlarmSchedulingService.AlarmSynchronizationError.notAuthorized
-    }
-
-    // Cancel AlarmKit alarms from BEFORE the mutation (old fire time).
-    // Backup IDs use the "-BACKUP" occurrenceKey suffix; SystemScheduleID.make
-    // derives the kind from that suffix.
-    if let pre = preMutationOccurrence {
-        let preIDs = [
-            ExtensionAlarmSchedulingService.SystemScheduleID.make(
-                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness),
-            ExtensionAlarmSchedulingService.SystemScheduleID.make(
-                for: AlarmOccurrence(
-                    alarmID: pre.alarmID,
-                    occurrenceKey: "\(pre.occurrenceKey)-BACKUP",
-                    baseDate: pre.baseDate,
-                    effectiveDate: pre.effectiveDate.addingTimeInterval(30),
-                    isAdjusted: false
-                ),
-                label: label, sound: alarm.sound, loudness: alarm.loudness),
-            ExtensionAlarmSchedulingService.SystemScheduleID.make(
-                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness)
-        ]
-        for id in preIDs {
-            try? AlarmManager.shared.cancel(id: id)
+    if authState == .authorized {
+        SmartWakeDebugLog.log("WIDGET AUTH: authorized (no request needed) for \(reason)")
+    } else if authState == .notDetermined {
+        do {
+            let returned = try await AlarmManager.shared.requestAuthorization()
+            SmartWakeDebugLog.log("WIDGET AUTH REQUEST: returned=\(String(describing: returned)) state-after=\(String(describing: AlarmManager.shared.authorizationState))")
+        } catch {
+            SmartWakeDebugLog.log("WIDGET AUTH REQUEST FAILED: \(error.localizedDescription) (state=\(String(describing: authState)))")
         }
-        SmartWakeDebugLog.log("WIDGET RECONCILE: cancelled pre-mutation IDs for \(reason)")
+    } else {
+        SmartWakeDebugLog.log("WIDGET AUTH: state=\(String(describing: authState)) (not requesting) for \(reason)")
     }
 
-    // Cancel the pending one-shot snooze alarm for this alarm, if any (its ID
-    // is a fresh UUID not derivable from the stable scheme).
-    if let snoozeID = pendingSnoozeID {
-        try? AlarmManager.shared.cancel(id: snoozeID)
-        SmartWakeDebugLog.log("WIDGET RECONCILE: cancelled pending snooze \(snoozeID.uuidString)")
-    }
-
-    // Also silence THIS alarm if it is currently alerting (its ID is one of the
-    // stable pre-mutation IDs — recomputed here since preIDs is scoped above).
-    if let pre = preMutationOccurrence {
-        let alertingCandidates: Set<UUID> = [
-            ExtensionAlarmSchedulingService.SystemScheduleID.make(
-                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness),
-            ExtensionAlarmSchedulingService.SystemScheduleID.make(
-                for: AlarmOccurrence(
-                    alarmID: pre.alarmID,
-                    occurrenceKey: "\(pre.occurrenceKey)-BACKUP",
-                    baseDate: pre.baseDate,
-                    effectiveDate: pre.effectiveDate.addingTimeInterval(30),
-                    isAdjusted: false
-                ),
-                label: label, sound: alarm.sound, loudness: alarm.loudness)
-        ]
-        let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
-        for kitAlarm in kitAlarms where kitAlarm.state == .alerting {
-            if alertingCandidates.contains(kitAlarm.id) {
-                try? AlarmManager.shared.cancel(id: kitAlarm.id)
-                SmartWakeDebugLog.log("WIDGET RECONCILE: silenced alerting \(kitAlarm.id.uuidString)")
-            }
-        }
-    }
-
-    let scheduler = ExtensionAlarmSchedulingService()
-
-    // Schedule the new primary occurrence with the system default sound.
-    // The app re-reconciles on next foreground and restores the real sound
-    // (including the -BACKUP floor alarm).
-    let newDesired = ExtensionAlarmSchedulingService.DesiredSystemAlarm(
-        id: ExtensionAlarmSchedulingService.SystemScheduleID.make(
-            for: occurrence,
-            label: label,
-            sound: alarm.sound,
-            loudness: alarm.loudness
-        ),
-        occurrence: occurrence,
-        label: label,
-        sound: alarm.sound,
-        alarmKitSound: .default,
-        snoozeDurationMinutes: alarm.snoozeDurationMinutes
+    try service.writePendingAction(
+        PendingWidgetAction(action: action, alarmID: alarm.id, requestedAt: Date())
     )
+    SmartWakeDebugLog.log("WIDGET ACTION: \(reason) alarmID=\(alarm.id.uuidString)")
 
-    do {
-        _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: [], reason: reason)
-    } catch {
-        let nsError = error as NSError
-        SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) authState=\(String(describing: AlarmManager.shared.authorizationState))")
-        throw error
-    }
-
-    SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE: \(newDesired.id.uuidString) at \(occurrence.effectiveDate) for \(reason)")
+    postDarwinNotification("com.example.alarmclock.widget.changed")
 }
+
 
 /// Control Widget Button: Skip next alarm
 struct SkipNextAlarmControl: ControlWidget {

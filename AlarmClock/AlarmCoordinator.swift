@@ -89,6 +89,9 @@ final class AlarmCoordinator {
     }
 
     func synchronize() async {
+        // Consume any queued Control Center action before the no-op reconcile —
+        // otherwise a foreground commit could overwrite the file unread.
+        await applyPendingWidgetActions()
         await commit({ _ in }, reason: "synchronize")
     }
 
@@ -412,6 +415,77 @@ final class AlarmCoordinator {
             os_log(.error, log: warningLog, "Failed to mirror alarms.json to App Group: %{public}s", error.localizedDescription)
         }
     }
+
+    // MARK: - Pending widget actions (Control Center buttons)
+
+    /// Register a Darwin-notification observer so a RUNNING app applies widget
+    /// actions the moment the extension posts them; otherwise they apply on the
+    /// next foreground (scenePhase .active / synchronize).
+    private var widgetActionObserverRegistered = false
+
+    private func registerWidgetActionObserver() {
+        guard !widgetActionObserverRegistered else { return }
+        widgetActionObserverRegistered = true
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        CFNotificationCenterAddObserver(
+            center,
+            nil,
+            { (_, _, _, _, _) in
+                // C callback: no captures. Hop back to the coordinator actor.
+                Task { @MainActor in
+                    await AlarmCoordinator.sharedInstance?.applyPendingWidgetActions()
+                }
+            },
+            "com.example.alarmclock.widget.changed" as CFString,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    /// Consume the widget's queued pending action (if any) through the full
+    /// commit pipeline — the app is the sole writer of alarms.json and the only
+    /// party with working AlarmKit authorization. The file is deleted BEFORE
+    /// the mutation on purpose: a re-apply (skipping twice, adjusting 20 min)
+    /// would silently corrupt the schedule, while a dropped action is visible
+    /// in the log and the user can simply press again.
+    func applyPendingWidgetActions() async {
+        registerWidgetActionObserver()
+        guard let groupID = AppGroupResolver.resolve(),
+              let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
+            return
+        }
+        let fileURL = containerURL.appendingPathComponent(PendingWidgetAction.fileName)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let action = try JSONDecoder.alarmDecoder.decode(PendingWidgetAction.self, from: data)
+            let age = Int(now().timeIntervalSince(action.requestedAt))
+            SmartWakeDebugLog.log("WIDGET ACTION APPLY: \(action.action) alarm=\(action.alarmID.uuidString.prefix(8)) requestedAt=\(action.requestedAt) age=\(age)s")
+            guard engine.alarm(id: action.alarmID) != nil else {
+                SmartWakeDebugLog.log("WIDGET ACTION APPLY: alarm gone, dropped")
+                try FileManager.default.removeItem(at: fileURL)
+                return
+            }
+            // Consume first: a second Control Center press just overwrites the
+            // file, so the latest request must not be clobbered by our delete.
+            try FileManager.default.removeItem(at: fileURL)
+            switch action.action {
+            case PendingWidgetAction.skip:
+                await skipNext(id: action.alarmID)
+            case PendingWidgetAction.adjustEarlier:
+                await adjustNext(id: action.alarmID, minutes: -10)
+            case PendingWidgetAction.adjustLater:
+                await adjustNext(id: action.alarmID, minutes: 10)
+            default:
+                SmartWakeDebugLog.log("WIDGET ACTION APPLY: unknown action '\(action.action)' — dropped")
+                return
+            }
+            SmartWakeDebugLog.log("WIDGET ACTION APPLY: handed to commit (\(action.action))")
+        } catch {
+            SmartWakeDebugLog.log("WIDGET ACTION APPLY FAILED: \(error.localizedDescription)")
+        }
+    }
+
 
     /// Per-alarm sound isolation: a failure resolving one alarm's sound becomes a
     /// warning for that alarm only; the remaining alarms still get scheduled and

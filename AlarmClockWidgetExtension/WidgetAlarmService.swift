@@ -32,7 +32,24 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
     public func loadSnapshot() throws -> AlarmStoreSnapshot {
         return try persistence.load()
     }
-    
+
+    /// Queue a pending action for the app to apply. The widget never rewrites
+    /// alarms.json — the app is the sole writer of it and the only party with
+    /// working AlarmKit authorization.
+    public func writePendingAction(_ action: PendingWidgetAction) throws {
+        guard let appGroupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) else {
+            throw CocoaError(.fileNoSuchFile,
+                userInfo: [NSLocalizedDescriptionKey: "No App Group container for \(appGroupIdentifier)"])
+        }
+        let url = appGroupURL.appendingPathComponent(PendingWidgetAction.fileName)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(action).write(to: url, options: .atomic)
+        SmartWakeDebugLog.log("WIDGET ACTION QUEUED: \(action.action) alarm=\(action.alarmID.uuidString.prefix(8)) at \(action.requestedAt)")
+    }
+
     /// Save the alarm snapshot
     public func saveSnapshot(_ snapshot: AlarmStoreSnapshot) throws {
         try persistence.save(snapshot)
