@@ -411,9 +411,11 @@ struct SkipNextAlarmIntent: AppIntent {
         // Resolve the next alarm at perform time
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
+            SmartWakeDebugLog.log("WIDGET ACTION: skipNext no enabled alarm (count=\(snapshot.alarms.count))")
             return .result()
         }
         let alarmID = alarm.id
+        SmartWakeDebugLog.log("WIDGET ACTION TARGET: skipNext picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
         // Capture the occurrence BEFORE mutation so old AlarmKit IDs can be cancelled
         let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
@@ -442,9 +444,11 @@ struct AlarmMinus10Intent: AppIntent {
         let service = WidgetAlarmService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
+            SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 no enabled alarm (count=\(snapshot.alarms.count))")
             return .result()
         }
         let alarmID = alarm.id
+        SmartWakeDebugLog.log("WIDGET ACTION TARGET: adjust-10 picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
         let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: -10)
@@ -468,9 +472,11 @@ struct AlarmPlus10Intent: AppIntent {
         let service = WidgetAlarmService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
+            SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 no enabled alarm (count=\(snapshot.alarms.count))")
             return .result()
         }
         let alarmID = alarm.id
+        SmartWakeDebugLog.log("WIDGET ACTION TARGET: adjust+10 picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarmID.uuidString.prefix(8)) (snapshot order: \(snapshot.alarms.map { "\($0.label.isEmpty ? "?" : $0.label)/\($0.isEnabled ? "on" : "off")" }.joined(separator: ", ")))")
         let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: 10)
