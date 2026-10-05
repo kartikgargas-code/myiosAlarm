@@ -377,13 +377,6 @@ struct NextAlarmWidgetView: View {
                 }
             }
         }
-        import WidgetKit
-import SwiftUI
-import AppIntents
-import ActivityKit
-import AlarmClockShared
-import os.log
-import CoreFoundation
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
