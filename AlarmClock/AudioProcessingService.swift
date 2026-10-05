@@ -179,7 +179,60 @@ final class AudioProcessingService {
         guard !soundIDs.isEmpty else {
             throw AudioProcessingError.processingFailed("Playlist is empty")
         }
-        
+
+        let preparationStartTime = Date()
+
+        // Sticky random selection: reuse the already-rendered precomposed file
+        // for this (playlist, loudness, cap) instead of re-rolling songs on
+        // every call. Re-rolling produced a new selection hash each time ->
+        // cache miss -> full WAV re-render during every save. A new selection
+        // happens only after the file is deleted (playlist edit) or loudness
+        // changes.
+        if playlist.playOrder != .sequence,
+           let sticky = findStickyPrecomposedFile(
+            playlistName: playlistName,
+            playlistID: playlistID,
+            loudness: loudness,
+            maxDuration: maxDuration) {
+            let metadata = audioMetadata(for: sticky)
+            let preparationEndTime = Date()
+            let preparationEntry = PlaylistDiagnostics.PreparationEntry(
+                timestamp: preparationStartTime,
+                alarmID: alarmID ?? UUID(),
+                playlistID: playlistID,
+                playlistName: playlistName,
+                totalSongsInPlaylist: playlist.soundIDs.count,
+                selectedSongCount: 0,
+                selectedSongIDs: [],
+                selectedSongNames: [],
+                selectedSongDurations: [],
+                expectedTotalDuration: metadata?.duration ?? 0,
+                loudnessPercentage: loudness.percentage,
+                usedProcessedAudio: true,
+                preparationStartTime: preparationStartTime,
+                preparationEndTime: preparationEndTime,
+                preparationDuration: preparationEndTime.timeIntervalSince(preparationStartTime),
+                success: true,
+                error: nil
+            )
+            let fileSize = (try? fileManager.attributesOfItem(atPath: sticky.path)[.size] as? Int64) ?? 0
+            let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
+                timestamp: Date(),
+                playlistID: playlistID,
+                fileExists: true,
+                fileSizeBytes: fileSize,
+                audioFormat: "WAV",
+                sampleRate: metadata?.sampleRate ?? 0,
+                channelCount: metadata?.channelCount ?? 0,
+                actualDuration: metadata?.duration ?? 0,
+                expectedDuration: metadata?.duration ?? 0,
+                fileReadable: metadata != nil,
+                appearsComplete: metadata != nil
+            )
+            SmartWakeDebugLog.log("PRECOMPOSE: sticky reuse \(sticky.lastPathComponent) (no re-render)")
+            return (sticky, preparationEntry, generatedFileEntry)
+        }
+
         // Select songs based on play order: random or sequence
         let selectedSoundIDs: [UUID]
         if playlist.playOrder == .sequence {
@@ -192,9 +245,8 @@ final class AudioProcessingService {
                 count: min(songCount, soundIDs.count)
             )
         }
-        
+
         // Prepare diagnostic data
-        let preparationStartTime = Date()
         let selectedSounds = selectedSoundIDs.compactMap { id in
             importedSounds.first(where: { $0.id == id })
         }
@@ -207,7 +259,8 @@ final class AudioProcessingService {
         // made cache keys unstable across launches and defeated cache reuse.
         let selectionKey = selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
         let selectionHash = SoundSelectionHash.make(from: selectionKey)
-        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct.wav"
+        let capPart = maxDuration.map { "_cap\(Int($0))" } ?? ""
+        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct\(capPart).wav"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
         // If already exists for THIS specific selection, return it
@@ -424,7 +477,7 @@ final class AudioProcessingService {
         
         // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection
         let patternPrefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
-        let patternSuffix = "_\(loudness.percentage)pct.wav"
+        let patternSuffix = "_\(loudness.percentage)pct\(capPart).wav"
         let allFiles = (try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)) ?? []
         for file in allFiles {
             let fileName = file.lastPathComponent
@@ -436,6 +489,32 @@ final class AudioProcessingService {
         return (precomposedURL, preparationEntry, generatedFileEntry)
     }
     
+    /// Find an existing precomposed file for this (playlist, loudness, cap)
+    /// regardless of which random selection produced it. Used to keep saves
+    /// zero-audio-work; a fresh selection is made only when none exists.
+    private func findStickyPrecomposedFile(
+        playlistName: String,
+        playlistID: UUID,
+        loudness: AlarmLoudness,
+        maxDuration: TimeInterval?
+    ) -> URL? {
+        guard let processedDir else { return nil }
+        let prefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
+        let capPart = maxDuration.map { "_cap\(Int($0))" } ?? ""
+        let suffix = "_\(loudness.percentage)pct\(capPart).wav"
+        let allFiles = (try? fileManager.contentsOfDirectory(
+            at: processedDir,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        )) ?? []
+        return allFiles
+            .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(suffix) }
+            .max { lhs, rhs in
+                let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return l < r
+            }
+    }
+
     /// Select random songs from a list, avoiding immediate repeats if possible
     private func selectRandomSongs(from soundIDs: [UUID], count: Int) -> [UUID] {
         var available = soundIDs

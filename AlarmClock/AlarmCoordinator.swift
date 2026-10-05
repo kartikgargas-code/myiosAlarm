@@ -497,7 +497,11 @@ final class AlarmCoordinator {
                     let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
                     
                     if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
-                        try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
+                        // File copy off the main actor — a multi-MB WAV copy
+                        // stalls every UI interaction on the save path.
+                        try await Task.detached(priority: .utility) {
+                            try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
+                        }.value
                     }
                     
                     let backupAlarmKitSound: AlertConfiguration.AlertSound = .named(processedFileName)
