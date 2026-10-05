@@ -304,7 +304,7 @@ struct AlarmEditorView: View {
         // Immediate pressed feedback
         testAlarmState = .starting
         
-        let alarm = makeAlarm(isEnabled: true)
+        let alarm = makeAlarm()
         
         testAlarmTask = Task {
             await onTestAlarm(alarm, testSchedulingDelay)
