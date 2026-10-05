@@ -245,19 +245,20 @@ struct AlarmEditorView: View {
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
         let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
-        return AlarmRecord(
+        let alarm: AlarmRecord = AlarmRecord(
             id: existingAlarm?.id ?? UUID(),
             label: label,
             time: time,
             repeatRule: resolvedRepeatRule,
             oneTimeDate: date,
             isEnabled: true,
-            adjustmentStepMinutes: 10, // Fixed adjustment step
+            adjustmentStepMinutes: 10,
             overrides: existingAlarm?.overrides ?? [:],
             sound: selectedSound,
             loudness: selectedLoudness,
             snoozeDurationMinutes: snoozeDurationMinutes
         )
+        return alarm
     }
     private var repeatSelection: Binding<RepeatSelection> {
         Binding(
