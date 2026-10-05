@@ -628,7 +628,7 @@ final class AlarmCoordinator {
                 return .named(fileName)
             }
             // Ultimate fallback: built-in sound
-            return .named(BuiltInSound.classicBell.rawValue)
+            return .named("classic-bell.wav")
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
             let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
