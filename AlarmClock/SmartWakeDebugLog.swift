@@ -5,7 +5,7 @@ import os.log
 /// Written to the App Group container (falls back to Application Support when
 /// no group container exists) so it can be shown in the Diagnostics screen on
 /// device without a Mac. Capped ring buffer of recent lines.
-enum SmartWakeDebugLog {
+public enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
     static let maxLines = 300
     static let copyMaxLines = 80
@@ -13,7 +13,7 @@ enum SmartWakeDebugLog {
     private static var inMemoryBuffer: [String] = []
     private static var hasLoggedInterruption = false
 
-    static func log(_ message: String, force: Bool = false) {
+    public static func log(_ message: String, force: Bool = false) {
         // Log diet: suppress verbose messages unless forced
         let suppressedPrefixes = [
             "FOREGROUND START attempt: declined",

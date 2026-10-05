@@ -414,12 +414,14 @@ struct SkipNextAlarmIntent: AppIntent {
             return .result()
         }
         let alarmID = alarm.id
+        // Capture the occurrence BEFORE mutation so old AlarmKit IDs can be cancelled
+        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
         // 1. Mutate engine + persist
         _ = try await service.skipNextAlarm(alarmID: alarmID)
         
         // 2. Reconcile AlarmKit for this alarm
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "skip")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "skip")
         
         // 3. Log to App Group debug log
         SmartWakeDebugLog.log("WIDGET ACTION: skipNext alarmID=\(alarmID.uuidString)")
@@ -443,9 +445,10 @@ struct AlarmMinus10Intent: AppIntent {
             return .result()
         }
         let alarmID = alarm.id
+        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: -10)
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "adjust-10")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "adjust-10")
         
         SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 alarmID=\(alarmID.uuidString)")
         
@@ -468,9 +471,10 @@ struct AlarmPlus10Intent: AppIntent {
             return .result()
         }
         let alarmID = alarm.id
+        let preOccurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date())
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: 10)
-        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "adjust+10")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, preMutationOccurrence: preOccurrence, pendingSnoozeID: nil, reason: "adjust+10")
         
         SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 alarmID=\(alarmID.uuidString)")
         
@@ -480,10 +484,16 @@ struct AlarmPlus10Intent: AppIntent {
 }
 
 /// Reconcile AlarmKit for a single alarm after widget intent mutation
-/// Builds minimal DesiredSystemAlarm set for the affected occurrence
+/// Builds minimal DesiredSystemAlarm set for the affected occurrence.
+/// AlarmKit's Alarm type exposes no metadata members — cancellation works by
+/// recomputing the stable schedule IDs (alarmID|fireTime|label|loudness|kind)
+/// that were used when the app scheduled the alarm, plus cancelling the
+/// SNOOZE- one-shot IDs passed in explicitly.
 @MainActor
 private func reconcileAlarmKitForAlarm(
     alarmID: UUID,
+    preMutationOccurrence: AlarmOccurrence?,
+    pendingSnoozeID: UUID?,
     reason: String
 ) async throws {
     let service = WidgetAlarmService()
@@ -492,28 +502,71 @@ private func reconcileAlarmKitForAlarm(
           let occurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date()) else {
         return
     }
-    
-    // Use a fixed built-in floor sound for shifted/skipped occurrences
-    // The app re-reconciles on next foreground and will restore the real sound
-    let floorSoundName = "default"
-    let floorSound: AlertConfiguration.AlertSound = .named(floorSoundName)
+
     let label = alarm.label.isEmpty ? "Alarm" : alarm.label
-    
-    // Cancel existing AlarmKit alarms for this occurrence by scanning metadata
-    let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
-    let occurrenceKey = occurrence.occurrenceKey
-    for kitAlarm in kitAlarms {
-        if let metadata = kitAlarm.attributes.metadata as? ExtensionAlarmSchedulingService.ScheduledOccurrenceMetadata {
-            if metadata.alarmID == alarmID && metadata.occurrenceKey.hasPrefix(occurrenceKey) {
+
+    // Cancel AlarmKit alarms from BEFORE the mutation (old fire time).
+    // Backup IDs use the "-BACKUP" occurrenceKey suffix; SystemScheduleID.make
+    // derives the kind from that suffix.
+    if let pre = preMutationOccurrence {
+        let preIDs = [
+            ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness),
+            ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                for: AlarmOccurrence(
+                    alarmID: pre.alarmID,
+                    occurrenceKey: "\(pre.occurrenceKey)-BACKUP",
+                    baseDate: pre.baseDate,
+                    effectiveDate: pre.effectiveDate.addingTimeInterval(30),
+                    isAdjusted: false
+                ),
+                label: label, sound: alarm.sound, loudness: alarm.loudness),
+            ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness)
+        ]
+        for id in preIDs {
+            try? AlarmManager.shared.cancel(id: id)
+        }
+        SmartWakeDebugLog.log("WIDGET RECONCILE: cancelled pre-mutation IDs for \(reason)")
+    }
+
+    // Cancel the pending one-shot snooze alarm for this alarm, if any (its ID
+    // is a fresh UUID not derivable from the stable scheme).
+    if let snoozeID = pendingSnoozeID {
+        try? AlarmManager.shared.cancel(id: snoozeID)
+        SmartWakeDebugLog.log("WIDGET RECONCILE: cancelled pending snooze \(snoozeID.uuidString)")
+    }
+
+    // Also silence THIS alarm if it is currently alerting (its ID is one of the
+    // stable pre-mutation IDs — recomputed here since preIDs is scoped above).
+    if let pre = preMutationOccurrence {
+        let alertingCandidates: Set<UUID> = [
+            ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                for: pre, label: label, sound: alarm.sound, loudness: alarm.loudness),
+            ExtensionAlarmSchedulingService.SystemScheduleID.make(
+                for: AlarmOccurrence(
+                    alarmID: pre.alarmID,
+                    occurrenceKey: "\(pre.occurrenceKey)-BACKUP",
+                    baseDate: pre.baseDate,
+                    effectiveDate: pre.effectiveDate.addingTimeInterval(30),
+                    isAdjusted: false
+                ),
+                label: label, sound: alarm.sound, loudness: alarm.loudness)
+        ]
+        let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+        for kitAlarm in kitAlarms where kitAlarm.state == .alerting {
+            if alertingCandidates.contains(kitAlarm.id) {
                 try? AlarmManager.shared.cancel(id: kitAlarm.id)
-                SmartWakeDebugLog.log("WIDGET RECONCILE CANCEL: \(kitAlarm.id.uuidString) for \(metadata.occurrenceKey)")
+                SmartWakeDebugLog.log("WIDGET RECONCILE: silenced alerting \(kitAlarm.id.uuidString)")
             }
         }
     }
-    
+
     let scheduler = ExtensionAlarmSchedulingService()
-    
-    // Schedule new AlarmKit alarm at the new time with floor sound
+
+    // Schedule the new primary occurrence with the system default sound.
+    // The app re-reconciles on next foreground and restores the real sound
+    // (including the -BACKUP floor alarm).
     let newDesired = ExtensionAlarmSchedulingService.DesiredSystemAlarm(
         id: ExtensionAlarmSchedulingService.SystemScheduleID.make(
             for: occurrence,
@@ -524,13 +577,12 @@ private func reconcileAlarmKitForAlarm(
         occurrence: occurrence,
         label: label,
         sound: alarm.sound,
-        alarmKitSound: floorSound,
+        alarmKitSound: .default,
         snoozeDurationMinutes: alarm.snoozeDurationMinutes
     )
-    
-    let managedIDs = Set(snapshot.managedSystemAlarmIDs)
-    _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: managedIDs, reason: reason)
-    
+
+    _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: [], reason: reason)
+
     SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE: \(newDesired.id.uuidString) at \(occurrence.effectiveDate) for \(reason)")
 }
 

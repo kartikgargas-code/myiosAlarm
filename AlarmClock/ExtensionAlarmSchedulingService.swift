@@ -7,8 +7,8 @@ import os.log
 /// Service for scheduling AlarmKit alarms from a Live Activity intent.
 @MainActor
 public struct ExtensionAlarmSchedulingService {
+    public init() {}
     var manager: AlarmManager { AlarmManager.shared }
-    
     private let reconcileLog = OSLog(subsystem: "com.example.alarmclock", category: "AlarmKitScheduling")
     
     /// Reconcile desired alarms with AlarmKit
@@ -111,6 +111,22 @@ public extension ExtensionAlarmSchedulingService {
         public let sound: AlarmSound
         public let alarmKitSound: AlertConfiguration.AlertSound
         public let snoozeDurationMinutes: Int? // Added for native snooze
+        
+        public init(
+            id: UUID,
+            occurrence: AlarmOccurrence,
+            label: String,
+            sound: AlarmSound,
+            alarmKitSound: AlertConfiguration.AlertSound,
+            snoozeDurationMinutes: Int?
+        ) {
+            self.id = id
+            self.occurrence = occurrence
+            self.label = label
+            self.sound = sound
+            self.alarmKitSound = alarmKitSound
+            self.snoozeDurationMinutes = snoozeDurationMinutes
+        }
     }
     
     public struct AlarmReconciliationPlan: Equatable {
