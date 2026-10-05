@@ -684,7 +684,7 @@ struct DiagnosticsScreen: View {
                     // Extract timestamp and convert to local time if it's ISO8601
                     if let timestampEnd = line.firstIndex(of: "]") {
                         let timestampStr = String(line[line.startIndex...timestampEnd])
-                        if let date = ISO8601DateFormatter().date(from: timestampStr.dropFirst().dropLast()) {
+                        if let date = ISO8601DateFormatter().date(from: String(timestampStr.dropFirst().dropLast())) {
                             let localFormatter = DateFormatter()
                             localFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
                             localFormatter.timeZone = TimeZone.current
