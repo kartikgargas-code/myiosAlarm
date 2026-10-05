@@ -170,6 +170,8 @@ struct ContentView: View {
                     }
                 )
                 .id(editorAlarm?.id ?? editorIdentity)
+                .onAppear { SmartWakeDebugLog.log("EDITOR SHEET: appeared alarm=\(editorAlarm?.id.uuidString ?? "new")") }
+                .onDisappear { SmartWakeDebugLog.log("EDITOR SHEET: disappeared") }
             }
             .sheet(item: $controlsAlarm) { alarm in
                 NextOccurrenceControlsView(
@@ -271,6 +273,7 @@ struct ContentView: View {
         return HStack(spacing: 12) {
             // Alarm details - tapping opens editor
             Button {
+                SmartWakeDebugLog.log("EDITOR OPEN: tapped \(alarm.id.uuidString)")
                 editorAlarm = alarm
                 showingEditor = true
             } label: {
