@@ -65,6 +65,33 @@ enum SoundLibraryError: LocalizedError, Equatable {
 final class SoundLibrary {
     static let shared = SoundLibrary()
 
+    /// Trailing "_<uuid>" suffix appended by the importer (stable-ID scheme).
+    private static let uuidSuffixRegex = try! NSRegularExpression(
+        pattern: "_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+    /// Leading track-number prefixes: "03", "03_", "03 - ", "03 " etc.
+    private static let trackPrefixRegex = try! NSRegularExpression(
+        pattern: "^[0-9]{1,3}[\\s._-]*"
+    )
+
+    /// Derive a human display name from a stored filename: drop the
+    /// "_<uuid>" suffix, drop a leading track number, tidy underscores.
+    static func prettyDisplayName(fromRawName rawName: String) -> String {
+        var s = rawName
+        let full = NSRange(s.startIndex..., in: s)
+        if let m = uuidSuffixRegex.firstMatch(in: s, range: full) {
+            s = (s as NSString).replacingCharacters(in: m.range, with: "")
+        }
+        let afterSuffix = NSRange(s.startIndex..., in: s)
+        if let m = trackPrefixRegex.firstMatch(in: s, range: afterSuffix), m.range.length > 0 {
+            s = (s as NSString).replacingCharacters(in: m.range, with: "")
+        }
+        s = s.replacingOccurrences(of: "_+", with: " ", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return s.isEmpty ? rawName : s
+    }
+
     private(set) var importedSounds: [ImportedSound] = []
     private(set) var playlists: [Playlist] = []
     private let fileManager = FileManager.default
@@ -102,10 +129,20 @@ final class SoundLibrary {
                 guard url.pathExtension.lowercased() == "mp3" else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
+                let fileName = url.lastPathComponent
+                // One-time migration: derive a clean display name from the
+                // stored filename and persist it so it stays stable.
+                let pretty: String
+                if let saved = displayNames[fileName] {
+                    pretty = saved
+                } else {
+                    pretty = Self.prettyDisplayName(fromRawName: url.deletingPathExtension().lastPathComponent)
+                    setDisplayNameOverride(pretty, for: fileName)
+                }
                 return ImportedSound(
-                    id: stableID(for: url.lastPathComponent),
-                    name: displayNames[url.lastPathComponent] ?? url.deletingPathExtension().lastPathComponent,
-                    fileName: url.lastPathComponent,
+                    id: stableID(for: fileName),
+                    name: pretty,
+                    fileName: fileName,
                     duration: nil,
                     dateAdded: creationDate
                 )
