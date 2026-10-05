@@ -786,7 +786,7 @@ final class AlarmPlaybackService: NSObject {
                 let content = UNMutableNotificationContent()
                 content.title = "Snoozed \(snoozeMinutes) min"
                 let formatter = DateFormatter()
-                formatter.dateFormat = "HH:mm"
+                formatter.setLocalizedDateFormatFromTemplate("j:mm a")
                 formatter.timeZone = TimeZone.current
                 content.body = "Next ring \(formatter.string(from: snoozeFireDate))"
                 content.sound = nil // Silent notification
@@ -802,6 +802,14 @@ final class AlarmPlaybackService: NSObject {
                         SmartWakeDebugLog.log("SNOOZE notification failed: \(error.localizedDescription)")
                     }
                 }
+
+                // Update the widget snapshot so the lock-screen widget shows the
+                // snoozed ring time instead of the regular next alarm.
+                coordinator.publishSnoozeWidgetSnapshot(
+                    alarm: alarm,
+                    fireDate: snoozeFireDate,
+                    occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)"
+                )
             } catch {
                 let nsError = error as NSError
                 SmartWakeDebugLog.log("SNOOZE: scheduling FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")

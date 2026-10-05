@@ -794,6 +794,26 @@ final class AlarmCoordinator {
         }
     }
     
+    /// Temporarily show the snoozed ring time in the widget snapshot.
+    /// The regular snapshot is restored by publish() on the next reconcile.
+    func publishSnoozeWidgetSnapshot(alarm: AlarmRecord, fireDate: Date, occurrenceKey: String) {
+        let occurrence = AlarmOccurrence(
+            alarmID: alarm.id,
+            occurrenceKey: occurrenceKey,
+            baseDate: fireDate,
+            effectiveDate: fireDate,
+            isAdjusted: false
+        )
+        nextAlarmSnapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+        writeNextAlarmSnapshotToAppGroup()
+        SmartWakeDebugLog.log("SNOOZE: widget snapshot updated to snoozed ring time \(fireDate)")
+    }
+
+    /// Re-publish the regular next-alarm snapshot (e.g. after a snooze re-ring ends).
+    func publishSnapshot() {
+        publish()
+    }
+
     private func writeNextAlarmSnapshotToAppGroup() {
         let timestamp = Date()
         
