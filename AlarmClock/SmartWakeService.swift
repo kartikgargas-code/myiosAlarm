@@ -878,7 +878,7 @@ final class SmartWakeService {
                         os_log(.error, log: log, "TAKEOVER ATTEMPT-A FAILED: playback failed to start, leaving AlarmKit alarms ringing")
                         SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A FALLBACK: playback failed, AlarmKit alarms left ringing")
                         // Remove from isArmedForOccurrence so we can retry
-                        let armingKey = makeArmingKey(alarmID: alarm.id, occurrenceKey: occurrenceKey)
+                        let armingKey = makeArmingKey(alarmID: alarm.id, occurrenceKey: occurrenceKey, effectiveDate: occurrence.effectiveDate)
                         armedOccurrences.remove(armingKey)
                         
                         // ATTEMPT B: Cancel ALL alerting alarms first, then reclaim session and retry
