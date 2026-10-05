@@ -9,11 +9,16 @@ final class ThemeManager {
     private let defaults = UserDefaults.standard
     private let themeKey = "selectedTheme"
     private let customColorsKey = "customThemeColors"
+    private let userThemesKey = "userThemes"
+    private let activeUserThemeKey = "activeUserThemeID"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
+    private(set) var userThemes: [UserTheme] = []
+    private(set) var activeUserThemeID: UUID?
 
     private init() {
+        loadUserThemes()
         loadTheme()
     }
 
@@ -50,13 +55,102 @@ final class ThemeManager {
 
     func selectTheme(_ theme: Theme) {
         currentTheme = theme
+        if theme != .custom {
+            activeUserThemeID = nil
+            saveActiveUserThemeID()
+        }
         saveTheme()
+    }
+
+    func selectUserTheme(_ userTheme: UserTheme) {
+        activeUserThemeID = userTheme.id
+        customThemeColors = userTheme.colors
+        currentTheme = .custom
+        saveActiveUserThemeID()
+        saveTheme()
+    }
+
+    func createUserTheme(name: String, colors: CustomThemeColors) -> UserTheme {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let theme = UserTheme(id: UUID(), name: trimmed.isEmpty ? "My Theme" : trimmed, colors: colors)
+        userThemes.append(theme)
+        saveUserThemes()
+        selectUserTheme(theme)
+        return theme
+    }
+
+    func duplicateUserTheme(_ userTheme: UserTheme) {
+        let copy = UserTheme(id: UUID(), name: "\(userTheme.name) Copy", colors: userTheme.colors)
+        userThemes.append(copy)
+        saveUserThemes()
+    }
+
+    func updateUserTheme(id: UUID, name: String, colors: CustomThemeColors) {
+        guard let index = userThemes.firstIndex(where: { $0.id == id }) else { return }
+        userThemes[index].name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        userThemes[index].colors = colors
+        saveUserThemes()
+        if activeUserThemeID == id {
+            customThemeColors = colors
+            saveTheme()
+        }
+    }
+
+    /// Deleting the ACTIVE user theme falls back to the default theme.
+    func deleteUserTheme(id: UUID) {
+        userThemes.removeAll { $0.id == id }
+        saveUserThemes()
+        if activeUserThemeID == id {
+            activeUserThemeID = nil
+            saveActiveUserThemeID()
+            currentTheme = .midnightBlack
+            saveTheme()
+        }
+    }
+
+    func userThemeColors(_ userTheme: UserTheme) -> ThemeColors {
+        userTheme.colors.toThemeColors()
+    }
+
+    private func loadUserThemes() {
+        if let data = defaults.data(forKey: userThemesKey),
+           let decoded = try? JSONDecoder().decode([UserTheme].self, from: data) {
+            userThemes = decoded
+        }
+        if let idString = defaults.string(forKey: activeUserThemeKey) {
+            let id = UUID(uuidString: idString)
+            // Only keep the active ID if the theme still exists (e.g. deleted
+            // elsewhere); otherwise fall back to the default theme.
+            if let id, userThemes.contains(where: { $0.id == id }) {
+                activeUserThemeID = id
+            }
+        }
+    }
+
+    private func saveUserThemes() {
+        if let data = try? JSONEncoder().encode(userThemes) {
+            defaults.set(data, forKey: userThemesKey)
+        }
+    }
+
+    private func saveActiveUserThemeID() {
+        if let activeUserThemeID {
+            defaults.set(activeUserThemeID.uuidString, forKey: activeUserThemeKey)
+        } else {
+            defaults.removeObject(forKey: activeUserThemeKey)
+        }
     }
 
     func updateCustomColors(_ colors: CustomThemeColors) {
         customThemeColors = colors
         if currentTheme == .custom {
             saveTheme()
+            // Keep the ACTIVE user theme in sync with color edits.
+            if let activeUserThemeID,
+               let index = userThemes.firstIndex(where: { $0.id == activeUserThemeID }) {
+                userThemes[index].colors = colors
+                saveUserThemes()
+            }
         }
     }
 
@@ -64,6 +158,11 @@ final class ThemeManager {
         customThemeColors.update(color: color, for: role)
         if currentTheme == .custom {
             saveTheme()
+            if let activeUserThemeID,
+               let index = userThemes.firstIndex(where: { $0.id == activeUserThemeID }) {
+                userThemes[index].colors = customThemeColors
+                saveUserThemes()
+            }
         }
     }
 
@@ -75,6 +174,13 @@ final class ThemeManager {
         if let data = defaults.data(forKey: customColorsKey),
            let custom = try? JSONDecoder().decode(CustomThemeColors.self, from: data) {
             customThemeColors = custom
+        }
+        // Reactivate a user theme last so its colors win over the .custom
+        // scratchpad when it was the active selection.
+        if let activeUserThemeID,
+           let userTheme = userThemes.first(where: { $0.id == activeUserThemeID }) {
+            customThemeColors = userTheme.colors
+            currentTheme = .custom
         }
     }
 
@@ -197,6 +303,14 @@ struct ThemeColors {
     let toggleOff: Color
     let divider: Color
     let destructive: Color
+}
+
+/// A theme the user created in Appearance. Preset list stays untouched;
+/// user themes live alongside in UserDefaults.
+struct UserTheme: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var colors: CustomThemeColors
 }
 
 struct CustomThemeColors: Codable {

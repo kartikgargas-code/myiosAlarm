@@ -4,6 +4,13 @@ struct AppearanceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingCustomColors = false
     @State private var customColors = ThemeManager.shared.customThemeColors
+    @State private var showingThemeEditor = false
+    @State private var editingThemeID: UUID?
+
+    private var editingTheme: UserTheme? {
+        guard let editingThemeID else { return nil }
+        return ThemeManager.shared.userThemes.first { $0.id == editingThemeID }
+    }
 
     var body: some View {
         NavigationStack {
@@ -56,6 +63,53 @@ struct AppearanceView: View {
                     }
                 }
 
+                Section("My Themes") {
+                    ForEach(ThemeManager.shared.userThemes) { userTheme in
+                        Button {
+                            ThemeManager.shared.selectUserTheme(userTheme)
+                        } label: {
+                            HStack(spacing: 16) {
+                                themePreview(ThemeManager.shared.userThemeColors(userTheme))
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                                Text(userTheme.name)
+                                    .font(.body)
+                                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+
+                                Spacer()
+
+                                if ThemeManager.shared.activeUserThemeID == userTheme.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .font(.title2)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Edit") {
+                                editingThemeID = userTheme.id
+                                showingThemeEditor = true
+                            }
+                            Button("Duplicate") {
+                                ThemeManager.shared.duplicateUserTheme(userTheme)
+                            }
+                            Button("Delete", role: .destructive) {
+                                ThemeManager.shared.deleteUserTheme(id: userTheme.id)
+                            }
+                        }
+                    }
+
+                    Button {
+                        editingThemeID = nil
+                        showingThemeEditor = true
+                    } label: {
+                        Label("New Theme", systemImage: "plus.circle")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                }
+
                 Section {
                     Text("Theme changes apply immediately across the app. No restart required.")
                         .font(.footnote)
@@ -74,6 +128,9 @@ struct AppearanceView: View {
                 CustomColorPickerView(customColors: $customColors) { updated in
                     ThemeManager.shared.updateCustomColors(updated)
                 }
+            }
+            .sheet(isPresented: $showingThemeEditor) {
+                UserThemeEditorView(editingTheme: editingTheme)
             }
         }
     }
@@ -192,5 +249,78 @@ extension CustomThemeColors {
         case .divider: return divider.color
         case .destructive: return destructive.color
         }
+    }
+}
+
+/// Create or edit a user theme: name + the existing colour roles.
+struct UserThemeEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    let editingTheme: UserTheme?
+
+    @State private var name: String = ""
+    @State private var colors: CustomThemeColors = CustomThemeColors()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Theme name", text: $name)
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                }
+                Section("Colors") {
+                    ForEach(ColorRole.allCases) { role in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(colors.color(for: role))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Circle()
+                                        .stroke(ThemeManager.shared.colors.divider, lineWidth: 1)
+                                )
+                            Text(role.rawValue)
+                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                            Spacer()
+                            ColorPicker("", selection: colorBinding(role), supportsOpacity: true)
+                                .labelsHidden()
+                                .frame(width: 44, height: 44)
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle(editingTheme == nil ? "New Theme" : "Edit Theme")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        if let editingTheme {
+                            ThemeManager.shared.updateUserTheme(id: editingTheme.id, name: name, colors: colors)
+                        } else {
+                            ThemeManager.shared.createUserTheme(name: name, colors: colors)
+                        }
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .onAppear {
+                if let editingTheme {
+                    name = editingTheme.name
+                    colors = editingTheme.colors
+                } else {
+                    colors = ThemeManager.shared.customThemeColors
+                }
+            }
+        }
+    }
+
+    private func colorBinding(_ role: ColorRole) -> Binding<Color> {
+        Binding(
+            get: { colors.color(for: role) },
+            set: { colors.update(color: $0, for: role) }
+        )
     }
 }
