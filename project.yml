@@ -116,6 +116,7 @@ targets:
       - path: AlarmClock/NextAlarmLiveActivity.swift
       - path: AlarmClock/LiveActivityIntentProtocol.swift
       - path: AlarmClock/AppGroupResolver.swift
+      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:
@@ -136,7 +137,6 @@ targets:
       - path: AlarmClockWidgetExtension
       - path: AlarmClock/NextAlarmLiveActivityView.swift
       - path: AlarmClockWidgetExtension/WidgetAlarmService.swift
-      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
     dependencies:
       - target: AlarmClockShared
     settings:

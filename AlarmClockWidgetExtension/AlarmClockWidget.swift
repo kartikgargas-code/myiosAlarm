@@ -6,7 +6,6 @@ import AlarmClockShared
 import os.log
 import CoreFoundation
 import AlarmKit
-import ExtensionAlarmSchedulingService
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
@@ -409,7 +408,6 @@ struct SkipNextAlarmIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
-        let scheduler = ExtensionAlarmSchedulingService()
         // Resolve the next alarm at perform time
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
@@ -421,7 +419,7 @@ struct SkipNextAlarmIntent: AppIntent {
         _ = try await service.skipNextAlarm(alarmID: alarmID)
         
         // 2. Reconcile AlarmKit for this alarm
-        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "skip")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "skip")
         
         // 3. Log to App Group debug log
         SmartWakeDebugLog.log("WIDGET ACTION: skipNext alarmID=\(alarmID.uuidString)")
@@ -440,7 +438,6 @@ struct AlarmMinus10Intent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
-        let scheduler = ExtensionAlarmSchedulingService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
             return .result()
@@ -448,7 +445,7 @@ struct AlarmMinus10Intent: AppIntent {
         let alarmID = alarm.id
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: -10)
-        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "adjust-10")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "adjust-10")
         
         SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 alarmID=\(alarmID.uuidString)")
         
@@ -466,7 +463,6 @@ struct AlarmPlus10Intent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
-        let scheduler = ExtensionAlarmSchedulingService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
             return .result()
@@ -474,7 +470,7 @@ struct AlarmPlus10Intent: AppIntent {
         let alarmID = alarm.id
         
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: 10)
-        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "adjust+10")
+        try await reconcileAlarmKitForAlarm(alarmID: alarmID, reason: "adjust+10")
         
         SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 alarmID=\(alarmID.uuidString)")
         
@@ -487,7 +483,6 @@ struct AlarmPlus10Intent: AppIntent {
 /// Builds minimal DesiredSystemAlarm set for the affected occurrence
 @MainActor
 private func reconcileAlarmKitForAlarm(
-    scheduler: ExtensionAlarmSchedulingService,
     alarmID: UUID,
     reason: String
 ) async throws {
@@ -515,6 +510,8 @@ private func reconcileAlarmKitForAlarm(
             }
         }
     }
+    
+    let scheduler = ExtensionAlarmSchedulingService()
     
     // Schedule new AlarmKit alarm at the new time with floor sound
     let newDesired = ExtensionAlarmSchedulingService.DesiredSystemAlarm(
