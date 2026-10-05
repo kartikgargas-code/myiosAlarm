@@ -119,7 +119,13 @@ final class AlarmPlaybackService: NSObject {
         // Resolve playlist and selected sound IDs
         do {
             let playlist = try SoundLibrary.shared.playlist(for: playlistID)
-            selectedSoundIDs = playlist.selectedSoundIDs
+            var soundIDs = playlist.selectedSoundIDs
+            
+            // Randomize track order if playlist is set to random play order
+            if playlist.playOrder == .random {
+                soundIDs.shuffle()
+            }
+            selectedSoundIDs = soundIDs
             
             guard !selectedSoundIDs.isEmpty else {
                 throw SoundLibraryError.emptyPlaylist(playlistID)
@@ -775,6 +781,27 @@ final class AlarmPlaybackService: NSObject {
                 pendingSnoozeAlarmID = snoozeID
                 
                 SmartWakeDebugLog.log("SNOOZE: scheduled AlarmKit snooze id=\(snoozeID.uuidString) at \(snoozeFireDate) for \(snoozeMinutes) min")
+                
+                // Post local notification for snooze feedback
+                let content = UNMutableNotificationContent()
+                content.title = "Snoozed \(snoozeMinutes) min"
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+                formatter.timeZone = TimeZone.current
+                content.body = "Next ring \(formatter.string(from: snoozeFireDate))"
+                content.sound = nil // Silent notification
+                
+                let request = UNNotificationRequest(
+                    identifier: "SNOOZE-\(snoozeID.uuidString)",
+                    content: content,
+                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+                )
+                
+                UNUserNotificationCenter.current().add(request) { error in
+                    if let error = error {
+                        SmartWakeDebugLog.log("SNOOZE notification failed: \(error.localizedDescription)")
+                    }
+                }
             } catch {
                 let nsError = error as NSError
                 SmartWakeDebugLog.log("SNOOZE: scheduling FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
