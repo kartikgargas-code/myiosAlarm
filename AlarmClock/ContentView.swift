@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showingNextAlarmControl = false
     @State private var showingHistory = false
     @State private var currentRingSongName: String? = nil
+    @State private var pendingEnabled: [UUID: Bool] = [:]
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
@@ -302,8 +303,14 @@ struct ContentView: View {
 
             // Toggle ONLY changes enabled state
             Toggle("Enabled", isOn: Binding(
-                get: { alarm.isEnabled },
-                set: { enabled in Task { await coordinator.setEnabled(enabled, id: alarm.id) } }
+                get: { pendingEnabled[alarm.id] ?? alarm.isEnabled },
+                set: { enabled in
+                    pendingEnabled[alarm.id] = enabled
+                    Task {
+                        await coordinator.setEnabled(enabled, id: alarm.id)
+                        pendingEnabled[alarm.id] = nil
+                    }
+                }
             ))
             .labelsHidden()
             .toggleStyle(.switch)
