@@ -307,7 +307,7 @@ struct ThemeColors {
 
 /// A theme the user created in Appearance. Preset list stays untouched;
 /// user themes live alongside in UserDefaults.
-struct UserTheme: Codable, Identifiable, Equatable {
+struct UserTheme: Codable, Identifiable {
     let id: UUID
     var name: String
     var colors: CustomThemeColors
