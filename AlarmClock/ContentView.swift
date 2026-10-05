@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var showingHistory = false
     @State private var currentRingSongName: String? = nil
     @State private var pendingEnabled: [UUID: Bool] = [:]
+    @State private var editorIdentity = UUID()
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
@@ -83,6 +84,10 @@ struct ContentView: View {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             editorAlarm = nil
+                            // Fresh identity only when ADDING a new alarm —
+                            // regenerating on every body eval rebuilt the editor
+                            // mid-typing (lost input, ate taps).
+                            editorIdentity = UUID()
                             showingEditor = true
                         } label: {
                             Image(systemName: "plus")
@@ -164,7 +169,7 @@ struct ContentView: View {
                         await coordinator.scheduleTestAlarm(alarm, delay: delay)
                     }
                 )
-                .id(editorAlarm?.id ?? UUID())
+                .id(editorAlarm?.id ?? editorIdentity)
             }
             .sheet(item: $controlsAlarm) { alarm in
                 NextOccurrenceControlsView(

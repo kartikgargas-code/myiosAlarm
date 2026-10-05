@@ -18,6 +18,8 @@ struct AlarmEditorView: View {
     @State private var selectedLoudness: AlarmLoudness
     @State private var snoozeDurationMinutes: Int
     @State private var showingSoundPicker = false
+    @State private var isSaving = false
+    @State private var draftID = UUID()
     
     // Simplified test alarm state
     private enum TestAlarmState: Equatable {
@@ -231,13 +233,18 @@ struct AlarmEditorView: View {
         }
         ToolbarItem(placement: .confirmationAction) {
             Button("Save") { saveAlarm() }
-                .disabled(repeatSelection.wrappedValue == .custom && customDays.isEmpty)
+                .disabled(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))
         }
     }
     private func saveAlarm() {
+        guard !isSaving else { return }
+        isSaving = true
+        // Stable draft ID: a stray second tap updates the same draft
+        // instead of inserting a second alarm.
         let alarm = makeAlarm()
         Task {
             await onSave(alarm)
+            isSaving = false
             dismiss()
         }
     }
@@ -246,7 +253,7 @@ struct AlarmEditorView: View {
         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
         let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
         let alarm: AlarmRecord = AlarmRecord(
-            id: existingAlarm?.id ?? UUID(),
+            id: existingAlarm?.id ?? draftID,
             label: label,
             time: time,
             repeatRule: resolvedRepeatRule,
