@@ -151,6 +151,8 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $showingEditor) {
+                // Fresh identity per alarm so @State(initialValue:) re-runs —
+                // otherwise the editor keeps the first-opened alarm's sound.
                 AlarmEditorView(
                     existingAlarm: editorAlarm,
                     alarms: coordinator.alarms,
@@ -161,6 +163,7 @@ struct ContentView: View {
                         await coordinator.scheduleTestAlarm(alarm, delay: delay)
                     }
                 )
+                .id(editorAlarm?.id ?? UUID())
             }
             .sheet(item: $controlsAlarm) { alarm in
                 NextOccurrenceControlsView(
@@ -274,7 +277,7 @@ struct ContentView: View {
                         .foregroundStyle(colors.primaryText)
                     Text(alarm.repeatRule.displayName)
                         .font(.caption)
-                        .foregroundStyle(colors.secondaryText)
+                        .foregroundStyle(colors.accent)
                     if let occurrence {
                         HStack(spacing: 4) {
                             if let skipped = skippedOccurrence {
@@ -288,7 +291,7 @@ struct ContentView: View {
                             } else {
                                 Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption)
-                                    .foregroundStyle(colors.secondaryText)
+                                    .foregroundStyle(colors.accent)
                             }
                         }
                     }
@@ -296,20 +299,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
-
-            // Explicit Edit button
-            Button {
-                editorAlarm = alarm
-                showingEditor = true
-            } label: {
-                Text("Edit")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(colors.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-            }
-            .buttonStyle(.borderless)
-            .contentShape(Rectangle())
 
             // Toggle ONLY changes enabled state
             Toggle("Enabled", isOn: Binding(
