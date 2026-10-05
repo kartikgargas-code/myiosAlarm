@@ -95,6 +95,17 @@ jobs:
             -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -typecheck "$RUNNER_TEMP/LockScreenProbe.swift"
 
+      - name: Ensure iPhone 16 simulator exists
+        run: |
+          set -e
+          if ! xcrun simctl list devices available | grep -q "(iPhone 16)"; then
+            RUNTIME_ID=$(xcrun simctl list runtimes --json | python3 -c "import json,sys; d=json.load(sys.stdin); ids=[r['identifier'] for r in d['runtimes'] if r.get('platform','iOS')=='iOS']; print(sorted(ids)[-1])")
+            DEVTYPE=$(xcrun simctl list devicetypes | grep -oE "com.apple.CoreSimulator.SimDeviceType.iPhone-1[0-9]+" | sort -V | tail -1)
+            echo "No iPhone 16 simulator on this runner image — creating one ($DEVTYPE on $RUNTIME_ID)"
+            xcrun simctl create "iPhone 16" "$DEVTYPE" "$RUNTIME_ID"
+          fi
+          xcrun simctl list devices available
+
       - name: Run unit tests
         run: |
           set -o pipefail
