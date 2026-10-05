@@ -117,6 +117,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+      - name: Stamp build number and commit
+        run: |
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app"
+          for P in "$APP/Info.plist" "$APP/PlugIns/AlarmClockWidgetExtension.appex/Info.plist"; do
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$P"
+            /usr/libexec/PlistBuddy -c "Add :AlarmClockBuildStamp string ${{ github.sha }}" "$P" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Set :AlarmClockBuildStamp ${{ github.sha }}" "$P"
+            /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$P"
+            /usr/libexec/PlistBuddy -c "Print :AlarmClockBuildStamp" "$P"
+          done
+
       - name: Verify built AlarmKit usage description
         run: |
           PLIST="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app/Info.plist"

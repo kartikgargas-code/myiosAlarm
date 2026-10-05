@@ -22,6 +22,12 @@ struct AlarmClockApp: App {
             }
             SmartWakeDebugLog.log("NOTIFICATION authorization (app launch): \(granted ? "granted" : "denied")")
         }
+
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = info?["CFBundleVersion"] as? String ?? "?"
+        let stamp = info?["AlarmClockBuildStamp"] as? String ?? "unknown"
+        SmartWakeDebugLog.log("BUILD: v\(v) (\(b)) commit=\(stamp)")
     }
     
     var body: some Scene {
