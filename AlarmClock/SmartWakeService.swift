@@ -416,7 +416,16 @@ final class SmartWakeService {
         
         let now = Date()
         let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
-        
+
+        // A pending snooze keeps the loop alive even though the alarm's NEXT
+        // occurrence is nil (one-time) or ~24h away (daily): the snoozed
+        // AlarmKit alarm fires within minutes and 9e-6 takes it over.
+        if AlarmPlaybackService.shared.pendingSnoozeIDForTakeover != nil {
+            SmartWakeDebugLog.log("FOREGROUND START: snooze window pending — starting loop for takeover")
+            await startBackgroundAudio()
+            return
+        }
+
         // Check if any alarm is armed and due soon
         let upcoming = coordinator.alarms.filter { alarm in
             guard alarm.isEnabled else { return false }
@@ -425,9 +434,9 @@ final class SmartWakeService {
             }
             return false
         }
-        
+
         guard !upcoming.isEmpty else {
-            SmartWakeDebugLog.log("FOREGROUND START attempt: declined â€” no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
+            SmartWakeDebugLog.log("FOREGROUND START attempt: declined — no enabled alarm within 8h (alarms: \(coordinator.alarms.count))", force: true)
             return
         }
         
