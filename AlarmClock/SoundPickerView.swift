@@ -125,6 +125,31 @@ struct SoundPickerView: View {
                     }
                 }
 
+                Section("Random from Playlist") {
+                    if SoundLibrary.shared.playlists.isEmpty {
+                        Text("No playlists available. Import a folder to create one.")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    } else {
+                        ForEach(SoundLibrary.shared.playlists) { playlist in
+                            randomPlaylistRow(playlist: playlist)
+                        }
+                    }
+
+                    if !SoundLibrary.shared.playlists.isEmpty {
+                        Button {
+                            showingPlaylistPicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "music.note.list")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                                Text("Create New Playlist")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                            }
+                        }
+                    }
+                }
+
                 Section("Default") {
                     soundRow(
                         sound: .systemDefault,
@@ -153,31 +178,6 @@ struct SoundPickerView: View {
                             description: "Imported from Files",
                             previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
                         )
-                    }
-                }
-
-                Section("Random from Playlist") {
-                    if SoundLibrary.shared.playlists.isEmpty {
-                        Text("No playlists available. Import a folder to create one.")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    } else {
-                        ForEach(SoundLibrary.shared.playlists) { playlist in
-                            randomPlaylistRow(playlist: playlist)
-                        }
-                    }
-
-                    if !SoundLibrary.shared.playlists.isEmpty {
-                        Button {
-                            showingPlaylistPicker = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "music.note.list")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                                Text("Create New Playlist")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                        }
                     }
                 }
 
