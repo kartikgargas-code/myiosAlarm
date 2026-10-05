@@ -510,7 +510,7 @@ private func reconcileAlarmKitForAlarm(
     // left the alarm cancelled with no replacement (skip = alarm lost).
     let authState = AlarmManager.shared.authorizationState
     guard authState == .authorized else {
-        SmartWakeDebugLog.log("WIDGET RECONCILE ABORT: not authorized (state=\(authState.rawValue)); nothing cancelled, nothing scheduled")
+        SmartWakeDebugLog.log("WIDGET RECONCILE ABORT: not authorized (state=\(String(describing: authState))); nothing cancelled, nothing scheduled")
         throw ExtensionAlarmSchedulingService.AlarmSynchronizationError.notAuthorized
     }
 
@@ -594,7 +594,7 @@ private func reconcileAlarmKitForAlarm(
         _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: [], reason: reason)
     } catch {
         let nsError = error as NSError
-        SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) authState=\(AlarmManager.shared.authorizationState.rawValue)")
+        SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) authState=\(String(describing: AlarmManager.shared.authorizationState))")
         throw error
     }
 
