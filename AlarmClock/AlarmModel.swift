@@ -449,6 +449,20 @@ public struct AlarmOccurrence: Codable, Identifiable, Equatable {
     public let effectiveDate: Date
     public let isAdjusted: Bool
 
+    public init(
+        alarmID: UUID,
+        occurrenceKey: String,
+        baseDate: Date,
+        effectiveDate: Date,
+        isAdjusted: Bool
+    ) {
+        self.alarmID = alarmID
+        self.occurrenceKey = occurrenceKey
+        self.baseDate = baseDate
+        self.effectiveDate = effectiveDate
+        self.isAdjusted = isAdjusted
+    }
+
     public var id: UUID {
         StableOccurrenceID.make(alarmID: alarmID, occurrenceKey: occurrenceKey)
     }
