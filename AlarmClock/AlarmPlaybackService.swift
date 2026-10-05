@@ -589,26 +589,43 @@ final class AlarmPlaybackService: NSObject {
     }
 
     /// Setup remote command center for lock screen controls
-    /// During alarm ringing: ONLY stop (■) + next (⏭ = snooze) enabled
+    /// During alarm ringing: STOP (■) + PAUSE/PLAY (⏯) + SNOOZE (⏭) all enabled
     /// Pause trap code kept for internal use if pause ever re-enabled
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
-        
-        // DISABLED during alarm: play/pause/toggle/previous/seek
-        // iOS shows ■ on lock screen when stopCommand enabled AND pause/toggle disabled
-        commandCenter.togglePlayPauseCommand.isEnabled = false
-        commandCenter.playCommand.isEnabled = false
-        commandCenter.pauseCommand.isEnabled = false
-        commandCenter.previousTrackCommand.isEnabled = false
-        commandCenter.changePlaybackPositionCommand.isEnabled = false
-        commandCenter.skipForwardCommand.isEnabled = false
-        commandCenter.skipBackwardCommand.isEnabled = false
-        commandCenter.changePlaybackRateCommand.isEnabled = false
         
         // Real Stop button (■ = stop alarm) - ENABLED
         commandCenter.stopCommand.isEnabled = true
         commandCenter.stopCommand.addTarget { [weak self] _ in
             SmartWakeDebugLog.log("REMOTE COMMAND: stop (STOP) fired")
+            self?.handleStopCommand()
+            return .success
+        }
+        
+        // Play/Pause toggle (⏯ = pause/resume) - ENABLED with pause trap
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            SmartWakeDebugLog.log("REMOTE COMMAND: togglePlayPause fired")
+            self?.togglePlayPause()
+            return .success
+        }
+        
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            self?.resumePlayback()
+            return .success
+        }
+        
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            self?.pausePlayback()
+            return .success
+        }
+        
+        // Previous track = STOP alarm (■ = stop alarm) - ENABLED as alternate stop
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            SmartWakeDebugLog.log("REMOTE COMMAND: previousTrack (STOP) fired")
             self?.handleStopCommand()
             return .success
         }
@@ -620,6 +637,12 @@ final class AlarmPlaybackService: NSObject {
             self?.handleSnoozeCommand()
             return .success
         }
+        
+        // Disable seek and rate commands
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackRateCommand.isEnabled = false
     }
 
     /// Remove remote command handlers
@@ -719,8 +742,9 @@ final class AlarmPlaybackService: NSObject {
                 let floorSound = try await coordinator.alarmKitSound(for: alarm.sound, loudness: alarm.loudness)
                 
                 let snoozeID = UUID()
+                let snoozeDurationSeconds = TimeInterval(snoozeMinutes * 60)
                 let snoozeConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
-                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
+                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeDurationSeconds),
                     schedule: .fixed(snoozeFireDate),
                     attributes: AlarmAttributes(
                         presentation: AlarmPresentation(
@@ -752,7 +776,8 @@ final class AlarmPlaybackService: NSObject {
                 
                 SmartWakeDebugLog.log("SNOOZE: scheduled AlarmKit snooze id=\(snoozeID.uuidString) at \(snoozeFireDate) for \(snoozeMinutes) min")
             } catch {
-                SmartWakeDebugLog.log("SNOOZE: scheduling FAILED: \(error.localizedDescription)")
+                let nsError = error as NSError
+                SmartWakeDebugLog.log("SNOOZE: scheduling FAILED: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code))")
             }
         }
     }
