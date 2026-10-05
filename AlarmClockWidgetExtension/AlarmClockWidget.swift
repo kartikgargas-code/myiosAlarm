@@ -403,7 +403,8 @@ struct SkipNextAlarmIntent: AppIntent {
     static let title: LocalizedStringResource = "Skip Next Alarm"
     static let description = IntentDescription("Skip the next scheduled alarm occurrence.")
     static let openAppWhenRun: Bool = false
-    
+
+    @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
         // Resolve the next alarm at perform time (no parameter needed)
@@ -423,7 +424,8 @@ struct AlarmMinus10Intent: AppIntent {
     static let title: LocalizedStringResource = "Alarm -10 min"
     static let description = IntentDescription("Move the next alarm 10 minutes earlier.")
     static let openAppWhenRun: Bool = false
-    
+
+    @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
         let snapshot = try service.loadSnapshot()
@@ -442,7 +444,8 @@ struct AlarmPlus10Intent: AppIntent {
     static let title: LocalizedStringResource = "Alarm +10 min"
     static let description = IntentDescription("Move the next alarm 10 minutes later.")
     static let openAppWhenRun: Bool = false
-    
+
+    @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
         let snapshot = try service.loadSnapshot()
