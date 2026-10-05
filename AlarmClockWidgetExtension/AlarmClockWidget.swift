@@ -73,32 +73,12 @@ struct NextAlarmControl: ControlWidget {
 /// App Intent to open the Next Alarm control screen
 struct OpenNextAlarmIntent: OpenIntent {
     static let title: LocalizedStringResource = "Open Next Alarm"
-
-    @Parameter(title: "Destination")
-    var target: AlarmDestination
-
-    init() {
-        self.target = .nextAlarm
-    }
-
+    
+    init() {}
+    
     func perform() async throws -> some IntentResult {
-        // The OpenIntent protocol opens the app automatically.
         return .result()
     }
-}
-
-/// Enum representing where the control can navigate
-enum AlarmDestination: String, AppEnum {
-    case nextAlarm
-
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Alarm Destination")
-
-    static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
-        .nextAlarm: DisplayRepresentation(
-            title: "Next Alarm",
-            subtitle: "View and control the next scheduled alarm"
-        )
-    ]
 }
 
 /// Timeline provider for the next alarm widget
