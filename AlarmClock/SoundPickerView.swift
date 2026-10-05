@@ -436,6 +436,7 @@ struct PlaylistEditorView: View {
     @State private var deleteError: String?
     @State private var sortOption: PlaylistSortOption
     @State private var playOrder: PlaylistPlayOrder
+    private let previewService = SoundPreviewService.shared
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
         self.playlist = playlist
@@ -488,6 +489,21 @@ struct PlaylistEditorView: View {
                 Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
                     ForEach(sortedSounds, id: \.id) { sound in
                         HStack {
+                            // Preview: plays this song; only one at a time
+                            Button {
+                                if previewService.playingSoundID == sound.fileName {
+                                    previewService.stop()
+                                } else if let url = sound.localURL(
+                                    soundsDirectory: SoundLibrary.shared.soundsDirectory) {
+                                    previewService.play(url: url, id: sound.fileName)
+                                }
+                            } label: {
+                                Image(systemName: previewService.playingSoundID == sound.fileName
+                                      ? "pause.circle.fill" : "play.circle")
+                                    .font(.title3)
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                            }
+                            .buttonStyle(.plain)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sound.name)
                                     .font(.body)
@@ -539,6 +555,7 @@ struct PlaylistEditorView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Edit Playlist")
+            .onDisappear { previewService.stop() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
