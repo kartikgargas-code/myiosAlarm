@@ -498,12 +498,12 @@ final class AudioProcessingService {
         loudness: AlarmLoudness,
         maxDuration: TimeInterval?
     ) -> URL? {
-        guard let processedDir else { return nil }
+        guard let dir = processedSoundsDirectory else { return nil }
         let prefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
         let capPart = maxDuration.map { "_cap\(Int($0))" } ?? ""
         let suffix = "_\(loudness.percentage)pct\(capPart).wav"
         let allFiles = (try? fileManager.contentsOfDirectory(
-            at: processedDir,
+            at: dir,
             includingPropertiesForKeys: [URLResourceKey.contentModificationDateKey]
         )) ?? []
         return allFiles
