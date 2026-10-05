@@ -116,6 +116,7 @@ targets:
       - path: AlarmClock/NextAlarmLiveActivity.swift
       - path: AlarmClock/LiveActivityIntentProtocol.swift
       - path: AlarmClock/AppGroupResolver.swift
+      - path: AlarmClock/SmartWakeDebugLog.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
