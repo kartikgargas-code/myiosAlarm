@@ -39,6 +39,9 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
+    // 1-second dedupe gates for remote commands
+    private var lastStopCommandTime: Date?
+    private var lastSnoozeCommandTime: Date?
     
     // Published state
     private(set) var isPlaying = false
@@ -643,13 +646,24 @@ final class AlarmPlaybackService: NSObject {
     
     /// Handle STOP command from lock screen (previous track)
     private func handleStopCommand() {
+        // Snapshot backup ID locally BEFORE async cancel — prevents double-cancel on duplicate deliveries
+        let backupID = pendingBackupAlarmID
+        pendingBackupAlarmID = nil
+        
+        // 1-second dedupe gate
+        let now = Date()
+        if let last = lastStopCommandTime, now.timeIntervalSince(last) < 1.0 {
+            SmartWakeDebugLog.log("STOP DUP ignored (within 1s)")
+            return
+        }
+        lastStopCommandTime = now
+        
         // Cancel pending backup alarm
-        if let backupID = pendingBackupAlarmID {
+        if let id = backupID {
             Task {
-                try? await AlarmManager.shared.cancel(id: backupID)
-                SmartWakeDebugLog.log("STOP: cancelled pending backup alarm \(backupID.uuidString)")
+                try? await AlarmManager.shared.cancel(id: id)
+                SmartWakeDebugLog.log("STOP: cancelled pending backup alarm \(id.uuidString)")
             }
-            pendingBackupAlarmID = nil
         }
         
         // Stop playback and clean up
@@ -664,15 +678,19 @@ final class AlarmPlaybackService: NSObject {
     
     /// Handle SNOOZE command from lock screen (next track)
     private func handleSnoozeCommand() {
-        // Cancel pending backup alarm
-        if let backupID = pendingBackupAlarmID {
-            Task {
-                try? await AlarmManager.shared.cancel(id: backupID)
-                SmartWakeDebugLog.log("SNOOZE: cancelled pending backup alarm \(backupID.uuidString)")
-            }
-            pendingBackupAlarmID = nil
-        }
+        // Snapshot backup ID locally BEFORE async cancel — prevents double-cancel on duplicate deliveries
+        let backupID = pendingBackupAlarmID
+        pendingBackupAlarmID = nil
         
+        // 1-second dedupe gate
+        let now = Date()
+        if let last = lastSnoozeCommandTime, now.timeIntervalSince(last) < 1.0 {
+            SmartWakeDebugLog.log("SNOOZE DUP ignored (within 1s)")
+            return
+        }
+        lastSnoozeCommandTime = now
+        
+        // Snapshot alarm/occurrence/coordinator BEFORE stop() clears them
         guard let alarm = currentAlarm,
               let occurrence = currentOccurrence,
               let coordinator = AlarmCoordinator.sharedInstance else {
@@ -682,6 +700,14 @@ final class AlarmPlaybackService: NSObject {
         
         let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
         let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
+        
+        // Cancel pending backup alarm
+        if let id = backupID {
+            Task {
+                try? await AlarmManager.shared.cancel(id: id)
+                SmartWakeDebugLog.log("SNOOZE: cancelled pending backup alarm \(id.uuidString)")
+            }
+        }
         
         // Stop playback
         stop(reason: "remote-snooze")

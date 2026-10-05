@@ -616,8 +616,19 @@ final class AlarmCoordinator {
             }
             return .named(fileName)
         case .random:
-            // This should never be reached since we resolve random before calling this
-            throw SoundLibraryError.importFailed("Random sound not resolved")
+            // Random sound should have been resolved to precomposedPlaylist by the caller,
+            // but if we get here, fall back to first song in playlist or built-in
+            if let coordinator = AlarmCoordinator.sharedInstance,
+               let alarm = coordinator.alarms.first,
+               case .random(let playlistID) = alarm.sound,
+               let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+               let firstSoundID = playlist.selectedSoundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
+               let fileName = try? SoundLibrary.shared.alarmKitFileName(for: firstSoundID) {
+                return .named(fileName)
+            }
+            // Ultimate fallback: built-in sound
+            return .named(BuiltInSound.classicBell.rawValue)
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
             let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(

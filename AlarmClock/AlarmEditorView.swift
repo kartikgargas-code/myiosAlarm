@@ -235,13 +235,13 @@ struct AlarmEditorView: View {
         }
     }
     private func saveAlarm() {
-        let alarm = makeAlarm(isEnabled: existingAlarm?.isEnabled ?? true)
+        let alarm = makeAlarm()
         Task {
             await onSave(alarm)
             dismiss()
         }
     }
-    private func makeAlarm(isEnabled: Bool) -> AlarmRecord {
+    private func makeAlarm() -> AlarmRecord {
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
         let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
@@ -251,7 +251,7 @@ struct AlarmEditorView: View {
             time: time,
             repeatRule: resolvedRepeatRule,
             oneTimeDate: date,
-            isEnabled: isEnabled,
+            isEnabled: true,
             adjustmentStepMinutes: 10, // Fixed adjustment step
             overrides: existingAlarm?.overrides ?? [:],
             sound: selectedSound,

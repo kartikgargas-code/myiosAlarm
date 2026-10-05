@@ -7,12 +7,14 @@ struct SoundPickerView: View {
     let alarms: [AlarmRecord]
 
     @State private var showingDocumentPicker = false
-    @State private var showingFolderPicker = false
     @State private var showingPlaylistPicker = false
     @State private var importError: String?
     @State private var importStatus: String?
     @State private var pickerEventLog: [String] = []
     @State private var showingDeleteConfirmation = false
+    // Single fileImporter driven by enum — avoids SwiftUI conflict of two modifiers
+    @State private var pickerMode: PickerMode = .files
+    private enum PickerMode { case files, folder }
 
     private let preview = SoundPreviewService.shared
 
@@ -41,40 +43,45 @@ struct SoundPickerView: View {
                     }
                 }
 
-                Section("Imported Sounds") {
-                    ForEach(SoundLibrary.shared.importedSounds) { sound in
-                        soundRow(
-                            sound: .imported(sound.id),
-                            label: sound.name,
-                            description: "Imported from Files",
-                            previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
-                        )
-                    }
-
-                    Button {
-                        pickerEventLog.append("[\(timestamp())] Import MP3 button tapped")
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import MP3 from Files")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
-                    }
-
-                    Button {
-                        pickerEventLog.append("[\(timestamp())] Import Folder button tapped")
-                        showingFolderPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder.badge.plus")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import MP3 Folder as Playlist")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
+                // Import actions at top for easy access
+            Section("Import") {
+                Button {
+                    pickerEventLog.append("[\(timestamp())] Import MP3 button tapped")
+                    pickerMode = .files
+                    showingDocumentPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                        Text("Import MP3 from Files")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
                     }
                 }
+
+                Button {
+                    pickerEventLog.append("[\(timestamp())] Import Folder button tapped")
+                    pickerMode = .folder
+                    showingDocumentPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "folder.badge.plus")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                        Text("Import MP3 Folder as Playlist")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                }
+            }
+
+            Section("Imported Sounds") {
+                ForEach(SoundLibrary.shared.importedSounds) { sound in
+                    soundRow(
+                        sound: .imported(sound.id),
+                        label: sound.name,
+                        description: "Imported from Files",
+                        previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                    )
+                }
+            }
 
                 Section("Random from Playlist") {
                     if SoundLibrary.shared.playlists.isEmpty {
@@ -121,40 +128,32 @@ struct SoundPickerView: View {
         }
         .fileImporter(
             isPresented: $showingDocumentPicker,
-            allowedContentTypes: [.mp3, .audio, .movie],
-            allowsMultipleSelection: true
+            allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
+            allowsMultipleSelection: pickerMode == .files
         ) { result in
             switch result {
             case .success(let urls):
-                guard !urls.isEmpty else {
-                    pickerEventLog.append("[\(timestamp())] Picker returned no file")
-                    return
-                }
-                pickerEventLog.append("[\(timestamp())] Files selected: \(urls.map { $0.lastPathComponent }.joined(separator: ", "))")
-                for url in urls {
-                    Task { await importSound(from: url) }
+                if pickerMode == .files {
+                    guard !urls.isEmpty else {
+                        pickerEventLog.append("[\(timestamp())] Picker returned no file")
+                        return
+                    }
+                    pickerEventLog.append("[\(timestamp())] Files selected: \(urls.map { $0.lastPathComponent }.joined(separator: ", "))")
+                    for url in urls {
+                        Task { await importSound(from: url) }
+                    }
+                } else {
+                    // Folder mode
+                    guard let url = urls.first else {
+                        pickerEventLog.append("[\(timestamp())] Folder picker returned no folder")
+                        return
+                    }
+                    pickerEventLog.append("[\(timestamp())] Folder selected: \(url.lastPathComponent)")
+                    Task { await importFolder(from: url) }
                 }
             case .failure(let error):
                 pickerEventLog.append("[\(timestamp())] Picker failed: \(error.localizedDescription)")
-                importError = "Files picker failed: \(error.localizedDescription)"
-            }
-        }
-        .fileImporter(
-            isPresented: $showingFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else {
-                    pickerEventLog.append("[\(timestamp())] Folder picker returned no folder")
-                    return
-                }
-                pickerEventLog.append("[\(timestamp())] Folder selected: \(url.lastPathComponent)")
-                Task { await importFolder(from: url) }
-            case .failure(let error):
-                pickerEventLog.append("[\(timestamp())] Folder picker failed: \(error.localizedDescription)")
-                importError = "Folder picker failed: \(error.localizedDescription)"
+                importError = "Picker failed: \(error.localizedDescription)"
             }
         }
         .sheet(isPresented: $showingPlaylistPicker) {
@@ -529,34 +528,6 @@ struct PlaylistEditorView: View {
                 Text(deleteError ?? "")
             }
         }
-    }
-}
-
-enum BuiltInSound: String, CaseIterable {
-    case classicBell = "Classic Bell"
-    case digital = "Digital"
-    case gentleWake = "Gentle Wake"
-    case morning = "Morning"
-    case pulse = "Pulse"
-    case chime = "Chime"
-    case soft = "Soft"
-    case bright = "Bright"
-
-    var fileName: String {
-        switch self {
-        case .classicBell: "classic-bell.wav"
-        case .digital: "digital.wav"
-        case .gentleWake: "gentle-wake.wav"
-        case .morning: "morning.wav"
-        case .pulse: "pulse.wav"
-        case .chime: "chime.wav"
-        case .soft: "soft.wav"
-        case .bright: "bright.wav"
-        }
-    }
-
-    static func fileName(for displayName: String) -> String? {
-        allCases.first { $0.rawValue == displayName }?.fileName
     }
 }
 
