@@ -101,7 +101,52 @@ final class SmartWakeService {
                 
                 // Check for any alerting AlarmKit alarm (system ring) - for banner visibility during system rings
                 do {
-                    let alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                    var alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+
+                    // SNOOZE TAKEOVER: if a snoozed AlarmKit alarm is alerting and
+                    // our process is alive, silence the floor-sound ring and start
+                    // the playlist instead (matches the wake-path takeover).
+                    if let snoozeID = AlarmPlaybackService.shared.pendingSnoozeIDForTakeover,
+                       let context = AlarmPlaybackService.shared.snoozeTakeoverContext,
+                       let kit = alerting.first(where: { $0.id == snoozeID }) {
+                        _ = kit
+                        AlarmPlaybackService.shared.consumeSnoozeForTakeover()
+                        SmartWakeDebugLog.log("SNOOZE-TAKEOVER: silencing floor ring, starting playlist for \(context.occurrenceKey)")
+                        do {
+                            try AlarmManager.shared.cancel(id: snoozeID)
+                        } catch {
+                            SmartWakeDebugLog.log("SNOOZE-TAKEOVER: cancel FAILED: \(error.localizedDescription)")
+                        }
+                        // Remove the snooze banner — the alarm is ringing now
+                        UNUserNotificationCenter.current().getDeliveredNotifications { list in
+                            let ids = list.filter { $0.request.identifier.hasPrefix("SNOOZE-") }.map(\.request.identifier)
+                            if !ids.isEmpty {
+                                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+                            }
+                        }
+                        // Restore the regular next-alarm widget snapshot
+                        AlarmCoordinator.sharedInstance?.publishSnapshot()
+                        // Start the playlist (synthetic occurrence for play history)
+                        let fireDate = Date()
+                        let occ = AlarmOccurrence(
+                            alarmID: context.alarm.id,
+                            occurrenceKey: context.occurrenceKey,
+                            baseDate: fireDate,
+                            effectiveDate: fireDate,
+                            isAdjusted: false
+                        )
+                        AlarmPlaybackService.shared.start(
+                            playlistID: context.playlistID,
+                            loudness: context.alarm.loudness,
+                            alarm: context.alarm,
+                            occurrence: occ
+                        )
+                        AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
+                        // Playlist owns audio now; the silent loop can stop
+                        stopSilentPlayerOnly(reason: "snooze takeover completed for \(context.occurrenceKey)")
+                        alerting = try AlarmManager.shared.alarms.filter { $0.state == .alerting }
+                    }
+
                     let alertingCount = alerting.count
                     if alertingCount != lastAlertingCount {
                         let scenePhase = UIApplication.shared.applicationState

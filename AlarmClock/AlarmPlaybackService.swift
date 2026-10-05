@@ -39,6 +39,19 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
+    // Snapshot for snooze takeover: lets SmartWakeService restart the playlist
+    // when the snoozed AlarmKit alarm fires while our process is still alive.
+    private(set) var snoozeTakeoverContext: (alarm: AlarmRecord, playlistID: UUID, occurrenceKey: String)?
+
+    /// The snooze AlarmKit alarm ID while the snooze window is running.
+    /// SmartWakeService polls this to detect the snooze alarm firing.
+    var pendingSnoozeIDForTakeover: UUID? { pendingSnoozeAlarmID }
+
+    /// Consume the snooze takeover state (called by SmartWakeService at fire).
+    func consumeSnoozeForTakeover() {
+        pendingSnoozeAlarmID = nil
+        snoozeTakeoverContext = nil
+    }
     // 1-second dedupe gates for remote commands
     private var lastStopCommandTime: Date?
     private var lastSnoozeCommandTime: Date?
@@ -729,6 +742,12 @@ final class AlarmPlaybackService: NSObject {
         
         let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
         let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
+
+        // Snapshot playlist info for takeover when the snooze alarm fires
+        // while our process is still alive (silent loop keeps it alive).
+        var playlistID: UUID? = nil
+        if case .random(let pid) = alarm.sound { playlistID = pid }
+        if case .precomposedPlaylist(let pid, _) = alarm.sound { playlistID = pid }
         
         // Cancel pending backup alarm
         if let id = backupID {
@@ -781,6 +800,20 @@ final class AlarmPlaybackService: NSObject {
                 pendingSnoozeAlarmID = snoozeID
                 
                 SmartWakeDebugLog.log("SNOOZE: scheduled AlarmKit snooze id=\(snoozeID.uuidString) at \(snoozeFireDate) for \(snoozeMinutes) min")
+
+                // Playlist takeover context: if the silent loop keeps us alive,
+                // SmartWakeService replaces the floor-sound ring with the playlist.
+                if let pid = playlistID {
+                    AlarmPlaybackService.shared.snoozeTakeoverContext =
+                        (alarm: alarm, playlistID: pid, occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)")
+                }
+
+                // Keep the app alive during the snooze window so the snooze
+                // re-ring can be taken over with the playlist (Task 9e-6).
+                Task { @MainActor in
+                    await SmartWakeService.shared.startIfReadyForeground()
+                    SmartWakeDebugLog.log("SNOOZE: silent loop restarted for snooze window")
+                }
                 
                 // Post local notification for snooze feedback
                 let content = UNMutableNotificationContent()
