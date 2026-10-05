@@ -143,11 +143,12 @@ public extension ExtensionAlarmSchedulingService {
             sound: AlarmSound = .systemDefault,
             loudness: AlarmLoudness = .defaultValue
         ) -> UUID {
-            // Use StableOccurrenceID for stable IDs
-            StableOccurrenceID.make(
-                alarmID: occurrence.alarmID,
-                occurrenceKey: "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(sound.id)|\(loudness.percentage)"
-            )
+            // STABLE ID: alarmID | occurrenceKey | label | loudness | kind (no sound.id)
+            // This prevents AlarmKit churn when sound resolution changes (e.g., random mode).
+            // The sound is still passed in the AlarmConfiguration for the actual alert.
+            let kind = occurrence.occurrenceKey.hasSuffix("-BACKUP") ? "backup" : "primary"
+            var key = "\(Int64(occurrence.effectiveDate.timeIntervalSince1970))|\(label)|\(loudness.percentage)|\(kind)"
+            return StableOccurrenceID.make(alarmID: occurrence.alarmID, occurrenceKey: key)
         }
     }
 }

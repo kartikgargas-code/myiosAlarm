@@ -101,7 +101,25 @@ final class AlarmCoordinator {
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
-        await commit({ try $0.setEnabled(enabled, id: id) }, reason: "toggle")
+        // Fast-path: mutate engine + persist immediately so UI flips instantly.
+        // Then run reconciliation (sound resolution + AlarmKit) in background.
+        var candidate = engine
+        do {
+            try candidate.setEnabled(enabled, id: id)
+            candidate.pruneExpiredOverrides(now: now())
+            try persistence.save(candidate.snapshot)
+            writeAlarmsToAppGroup(candidate.snapshot)
+            engine = candidate
+            publish() // UI updates immediately
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+        
+        // Background reconciliation - does not block UI
+        Task { @MainActor in
+            await performCommit({ _ in }, reason: "toggle")
+        }
     }
 
     func adjustNext(id: UUID, minutes: Int) async {
@@ -205,17 +223,18 @@ final class AlarmCoordinator {
         return nil
     }
 
-    /// Recompute the possible schedule UUIDs for an occurrence (sound variants).
+    /// Recompute the possible schedule UUIDs for an occurrence.
+    /// Returns ONE stable ID per (alarm, occurrence, kind) — sound-independent.
+    /// For backup alarms, uses a distinct kind suffix so they don't collide.
     private func candidateScheduleIDs(for alarm: AlarmRecord, occurrence: AlarmOccurrence, label: String) -> Set<UUID> {
-        var ids: Set<UUID> = []
-        if let (soundToUse, _) = try? resolveSoundForOccurrence(alarm: alarm, occurrence: occurrence, engine: engine) {
-            ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: soundToUse, loudness: alarm.loudness))
-            if let hash = desiredSelectionHash(for: soundToUse) {
-                ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: soundToUse, loudness: alarm.loudness, selectionHash: hash))
-            }
-        }
-        ids.insert(SystemScheduleID.make(for: occurrence, label: label, sound: alarm.sound, loudness: alarm.loudness))
-        return ids
+        // Stable key: alarmID | occurrenceKey | label | loudness | kind
+        // Does NOT include sound.id or selectionHash — those are handled by the
+        // actual SystemScheduleID.make when scheduling, but the reconciliation
+        // set must be stable so cancelling=0 on no-op toggles.
+        let kind = occurrence.occurrenceKey.hasSuffix("-BACKUP") ? "backup" : "primary"
+        let key = "\(occurrence.alarmID.uuidString)|\(occurrence.occurrenceKey)|\(label)|\(alarm.loudness.percentage)|\(kind)"
+        let stableID = StableOccurrenceID.make(alarmID: occurrence.alarmID, occurrenceKey: key)
+        return [stableID]
     }
 
     #if DEBUG

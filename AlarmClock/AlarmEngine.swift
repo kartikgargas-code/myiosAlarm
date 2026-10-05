@@ -128,7 +128,9 @@ public struct AlarmEngine {
         for index in snapshot.alarms.indices {
             snapshot.alarms[index].overrides = snapshot.alarms[index].overrides.filter { key, _ in
                 guard let date = baseDate(for: key, alarm: snapshot.alarms[index]) else { return false }
-                return date >= now.addingTimeInterval(-86_400)
+                // Keep ALL future occurrences (date >= now) and recent past (last 24h)
+                // This ensures random overrides for upcoming occurrences persist across reconciles
+                return date >= now || date >= now.addingTimeInterval(-86_400)
             }
         }
     }
