@@ -11,9 +11,14 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
     private let now: () -> Date
     
     public init(
-        appGroupIdentifier: String = "group.com.example.alarmclock",
         now: @escaping () -> Date = Date.init
     ) {
+        // Resolve App Group at runtime (AltStore resigns with team ID suffix)
+        let configured = (Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String)
+            ?? "group.com.example.alarmclock"
+        let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let appGroupIdentifier = resignedGroups.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+        
         let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         )

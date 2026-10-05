@@ -136,6 +136,7 @@ targets:
       - path: AlarmClockWidgetExtension
       - path: AlarmClock/NextAlarmLiveActivityView.swift
       - path: AlarmClockWidgetExtension/WidgetAlarmService.swift
+      - path: AlarmClock/ExtensionAlarmSchedulingService.swift
     dependencies:
       - target: AlarmClockShared
     settings:

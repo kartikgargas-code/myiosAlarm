@@ -5,6 +5,8 @@ import ActivityKit
 import AlarmClockShared
 import os.log
 import CoreFoundation
+import AlarmKit
+import ExtensionAlarmSchedulingService
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
@@ -407,13 +409,23 @@ struct SkipNextAlarmIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
-        // Resolve the next alarm at perform time (no parameter needed)
+        let scheduler = ExtensionAlarmSchedulingService()
+        // Resolve the next alarm at perform time
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
             return .result()
         }
         let alarmID = alarm.id
+        
+        // 1. Mutate engine + persist
         _ = try await service.skipNextAlarm(alarmID: alarmID)
+        
+        // 2. Reconcile AlarmKit for this alarm
+        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "skip")
+        
+        // 3. Log to App Group debug log
+        SmartWakeDebugLog.log("WIDGET ACTION: skipNext alarmID=\(alarmID.uuidString)")
+        
         postDarwinNotification("com.example.alarmclock.widget.changed")
         return .result()
     }
@@ -428,12 +440,18 @@ struct AlarmMinus10Intent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
+        let scheduler = ExtensionAlarmSchedulingService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
             return .result()
         }
         let alarmID = alarm.id
+        
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: -10)
+        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "adjust-10")
+        
+        SmartWakeDebugLog.log("WIDGET ACTION: adjust-10 alarmID=\(alarmID.uuidString)")
+        
         postDarwinNotification("com.example.alarmclock.widget.changed")
         return .result()
     }
@@ -448,15 +466,75 @@ struct AlarmPlus10Intent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let service = WidgetAlarmService()
+        let scheduler = ExtensionAlarmSchedulingService()
         let snapshot = try service.loadSnapshot()
         guard let alarm = snapshot.alarms.first(where: { $0.isEnabled }) else {
             return .result()
         }
         let alarmID = alarm.id
+        
         _ = try await service.adjustNextAlarm(alarmID: alarmID, minutes: 10)
+        try await reconcileAlarmKitForAlarm(scheduler: scheduler, alarmID: alarmID, reason: "adjust+10")
+        
+        SmartWakeDebugLog.log("WIDGET ACTION: adjust+10 alarmID=\(alarmID.uuidString)")
+        
         postDarwinNotification("com.example.alarmclock.widget.changed")
         return .result()
     }
+}
+
+/// Reconcile AlarmKit for a single alarm after widget intent mutation
+/// Builds minimal DesiredSystemAlarm set for the affected occurrence
+@MainActor
+private func reconcileAlarmKitForAlarm(
+    scheduler: ExtensionAlarmSchedulingService,
+    alarmID: UUID,
+    reason: String
+) async throws {
+    let service = WidgetAlarmService()
+    let snapshot = try service.loadSnapshot()
+    guard let alarm = snapshot.alarms.first(where: { $0.id == alarmID }),
+          let occurrence = AlarmEngine(snapshot: snapshot).nextOccurrence(for: alarmID, now: Date()) else {
+        return
+    }
+    
+    // Use a fixed built-in floor sound for shifted/skipped occurrences
+    // The app re-reconciles on next foreground and will restore the real sound
+    let floorSoundName = "default"
+    let floorSound: AlertConfiguration.AlertSound = .named(floorSoundName)
+    let label = alarm.label.isEmpty ? "Alarm" : alarm.label
+    
+    // Cancel existing AlarmKit alarms for this occurrence by scanning metadata
+    let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+    let occurrenceKey = occurrence.occurrenceKey
+    for kitAlarm in kitAlarms {
+        if let metadata = kitAlarm.attributes.metadata as? ExtensionAlarmSchedulingService.ScheduledOccurrenceMetadata {
+            if metadata.alarmID == alarmID && metadata.occurrenceKey.hasPrefix(occurrenceKey) {
+                try? AlarmManager.shared.cancel(id: kitAlarm.id)
+                SmartWakeDebugLog.log("WIDGET RECONCILE CANCEL: \(kitAlarm.id.uuidString) for \(metadata.occurrenceKey)")
+            }
+        }
+    }
+    
+    // Schedule new AlarmKit alarm at the new time with floor sound
+    let newDesired = ExtensionAlarmSchedulingService.DesiredSystemAlarm(
+        id: ExtensionAlarmSchedulingService.SystemScheduleID.make(
+            for: occurrence,
+            label: label,
+            sound: alarm.sound,
+            loudness: alarm.loudness
+        ),
+        occurrence: occurrence,
+        label: label,
+        sound: alarm.sound,
+        alarmKitSound: floorSound,
+        snoozeDurationMinutes: alarm.snoozeDurationMinutes
+    )
+    
+    let managedIDs = Set(snapshot.managedSystemAlarmIDs)
+    _ = try await scheduler.reconcile(desired: [newDesired], managedIDs: managedIDs, reason: reason)
+    
+    SmartWakeDebugLog.log("WIDGET RECONCILE SCHEDULE: \(newDesired.id.uuidString) at \(occurrence.effectiveDate) for \(reason)")
 }
 
 /// Control Widget Button: Skip next alarm
