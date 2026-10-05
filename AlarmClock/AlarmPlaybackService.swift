@@ -812,7 +812,7 @@ final class AlarmPlaybackService: NSObject {
                 // re-ring can be taken over with the playlist (Task 9e-6).
                 Task { @MainActor in
                     await SmartWakeService.shared.startIfReadyForeground()
-                    SmartWakeDebugLog.log("SNOOZE: silent loop restarted for snooze window")
+                    SmartWakeDebugLog.log("SNOOZE: loop after restart running=\(SmartWakeService.shared.isRunning)")
                 }
                 
                 // Post local notification for snooze feedback
