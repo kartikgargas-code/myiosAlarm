@@ -71,9 +71,10 @@ struct NextAlarmControl: ControlWidget {
 }
 
 /// App Intent to open the Next Alarm control screen
-struct OpenNextAlarmIntent: OpenIntent {
+struct OpenNextAlarmIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Next Alarm"
-    
+    static let openAppWhenRun: Bool = true
+
     init() {}
     
     func perform() async throws -> some IntentResult {
