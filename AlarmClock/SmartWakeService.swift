@@ -80,9 +80,11 @@ final class SmartWakeService {
         startStatusTick()
     }
     
-    /// Generate composite arming key from alarm ID and occurrence key
-    private func makeArmingKey(alarmID: UUID, occurrenceKey: String) -> String {
-        "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
+    /// Generate composite arming key from alarm ID and occurrence key (includes fire time for uniqueness)
+    /// Key format: "alarmID_prefix|effectiveDate_timestamp"
+    private func makeArmingKey(alarmID: UUID, occurrenceKey: String, effectiveDate: Date) -> String {
+        let timestamp = Int(effectiveDate.timeIntervalSince1970)
+        return "\(alarmID.uuidString.prefix(8))|\(timestamp)"
     }
     
     private var statusTickTask: Task<Void, Never>?
@@ -672,7 +674,7 @@ final class SmartWakeService {
                 let timeToFire = occurrence.effectiveDate.timeIntervalSince(now)
                 let occurrenceKey = occurrence.occurrenceKey
                 let alarmID = occurrence.alarmID
-                let armingKey = makeArmingKey(alarmID: alarmID, occurrenceKey: occurrenceKey)
+                let armingKey = makeArmingKey(alarmID: alarmID, occurrenceKey: occurrenceKey, effectiveDate: occurrence.effectiveDate)
                 
                 guard timeToFire > 0 && timeToFire <= 60 && !armedOccurrences.contains(armingKey) else {
                     continue
@@ -689,15 +691,17 @@ final class SmartWakeService {
             // Clean up old armed occurrences (past fire time + tolerance)
             let cleanupThreshold = now.addingTimeInterval(-10) // 10 seconds past
             let keysToRemove = armedOccurrences.filter { key in
-                // Parse the composite key: "alarmID|occurrenceKey"
+                // Parse the composite key: "alarmID_prefix|effectiveDate_timestamp"
                 let components = key.split(separator: "|")
                 guard components.count == 2 else { return true } // Remove if malformed
                 let alarmIDString = String(components[0])
-                let occurrenceKey = String(components[1])
+                let timestampString = String(components[1])
+                guard let effectiveDateTimestamp = Int(timestampString) else { return true }
+                let effectiveDate = Date(timeIntervalSince1970: TimeInterval(effectiveDateTimestamp))
                 
                 // Find the occurrence for this key and check if it's past
                 if let occ = desiredOccurrences.first(where: { 
-                    $0.occurrenceKey == occurrenceKey && $0.alarmID.uuidString.prefix(8) == alarmIDString 
+                    $0.alarmID.uuidString.prefix(8) == alarmIDString && $0.effectiveDate == effectiveDate
                 }) {
                     return occ.effectiveDate < cleanupThreshold
                 }
@@ -767,7 +771,9 @@ final class SmartWakeService {
             }
             
             // WAKE DUPLICATE GUARD: one wake run per alarm+occurrence (two alarms may share a minute)
-            let wakeKey = "\(occurrence.alarmID.uuidString)|\(occurrenceKey)"
+            // Key format: "alarmID|effectiveDate_timestamp" to uniquely identify each fire time
+            let effectiveTimestamp = Int(occurrence.effectiveDate.timeIntervalSince1970)
+            let wakeKey = "\(occurrence.alarmID.uuidString)|\(effectiveTimestamp)"
             if firedTransitionWakes.contains(wakeKey) {
                 os_log(.info, log: log, "WAKE DUPLICATE ignored for %{public}s", wakeKey)
                 SmartWakeDebugLog.log("WAKE DUPLICATE ignored for \(wakeKey)")
