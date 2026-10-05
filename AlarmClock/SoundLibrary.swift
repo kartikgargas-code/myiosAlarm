@@ -96,6 +96,7 @@ final class SoundLibrary {
     private(set) var playlists: [Playlist] = []
     private let fileManager = FileManager.default
     private let displayNameKey = "importedSoundDisplayNames"
+    private let durationKey = "importedSoundDurations"
     private let playlistKey = "playlists"
 
     var soundsDirectory: URL? {
@@ -143,13 +144,55 @@ final class SoundLibrary {
                     id: stableID(for: fileName),
                     name: pretty,
                     fileName: fileName,
-                    duration: nil,
+                    duration: savedDurations()[fileName],
                     dateAdded: creationDate
                 )
             }.sorted { $0.dateAdded > $1.dateAdded }
+            backfillMissingDurations()
         } catch {
             importedSounds = []
         }
+    }
+
+    /// Existing sounds predate persisted durations: compute them off the main
+    /// actor and publish so playlist rows stop showing "Unknown duration".
+    private func backfillMissingDurations() {
+        let targets = importedSounds.filter { $0.duration == nil }
+        guard !targets.isEmpty else { return }
+        let dir = soundsDirectory
+        Task.detached(priority: .utility) { [weak self] in
+            var measured: [(fileName: String, duration: TimeInterval)] = []
+            for sound in targets {
+                guard let dir, let url = sound.localURL(soundsDirectory: dir),
+                      FileManager.default.fileExists(atPath: url.path) else { continue }
+                var duration: TimeInterval? = nil
+                if let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
+                   seconds.isFinite, seconds > 0 {
+                    duration = seconds
+                }
+                if let duration { measured.append((sound.fileName, duration)) }
+            }
+            guard !measured.isEmpty else { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                for (fileName, seconds) in measured {
+                    if let i = self.importedSounds.firstIndex(where: { $0.fileName == fileName }) {
+                        self.importedSounds[i].duration = seconds
+                    }
+                    self.setDurationOverride(seconds, for: fileName)
+                }
+            }
+        }
+    }
+
+    private func savedDurations() -> [String: Double] {
+        (UserDefaults.standard.dictionary(forKey: durationKey) as? [String: Double]) ?? [:]
+    }
+
+    private func setDurationOverride(_ seconds: Double, for fileName: String) {
+        var overrides = savedDurations()
+        overrides[fileName] = seconds
+        UserDefaults.standard.set(overrides, forKey: durationKey)
     }
 
     private func loadPlaylists() {
@@ -219,6 +262,9 @@ final class SoundLibrary {
             fileName: copied.fileName,
             duration: copied.duration
         )
+        if let d = copied.duration {
+            setDurationOverride(d, for: copied.fileName)
+        }
         importedSounds.insert(sound, at: 0)
         return sound
     }
@@ -304,6 +350,9 @@ final class SoundLibrary {
                     fileName: info.fileName,
                     duration: info.duration
                 )
+                if let d = info.duration {
+                    self.setDurationOverride(d, for: info.fileName)
+                }
                 self.importedSounds.insert(sound, at: 0)
             }
 
