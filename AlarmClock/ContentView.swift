@@ -205,7 +205,7 @@ struct ContentView: View {
                         }
                     }
                 } else if newPhase == .inactive {
-                    // Last foreground moment before lock/suspend — ensure Smart Wake is running
+                    // Last foreground moment before lock/suspend \u{2014} ensure Smart Wake is running
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
                             await smartWakeService.startIfReadyForeground()
@@ -223,12 +223,12 @@ struct ContentView: View {
     /// and only fired on foreground transitions.
     private func checkForActiveRing() {
         // Black-box recorder: dump full AlarmKit state every time the app comes
-        // to foreground. This is how we diagnose the snooze display mystery —
+        // to foreground. This is how we diagnose the snooze display mystery \u{2014}
         // after a snooze tap, reopening the app prints the alarm's true state
         // (alerting / countdown / paused) and countdown dates.
         coordinator.logAlarmKitState()
 
-        // SINGLE SOURCE OF TRUTH for ring detection — do not add a second check elsewhere.
+        // SINGLE SOURCE OF TRUTH for ring detection \u{2014} do not add a second check elsewhere.
         if let result = coordinator.currentlyRingingAlarm() {
             let newSongName = result.songName
             // Only assign if value actually differs to prevent render churn
@@ -610,7 +610,7 @@ struct DiagnosticsScreen: View {
             Text("Smart Wake Loop Status")
                 .font(.subheadline.weight(.semibold))
             
-            let status = SmartWakeService.shared.isRunning ? "ALIVE — silent loop running" : "DEAD — no silent loop"
+            let status = SmartWakeService.shared.isRunning ? "ALIVE \u{2014} silent loop running" : "DEAD \u{2014} no silent loop"
             let color = SmartWakeService.shared.isRunning ? Color.green : Color.red
             
             Text(status)
