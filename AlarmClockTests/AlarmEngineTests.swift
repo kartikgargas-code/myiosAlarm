@@ -331,13 +331,35 @@ final class AlarmEngineTests: XCTestCase {
         let soundID = UUID()
         let baseline = SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(soundID), loudness: AlarmLoudness(50))
 
+        // Changing loudness SHOULD change the ID
         XCTAssertNotEqual(
             baseline,
             SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(soundID), loudness: AlarmLoudness(51))
         )
-        XCTAssertNotEqual(
+        
+        // Changing sound should NOT change the ID (stable ID - sound removed from key)
+        XCTAssertEqual(
             baseline,
             SystemScheduleID.make(for: occurrence, label: "Morning", sound: .imported(UUID()), loudness: AlarmLoudness(50))
+        )
+        
+        // Changing label SHOULD change the ID
+        XCTAssertNotEqual(
+            baseline,
+            SystemScheduleID.make(for: occurrence, label: "Evening", sound: .imported(soundID), loudness: AlarmLoudness(50))
+        )
+        
+        // Changing occurrence (effective date) SHOULD change the ID
+        let laterOccurrence = AlarmOccurrence(
+            alarmID: occurrence.alarmID,
+            occurrenceKey: "\(occurrence.occurrenceKey)-LATER",
+            baseDate: occurrence.baseDate,
+            effectiveDate: occurrence.effectiveDate.addingTimeInterval(3600),
+            isAdjusted: false
+        )
+        XCTAssertNotEqual(
+            baseline,
+            SystemScheduleID.make(for: laterOccurrence, label: "Morning", sound: .imported(soundID), loudness: AlarmLoudness(50))
         )
     }
 
