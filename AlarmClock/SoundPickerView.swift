@@ -207,24 +207,19 @@ struct SoundPickerView: View {
             case .success(let urls):
                 if pickerMode == .files {
                     guard !urls.isEmpty else {
-                        pickerEventLog.append("[\(timestamp())] Picker returned no file")
                         return
                     }
-                    pickerEventLog.append("[\(timestamp())] Files selected: \(urls.map { $0.lastPathComponent }.joined(separator: ", "))")
                     for url in urls {
                         Task { await importSound(from: url) }
                     }
                 } else {
                     // Folder mode
                     guard let url = urls.first else {
-                        pickerEventLog.append("[\(timestamp())] Folder picker returned no folder")
                         return
                     }
-                    pickerEventLog.append("[\(timestamp())] Folder selected: \(url.lastPathComponent)")
                     Task { await importFolder(from: url) }
                 }
             case .failure(let error):
-                pickerEventLog.append("[\(timestamp())] Picker failed: \(error.localizedDescription)")
                 importError = "Picker failed: \(error.localizedDescription)"
             }
         }
@@ -337,8 +332,8 @@ struct SoundPickerView: View {
 
     private func builtInSoundURL(_ builtIn: BuiltInSound) -> URL? {
         let url = SoundPreviewService.bundledSoundURL(for: builtIn.fileName)
-        if url == nil, !pickerEventLog.contains(where: { $0.contains(builtIn.fileName) }) {
-            pickerEventLog.append("[\(timestamp())] Missing bundled resource: \(builtIn.fileName)")
+        if url == nil {
+            return nil
         }
         return url
     }
