@@ -610,7 +610,7 @@ struct DiagnosticsScreen: View {
             Text("Smart Wake Loop Status")
                 .font(.subheadline.weight(.semibold))
             
-            let status = SmartWakeService.shared.isRunning ? "ALIVE \u2014 silent loop running" : "DEAD \u2014 no silent loop"
+            let status = SmartWakeService.shared.isRunning ? "ALIVE — silent loop running" : "DEAD — no silent loop"
             let color = SmartWakeService.shared.isRunning ? Color.green : Color.red
             
             Text(status)
