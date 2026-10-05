@@ -601,8 +601,19 @@ final class AlarmPlaybackService: NSObject {
         os_log(.info, log: log, "Published Now Playing info for: %{public}s", displayName)
     }
 
-    /// Best-effort app icon for artwork fallback
+    /// Best-effort app icon for artwork fallback — uses asset catalog
     private static func appIconImage() -> UIImage? {
+        // Modern apps use asset catalog with CFBundleIconName; try common names
+        if let img = UIImage(named: "AppIcon") {
+            return img
+        }
+        if let img = UIImage(named: "AppIcon60x60") {
+            return img
+        }
+        if let img = UIImage(named: "AppIcon-1") {
+            return img
+        }
+        // Fallback: legacy CFBundleIcons lookup (pre-asset-catalog)
         guard let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
               let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
               let files = primary["CFBundleIconFiles"] as? [String],
