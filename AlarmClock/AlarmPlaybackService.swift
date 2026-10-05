@@ -316,9 +316,6 @@ final class AlarmPlaybackService: NSObject {
                 SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
             }
             
-            // Setup stop command for lock screen
-            setupStopCommand()
-            
         } catch {
             // Revert to mixable session
             SmartWakeDebugLog.log("PRIMARY PROMOTE failed code=\((error as NSError).code) desc=\(error.localizedDescription)")
@@ -337,48 +334,6 @@ final class AlarmPlaybackService: NSObject {
             } catch {
                 SmartWakeDebugLog.log("PRIMARY PROMOTE REVERT failed: \(error.localizedDescription)")
             }
-        }
-    }
-    
-    /// Setup stop command for lock screen that fully stops the alarm
-    private func setupStopCommand() {
-        let commandCenter = MPRemoteCommandCenter.shared()
-        
-        // Stop command - fully stops alarm (same as banner Stop)
-        commandCenter.stopCommand.isEnabled = true
-        commandCenter.stopCommand.addTarget { [weak self] _ in
-            self?.stop(reason: "lockscreen")
-            SmartWakeDebugLog.log("PLAYBACK stopped (reason: lockscreen)")
-            return .success
-        }
-        
-        // Pause command - pauses playback
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.pausePlayback()
-            return .success
-        }
-        
-        // Toggle play/pause - stop if playing, resume if paused
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            guard let self = self else { return .commandFailed }
-            if self.player?.isPlaying == true {
-                self.pausePlayback()
-            } else {
-                self.resumePlayback()
-            }
-            return .success
-        }
-        
-        // Re-publish Now Playing info with playbackState = .playing
-        if let currentTrackName = currentTrackName,
-           let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == currentTrackName }),
-           let currentPlayer = player {
-            let displayTrackName = displayName(for: sound.name)
-            publishNowPlayingInfo(for: sound, player: currentPlayer, displayName: displayTrackName)
-            MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
-            SmartWakeDebugLog.log("LOCKSCREEN CONTROLS published")
         }
     }
     
@@ -631,67 +586,37 @@ final class AlarmPlaybackService: NSObject {
     }
 
     /// Setup remote command center for lock screen controls
+    /// During alarm ringing: ONLY stop (■) + next (⏭ = snooze) enabled
+    /// Pause trap code kept for internal use if pause ever re-enabled
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
         
-        // Play/Pause
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
-            return .success
-        }
+        // DISABLED during alarm: play/pause/toggle/previous/seek
+        // iOS shows ■ on lock screen when stopCommand enabled AND pause/toggle disabled
+        commandCenter.togglePlayPauseCommand.isEnabled = false
+        commandCenter.playCommand.isEnabled = false
+        commandCenter.pauseCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.changePlaybackRateCommand.isEnabled = false
         
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.resumePlayback()
-            return .success
-        }
-        
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.pausePlayback()
-            return .success
-        }
-        
-        // Seek
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let self = self,
-                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
-                return .commandFailed
-            }
-            self.seek(to: positionEvent.positionTime)
-            return .success
-        }
-        
-        // Real Stop button (iOS draws a square icon when shown)
+        // Real Stop button (■ = stop alarm) - ENABLED
         commandCenter.stopCommand.isEnabled = true
         commandCenter.stopCommand.addTarget { [weak self] _ in
             SmartWakeDebugLog.log("REMOTE COMMAND: stop (STOP) fired")
             self?.handleStopCommand()
             return .success
         }
-
-        // Previous track = STOP alarm (stop playback, cancel backup, end alarm state, re-arm next day, restart silent loop)
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            SmartWakeDebugLog.log("REMOTE COMMAND: previousTrack (STOP) fired")
-            self?.handleStopCommand()
-            return .success
-        }
         
-        // Next track = SNOOZE (stop playback, cancel backup, schedule AlarmKit at now + snooze minutes with floor sound)
+        // Next track = SNOOZE (⏭ = snooze) - ENABLED
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             SmartWakeDebugLog.log("REMOTE COMMAND: nextTrack (SNOOZE) fired")
             self?.handleSnoozeCommand()
             return .success
         }
-        
-        // Disable skip forward/backward default handlers (we use next/previous instead)
-        commandCenter.skipForwardCommand.isEnabled = false
-        commandCenter.skipBackwardCommand.isEnabled = false
-        commandCenter.changePlaybackRateCommand.isEnabled = false
     }
 
     /// Remove remote command handlers
@@ -703,6 +628,7 @@ final class AlarmPlaybackService: NSObject {
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.stopCommand.removeTarget(nil)
         commandCenter.togglePlayPauseCommand.isEnabled = false
         commandCenter.playCommand.isEnabled = false
         commandCenter.pauseCommand.isEnabled = false
