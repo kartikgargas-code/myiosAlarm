@@ -101,6 +101,8 @@ final class AlarmCoordinator {
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
+        SmartWakeDebugLog.log("PERF: setEnabled start id=\(id.uuidString.prefix(8)) enabled=\(enabled)")
         // Fast-path: mutate engine + persist immediately so UI flips instantly.
         // Then run reconciliation (sound resolution + AlarmKit) in background.
         var candidate = engine
@@ -111,8 +113,10 @@ final class AlarmCoordinator {
             writeAlarmsToAppGroup(candidate.snapshot)
             engine = candidate
             publish() // UI updates immediately
+            SmartWakeDebugLog.log("PERF: setEnabled done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms (reconcile continues in background)")
         } catch {
             lastError = error.localizedDescription
+            SmartWakeDebugLog.log("PERF: setEnabled FAILED in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms: \(error.localizedDescription)")
             return
         }
         
@@ -351,6 +355,8 @@ final class AlarmCoordinator {
     }
 
     private func performCommit(_ mutation: (inout AlarmEngine) throws -> Void, reason: String) async {
+        let perfStart = CFAbsoluteTimeGetCurrent()
+        SmartWakeDebugLog.log("PERF: commit(\(reason)) start")
         var candidate = engine
         do {
             try mutation(&candidate)
@@ -383,8 +389,10 @@ final class AlarmCoordinator {
             engine = candidate
             lastError = nil
             publish()
+            SmartWakeDebugLog.log("PERF: commit(\(reason)) done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms")
         } catch {
             lastError = error.localizedDescription
+            SmartWakeDebugLog.log("PERF: commit(\(reason)) FAILED in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms: \(error.localizedDescription)")
         }
     }
 
