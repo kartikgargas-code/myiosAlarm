@@ -245,16 +245,21 @@ struct ContentView: View {
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
             }
-            .sheet(item: $exportURL) { url in
-                ExportDocument(url: url)
-                    .fileExporter(contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
-                        switch result {
-                        case .success(let url):
-                            SmartWakeDebugLog.log("Backup exported to \(url.path)")
-                        case .failure(let error):
-                            coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                        }
-                    }
+            .fileExporter(
+                isPresented: Binding(
+                    get: { exportURL != nil },
+                    set: { if !$0 { exportURL = nil } }
+                ),
+                document: exportURL.map { ExportDocument(url: $0) } ?? ExportDocument(url: URL(fileURLWithPath: "")),
+                contentType: .json,
+                defaultFilename: "AlarmClock_Backup"
+            ) { result in
+                switch result {
+                case .success(let url):
+                    SmartWakeDebugLog.log("Backup exported to \(url.path)")
+                case .failure(let error):
+                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
+                }
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
