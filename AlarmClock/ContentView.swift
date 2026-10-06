@@ -2,6 +2,7 @@
 import UIKit
 import AlarmKit
 import AlarmClockShared
+import UniformTypeIdentifiers
 import os.log
 
 struct ContentView: View {
@@ -24,6 +25,9 @@ struct ContentView: View {
     // Copy button feedback states
     @State private var smartWakeLogCopied = false
     @State private var smartWakeLogUnavailable = false
+    @State private var showingExportPicker = false
+    @State private var exportURL: URL?
+    @State private var showingImportPicker = false
 
     var body: some View {
         NavigationStack {
@@ -58,6 +62,23 @@ struct ContentView: View {
                         Button("AlarmKit Diagnostics") { showingDiagnostics = true }
                         Button("Themes") { showingAppearance = true }
                         Button("Play History") { showingHistory = true }
+                    }
+                    
+                    Section("Backup & Restore") {
+                        Button("Export Backup") {
+                            Task {
+                                do {
+                                    let url = try await BackupRestoreService.shared.exportArchive()
+                                    exportURL = url
+                                    showingExportPicker = true
+                                } catch {
+                                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
+                                }
+                            }
+                        }
+                        Button("Import Backup") {
+                            showingImportPicker = true
+                        }
                     }
 
                     Section("Smart Wake") {
@@ -225,6 +246,31 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
+            }
+            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(url: exportURL), contentType: .zip, defaultFilename: "AlarmClock_Backup") { result in
+                switch result {
+                case .success(let url):
+                    SmartWakeDebugLog.log("Backup exported to \(url.path)")
+                case .failure(let error):
+                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
+                }
+            }
+            .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        Task {
+                            do {
+                                try await BackupRestoreService.shared.importArchive(from: url)
+                                coordinator.lastError = nil
+                            } catch {
+                                coordinator.lastError = "Import failed: \(error.localizedDescription)"
+                            }
+                        }
+                    }
+                case .failure(let error):
+                    coordinator.lastError = "Import failed: \(error.localizedDescription)"
+                }
             }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {

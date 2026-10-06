@@ -189,10 +189,20 @@ final class SoundLibrary {
         (UserDefaults.standard.dictionary(forKey: durationKey) as? [String: Double]) ?? [:]
     }
 
+    /// Get all saved duration overrides (for backup/restore)
+    func savedDurationsForBackup() -> [String: TimeInterval] {
+        return savedDurations()
+    }
+
     private func setDurationOverride(_ seconds: Double, for fileName: String) {
         var overrides = savedDurations()
         overrides[fileName] = seconds
         UserDefaults.standard.set(overrides, forKey: durationKey)
+    }
+    
+    /// Set duration override (for backup/restore)
+    func setDurationOverrideForRestore(_ seconds: TimeInterval, for fileName: String) {
+        setDurationOverride(seconds, for: fileName)
     }
 
     private func loadPlaylists() {
@@ -503,10 +513,20 @@ final class SoundLibrary {
         (UserDefaults.standard.dictionary(forKey: displayNameKey) as? [String: String]) ?? [:]
     }
 
+    /// Get all saved display name overrides (for backup/restore)
+    func savedDisplayNamesForBackup() -> [String: String] {
+        return savedDisplayNames()
+    }
+
     private func setDisplayNameOverride(_ name: String, for fileName: String) {
         var overrides = savedDisplayNames()
         overrides[fileName] = name
         UserDefaults.standard.set(overrides, forKey: displayNameKey)
+    }
+    
+    /// Set display name override (for backup/restore)
+    func setDisplayNameOverrideForRestore(_ name: String, for fileName: String) {
+        setDisplayNameOverride(name, for: fileName)
     }
 
     private func removeDisplayNameOverride(for fileName: String) {
