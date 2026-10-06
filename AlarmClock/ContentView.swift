@@ -165,30 +165,6 @@ struct ContentView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
                 }
-                
-                // Control Center action feedback toast
-                if let feedback = coordinator.widgetActionFeedback {
-                    VStack {
-                        HStack {
-                            Image(systemName: "bell.badge")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text(feedback)
-                                .font(.subheadline)
-                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(ThemeManager.shared.colors.background.opacity(0.95))
-                        .cornerRadius(12)
-                        .shadow(radius: 4)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        Spacer()
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: coordinator.widgetActionFeedback)
-                }
             }
             .sheet(isPresented: $showingEditor) {
                 // Fresh identity per alarm so @State(initialValue:) re-runs —

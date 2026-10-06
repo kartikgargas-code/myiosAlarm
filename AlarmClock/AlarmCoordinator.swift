@@ -40,9 +40,6 @@ final class AlarmCoordinator {
     /// Diagnostic: last WidgetCenter reload request timestamp
     private(set) var lastWidgetReloadRequest: Date? = nil
 
-    /// Feedback message for Control Center actions (shown as toast or notification)
-    @Published var widgetActionFeedback: String? = nil
-
     /// Live Activity / Dynamic Island toggle — when false, never request and end all existing on launch
     static let liveActivityEnabled = false
 
@@ -484,53 +481,6 @@ final class AlarmCoordinator {
                 return
             }
             SmartWakeDebugLog.log("WIDGET ACTION APPLY: handed to commit (\(action.action))")
-            
-            // Generate feedback message and show it
-            let formatter = DateFormatter()
-            formatter.setLocalizedDateFormatFromTemplate("j:mm a")
-            formatter.timeZone = TimeZone.current
-            let nextTime = formatter.string(from: self.nextOccurrence?.effectiveDate ?? Date())
-            let actionText: String
-            switch action.action {
-            case PendingWidgetAction.skip:
-                actionText = "Next alarm skipped"
-            case PendingWidgetAction.adjustEarlier:
-                actionText = "Alarm moved -10 min"
-            case PendingWidgetAction.adjustLater:
-                actionText = "Alarm moved +10 min"
-            default:
-                actionText = "Alarm adjusted"
-            }
-            let feedback = "\(actionText) · next \(nextTime)"
-            
-            // Set feedback for in-app toast (if foreground)
-            self.widgetActionFeedback = feedback
-            
-            // Clear feedback after 5 seconds
-            Task {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if self.widgetActionFeedback == feedback {
-                    self.widgetActionFeedback = nil
-                }
-            }
-            
-            // Post local notification for background feedback
-            let content = UNMutableNotificationContent()
-            content.title = "Alarm Clock"
-            content.body = feedback
-            content.sound = nil
-            let request = UNNotificationRequest(
-                identifier: "CC_FEEDBACK_\(action.alarmID.uuidString)_\(Date().timeIntervalSince1970)",
-                content: content,
-                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-            )
-            UNUserNotificationCenter.current().add(request) { error in
-                if let error = error {
-                    SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")
-                } else {
-                    SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(feedback)")
-                }
-            }
         } catch {
             SmartWakeDebugLog.log("WIDGET ACTION APPLY FAILED: \(error.localizedDescription)")
         }
