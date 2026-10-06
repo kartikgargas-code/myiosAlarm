@@ -17,6 +17,15 @@ struct SoundPickerView: View {
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
 
+    // Local copy for Cancel/Save behavior
+    @State private var initialSelection: AlarmSound
+    
+    init(selectedSound: Binding<AlarmSound>, alarms: [AlarmRecord]) {
+        self._selectedSound = selectedSound
+        self.alarms = alarms
+        self._initialSelection = State(initialValue: selectedSound.wrappedValue)
+    }
+
     private let preview = SoundPreviewService.shared
     
     // Computed properties for Selected section
@@ -46,7 +55,7 @@ struct SoundPickerView: View {
         switch selectedSound {
         case .systemDefault: return "System default alarm sound"
         case .builtIn: return "Bundled alarm sound"
-        case .imported: return "Imported from Files"
+        case .imported: return "Imported"
         case .random(let playlistID):
             if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
                 return "Random from \(playlist.selectedSoundIDs.count) songs in \(playlist.name)"
@@ -175,7 +184,7 @@ struct SoundPickerView: View {
                         soundRow(
                             sound: .imported(sound.id),
                             label: sound.name,
-                            description: "Imported from Files",
+                            description: "Imported",
                             previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
                         )
                     }
@@ -193,8 +202,15 @@ struct SoundPickerView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Alarm Sound")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        selectedSound = initialSelection
+                        dismiss()
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Save") { dismiss() }
+                    .disabled(false)
                 }
             }
         }
@@ -246,7 +262,7 @@ struct SoundPickerView: View {
             // Selection updates immediately and independently of preview playback.
             selectedSound = sound
         } label: {
-            HStack {
+            HStack(spacing: 12) {
                 // Play/Pause toggle on the left (like playlist editor)
                 if let previewURL {
                     Button {
@@ -268,7 +284,7 @@ struct SoundPickerView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(label)
                         .font(.body)
                         .foregroundStyle(ThemeManager.shared.colors.primaryText)
@@ -288,6 +304,7 @@ struct SoundPickerView: View {
                         .font(.title2)
                 }
             }
+            .padding(.vertical, 4)  // Compact vertical insets
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -426,7 +443,7 @@ struct PlaylistCreatorView: View {
                                 Text(sound.name)
                                     .font(.body)
                                     .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                Text("Imported from Files")
+                                Text("Imported")
                                     .font(.caption)
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
@@ -474,6 +491,7 @@ struct PlaylistEditorView: View {
     let playlist: Playlist
     let alarms: [AlarmRecord]
     @State private var selectedSoundIDs: Set<UUID>
+    @State private var initialSelectedSoundIDs: Set<UUID>
     @State private var showingDeleteConfirmation = false
     @State private var deleteError: String?
     @State private var sortOption: PlaylistSortOption
@@ -483,7 +501,9 @@ struct PlaylistEditorView: View {
     init(playlist: Playlist, alarms: [AlarmRecord]) {
         self.playlist = playlist
         self.alarms = alarms
-        self._selectedSoundIDs = State(initialValue: Set(playlist.selectedSoundIDs))
+        let initial = Set(playlist.selectedSoundIDs)
+        self._selectedSoundIDs = State(initialValue: initial)
+        self._initialSelectedSoundIDs = State(initialValue: initial)
         self._sortOption = State(initialValue: playlist.sortOption)
         self._playOrder = State(initialValue: playlist.playOrder)
     }
@@ -600,7 +620,10 @@ struct PlaylistEditorView: View {
             .onDisappear { previewService.stop() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        selectedSoundIDs = initialSelectedSoundIDs
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
