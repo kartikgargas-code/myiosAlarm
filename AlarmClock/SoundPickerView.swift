@@ -275,6 +275,7 @@ struct SoundPickerView: View {
                         Image(systemName: isPlayingThis ? "pause.circle.fill" : "play.circle")
                             .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .frame(width: 36, height: 36)
                     }
                     .buttonStyle(.plain)
                 } else {
@@ -282,6 +283,7 @@ struct SoundPickerView: View {
                     Image(systemName: "speaker.slash")
                         .font(.title3)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        .frame(width: 36, height: 36)
                 }
                 
                 VStack(alignment: .leading, spacing: 1) {
@@ -308,6 +310,7 @@ struct SoundPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
         .accessibilityLabel("\(label), \(isSelected ? "selected" : description)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -347,15 +350,17 @@ struct SoundPickerView: View {
                         Image(systemName: isPlayingThis ? "pause.circle.fill" : "play.circle")
                             .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .frame(width: 36, height: 36)
                     }
                     .buttonStyle(.plain)
                 } else {
                     Image(systemName: "speaker.slash")
                         .font(.title3)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        .frame(width: 36, height: 36)
                 }
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text("Random — \(playlist.name)")
                         .font(.body)
                         .foregroundStyle(ThemeManager.shared.colors.primaryText)
@@ -378,6 +383,7 @@ struct SoundPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
         .contextMenu {
             Button {
                 showingPlaylistEditor = playlist
