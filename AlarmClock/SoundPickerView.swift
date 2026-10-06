@@ -307,7 +307,6 @@ struct SoundPickerView: View {
         let firstPreviewURL = firstSoundID.flatMap { soundID in
             SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
         }
-        let isPlayingThis = preview.playingSoundID == randomSound.id
 
         return Button {
             selectedSound = randomSound
