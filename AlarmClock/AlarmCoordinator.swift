@@ -445,7 +445,7 @@ final class AlarmCoordinator {
             // re-arm via synchronize) - one render per arming. Editor saves stay
             // sticky-cached and fast.
             let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust", "synchronize"]
-            let (desired, soundWarnings) = await desiredSystemAlarms(
+            let (desired, soundWarnings, armedSoundNames) = await desiredSystemAlarms(
                 from: candidate,
                 freshStitch: freshReasons.contains(reason),
                 protectedFileNames: lastArmedSoundFileNames
@@ -472,10 +472,7 @@ final class AlarmCoordinator {
             )
             // Track the sound files the armed set references - the armed-aware
             // cache prune must never delete these.
-            lastArmedSoundFileNames = Set(desired.compactMap { item -> String? in
-                if case .named(let name) = item.alarmKitSound { return name }
-                return nil
-            })
+            lastArmedSoundFileNames = armedSoundNames
             maybePruneStitchCacheDaily()
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
@@ -639,13 +636,14 @@ final class AlarmCoordinator {
         from engine: AlarmEngine,
         freshStitch: Bool = false,
         protectedFileNames: Set<String> = []
-    ) async -> ([DesiredSystemAlarm], [String]) {
+    ) async -> ([DesiredSystemAlarm], [String], Set<String>) {
         var mutableEngine = engine
         let now = now()
         // ARM ONLY THE NEXT OCCURRENCE per alarm (plus its -BACKUP if playlist + Smart Wake)
         // The re-arm path after fire/skip/snooze will arm the following occurrence
         var results: [DesiredSystemAlarm] = []
         var warnings: [String] = []
+        var armedSoundFileNames: Set<String> = []
         
         let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
         let backupDelay = AlarmCoordinator.backupDelaySeconds
@@ -699,12 +697,16 @@ final class AlarmCoordinator {
                     // Only resolve (and for playlists, fully render) the primary
                     // stitch when the primary is actually armed. With Smart Wake on
                     // the primary is never armed, so skip the uncapped render.
-                    let alarmKitSound = try await alarmKitSound(
+                    let resolvedAlarmKitSound = try await alarmKitSoundWithFileName(
                         for: soundToUse,
                         loudness: alarm.loudness,
                         forcedSelection: forcedSelection,
                         protectedFileNames: protectedFileNames
                     )
+                    let alarmKitSound = resolvedAlarmKitSound.sound
+                    if let soundFileName = resolvedAlarmKitSound.fileName {
+                        armedSoundFileNames.insert(soundFileName)
+                    }
                     let primaryItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
                             for: occurrence,
@@ -776,6 +778,7 @@ final class AlarmCoordinator {
                     }
                     
                     let backupAlarmKitSound: AlertConfiguration.AlertSound = .named(processedFileName)
+                    armedSoundFileNames.insert(processedFileName)
                     
                     let backupItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
@@ -806,7 +809,7 @@ final class AlarmCoordinator {
         let backupCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") }.count
         SmartWakeDebugLog.log("DESIRED ALARMS SUMMARY: total=\(results.count) primary=\(primaryCount) backup=\(backupCount) userAlarms=\(nextOccurrences.count)")
         
-        return (results, warnings)
+        return (results, warnings, armedSoundFileNames)
     }
     
     /// Add an emergency re-ring ID so it's excluded from reconciliation cancellation
@@ -885,6 +888,25 @@ final class AlarmCoordinator {
         forcedSelection: [UUID]? = nil,
         protectedFileNames: Set<String> = []
     ) async throws -> AlertConfiguration.AlertSound {
+        try await alarmKitSoundWithFileName(
+            for: sound,
+            loudness: loudness,
+            forcedSelection: forcedSelection,
+            protectedFileNames: protectedFileNames
+        ).sound
+    }
+
+    /// Resolve the AlarmKit sound AND the file name backing it (nil for the
+    /// system default). AlarmSound's .named is a factory, not an enum case, so
+    /// the name must be returned alongside instead of pattern-matched out.
+    /// The name feeds the armed-aware cache prune: AlarmKit plays by filename,
+    /// so those files must never be deleted while the alarm is armed.
+    func alarmKitSoundWithFileName(
+        for sound: AlarmSound,
+        loudness: AlarmLoudness = .hundred,
+        forcedSelection: [UUID]? = nil,
+        protectedFileNames: Set<String> = []
+    ) async throws -> (sound: AlertConfiguration.AlertSound, fileName: String?) {
         switch sound {
         case .systemDefault:
             return .default
@@ -895,7 +917,7 @@ final class AlarmCoordinator {
             guard SoundPreviewService.bundledSoundURL(for: fileName) != nil else {
                 throw SoundLibraryError.builtInSoundMissing(fileName)
             }
-            return .named(fileName)
+            return (.named(fileName), fileName)
         case .imported(let id):
             let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
             
@@ -918,10 +940,10 @@ final class AlarmCoordinator {
                     if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
                         try FileManager.default.copyItem(at: processedURL, to: alarmKitURL)
                     }
-                    return .named(processedFileName)
+                    return (.named(processedFileName), processedFileName)
                 }
             }
-            return .named(fileName)
+            return (.named(fileName), fileName)
         case .random:
             // Random sound should have been resolved to precomposedPlaylist by the caller,
             // but if we get here, fall back to first song in playlist or built-in
@@ -932,10 +954,10 @@ final class AlarmCoordinator {
                let firstSoundID = playlist.selectedSoundIDs.first,
                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
                let fileName = try? SoundLibrary.shared.alarmKitFileName(for: firstSoundID) {
-                return .named(fileName)
+                return (.named(fileName), fileName)
             }
             // Ultimate fallback: built-in sound
-            return .named("classic-bell.wav")
+            return (.named("classic-bell.wav"), "classic-bell.wav")
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
             let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
@@ -979,7 +1001,7 @@ final class AlarmCoordinator {
             
             // Store for later update after scheduling
             // For now, we'll just return the sound
-            return .named(processedFileName)
+            return (.named(processedFileName), processedFileName)
         }
     }
 
