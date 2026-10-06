@@ -718,7 +718,7 @@ final class AlarmPlaybackService: NSObject {
         }
     }
     
-    /// Handle SNOOZE command from lock screen (next track)
+        /// Handle SNOOZE command from lock screen (next track)
     private func handleSnoozeCommand() {
         // Snapshot backup ID locally BEFORE async cancel — prevents double-cancel on duplicate deliveries
         let backupID = pendingBackupAlarmID
@@ -742,9 +742,9 @@ final class AlarmPlaybackService: NSObject {
         
         let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
         let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
+        let snoozeDelayedBackupDate = snoozeFireDate.addingTimeInterval(TimeInterval(AlarmCoordinator.backupDelaySeconds))
 
-        // Snapshot playlist info for takeover when the snooze alarm fires
-        // while our process is still alive (silent loop keeps it alive).
+        // Snapshot playlist info for immediate playlist start at true snooze time
         var playlistID: UUID? = nil
         if case .random(let pid) = alarm.sound { playlistID = pid }
         if case .precomposedPlaylist(let pid, _) = alarm.sound { playlistID = pid }
@@ -760,7 +760,8 @@ final class AlarmPlaybackService: NSObject {
         // Stop playback
         stop(reason: "remote-snooze")
         
-        // Schedule one-shot AlarmKit alarm with floor sound
+        // Schedule delayed-backup AlarmKit alarm with floor sound (fires 30s after true snooze time)
+        // This mirrors the wake-path architecture: playlist starts at true time, backup is safety net
         Task { @MainActor in
             do {
                 // Get the floor sound for this alarm
@@ -770,7 +771,7 @@ final class AlarmPlaybackService: NSObject {
                 let snoozeDurationSeconds = TimeInterval(snoozeMinutes * 60)
                 let snoozeConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
                     countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeDurationSeconds),
-                    schedule: .fixed(snoozeFireDate),
+                    schedule: .fixed(snoozeDelayedBackupDate),  // DELAYED: fires at snoozeTime + 30s (backup)
                     attributes: AlarmAttributes(
                         presentation: AlarmPresentation(
                             alert: AlarmPresentation.Alert(
@@ -785,7 +786,7 @@ final class AlarmPlaybackService: NSObject {
                         metadata: ScheduledOccurrenceMetadata(
                             alarmID: alarm.id,
                             occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)",
-                            baseDate: snoozeFireDate
+                            baseDate: snoozeDelayedBackupDate  // baseDate matches delayed fire time
                         ),
                         tintColor: .orange
                     ),
@@ -799,15 +800,63 @@ final class AlarmPlaybackService: NSObject {
                 coordinator.addEmergencyReRingID(snoozeID)
                 pendingSnoozeAlarmID = snoozeID
                 
-                SmartWakeDebugLog.log("SNOOZE: scheduled AlarmKit snooze id=\(snoozeID.uuidString) at \(snoozeFireDate) for \(snoozeMinutes) min")
-
+                SmartWakeDebugLog.log("SNOOZE: scheduled DELAYED backup alarm id=\(snoozeID.uuidString) at \(snoozeDelayedBackupDate) (true snooze: \(snoozeFireDate)) for \(snoozeMinutes) min")
+                
                 // Playlist takeover context: if the silent loop keeps us alive,
                 // SmartWakeService replaces the floor-sound ring with the playlist.
                 if let pid = playlistID {
                     AlarmPlaybackService.shared.snoozeTakeoverContext =
                         (alarm: alarm, playlistID: pid, occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)")
                 }
-
+                
+                // Start playlist IMMEDIATELY at true snooze time (playlist-first, like wake path)
+                // We schedule a local task to fire at the true snooze time
+                let delay = snoozeFireDate.timeIntervalSinceNow
+                if delay > 0, let pid = playlistID {
+                    Task { @MainActor in
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        // Start playlist at true snooze time
+                        let occ = AlarmOccurrence(
+                            alarmID: alarm.id,
+                            occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)",
+                            baseDate: snoozeFireDate,
+                            effectiveDate: snoozeFireDate,
+                            isAdjusted: false
+                        )
+                        AlarmPlaybackService.shared.start(
+                            playlistID: pid,
+                            loudness: alarm.loudness,
+                            alarm: alarm,
+                            occurrence: occ
+                        )
+                        SmartWakeDebugLog.log("SNOOZE-PLAYLIST: started playlist at true snooze time \(snoozeFireDate)")
+                        
+                        // Wait for playback to confirm, then cancel delayed backup
+                        var playbackConfirmed = false
+                        for _ in 0..<10 {
+                            try? await Task.sleep(nanoseconds: 100_000_000)
+                            if AlarmPlaybackService.shared.isPlaying {
+                                playbackConfirmed = true
+                                break
+                            }
+                        }
+                        if playbackConfirmed {
+                            do {
+                                try await AlarmManager.shared.cancel(id: snoozeID)
+                                SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancelled delayed backup alarm \(snoozeID.uuidString)")
+                            } catch {
+                                SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup FAILED: \(error.localizedDescription)")
+                            }
+                            AlarmPlaybackService.shared.consumeSnoozeForTakeover()
+                            SmartWakeService.shared.stopSilentPlayerOnly(reason: "snooze playlist takeover completed")
+                        } else {
+                            SmartWakeDebugLog.log("SNOOZE-PLAYLIST: playback did not confirm; delayed backup left as fallback")
+                        }
+                    }
+                } else {
+                    SmartWakeDebugLog.log("SNOOZE: delay <= 0 or no playlist, skipping playlist start (snooze time in past)")
+                }
+                
                 // Keep the app alive during the snooze window so the snooze
                 // re-ring can be taken over with the playlist (Task 9e-6).
                 Task { @MainActor in
@@ -835,7 +884,7 @@ final class AlarmPlaybackService: NSObject {
                         SmartWakeDebugLog.log("SNOOZE notification failed: \(error.localizedDescription)")
                     }
                 }
-
+                
                 // Update the widget snapshot so the lock-screen widget shows the
                 // snoozed ring time instead of the regular next alarm.
                 coordinator.publishSnoozeWidgetSnapshot(
