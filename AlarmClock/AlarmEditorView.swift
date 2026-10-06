@@ -71,6 +71,7 @@ struct AlarmEditorView: View {
         }
         .onDisappear {
             testAlarmTask?.cancel()
+            stopLoudnessPreview()
         }
     }
     private var editorForm: some View {
