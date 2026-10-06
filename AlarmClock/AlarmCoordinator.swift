@@ -588,17 +588,24 @@ final class AlarmCoordinator {
     /// the commit succeeds. Returns (desired system alarms, warnings).
     private func desiredSystemAlarms(from engine: AlarmEngine) async -> ([DesiredSystemAlarm], [String]) {
         var mutableEngine = engine
-        let occurrences = mutableEngine.desiredOccurrences(now: now())
+        let now = now()
+        // ARM ONLY THE NEXT OCCURRENCE per alarm (plus its -BACKUP if playlist + Smart Wake)
+        // The re-arm path after fire/skip/snooze will arm the following occurrence
         var results: [DesiredSystemAlarm] = []
         var warnings: [String] = []
         
         let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
         let backupDelay = AlarmCoordinator.backupDelaySeconds
         
-        // Log the scheduling horizon and number of occurrences
-        SmartWakeDebugLog.log("DESIRED ALARMS: scheduling horizon=\(occurrences.count) occurrences, smartWakeEnabled=\(smartWakeEnabled)")
+        // Get the earliest (next) occurrence for each alarm
+        let nextOccurrences = mutableEngine.snapshot.alarms.compactMap { alarm in
+            mutableEngine.nextOccurrence(for: alarm.id, now: now)
+        }
         
-        for occurrence in occurrences {
+        // Log the scheduling horizon and number of occurrences
+        SmartWakeDebugLog.log("DESIRED ALARMS: scheduling next only — horizon=\(nextOccurrences.count) alarms, smartWakeEnabled=\(smartWakeEnabled)")
+        
+        for occurrence in nextOccurrences {
             guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
             let label = alarm.label.isEmpty ? "Alarm" : alarm.label
             do {
@@ -608,7 +615,7 @@ final class AlarmCoordinator {
                 if let newOverride = override {
                     if var updatedAlarm = mutableEngine.alarm(id: alarm.id) {
                         updatedAlarm.overrides[occurrence.occurrenceKey] = newOverride
-                        try mutableEngine.upsert(updatedAlarm, now: now())
+                        try mutableEngine.upsert(updatedAlarm, now: now)
                     }
                 }
                 let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
@@ -716,7 +723,7 @@ final class AlarmCoordinator {
         // Final summary log
         let primaryCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") == false }.count
         let backupCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") }.count
-        SmartWakeDebugLog.log("DESIRED ALARMS SUMMARY: total=\(results.count) primary=\(primaryCount) backup=\(backupCount) userAlarms=\(occurrences.count)")
+        SmartWakeDebugLog.log("DESIRED ALARMS SUMMARY: total=\(results.count) primary=\(primaryCount) backup=\(backupCount) userAlarms=\(nextOccurrences.count)")
         
         return (results, warnings)
     }
