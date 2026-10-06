@@ -44,6 +44,18 @@ final class AlarmCoordinator {
     /// Feedback message for Control Center actions (shown as toast or notification)
     var ccActionFeedback: String? = nil
 
+    /// Sound file names referenced by the most recent successfully reconciled
+    /// desired set (the armed alarms). The stitch-cache prune never deletes
+    /// these; persisted so a button-press right after launch is also safe.
+    private(set) var lastArmedSoundFileNames: Set<String> = []
+
+    /// Last armed-aware stitch cache prune (persisted for Diagnostics).
+    private(set) var lastStitchPruneDate: Date? = nil
+    private(set) var lastStitchPruneFreedBytes: Int64 = 0
+    private static let armedSoundFileNamesKey = "lastArmedSoundFileNames"
+    private static let lastStitchPruneDateKey = "lastStitchPruneDate"
+    private static let lastStitchPruneFreedBytesKey = "lastStitchPruneFreedBytes"
+
     /// Live Activity / Dynamic Island toggle — when false, never request and end all existing on launch
     static let liveActivityEnabled = false
 
@@ -95,6 +107,14 @@ final class AlarmCoordinator {
             lastError = "Could not load alarms: \(error.localizedDescription)"
         }
         publish()
+        // Restore last armed sound file names + prune info so an on-demand
+        // prune right after launch never deletes a file AlarmKit still uses.
+        let defaults = UserDefaults.standard
+        if let storedNames = defaults.stringArray(forKey: Self.armedSoundFileNamesKey) {
+            lastArmedSoundFileNames = Set(storedNames)
+        }
+        lastStitchPruneDate = defaults.object(forKey: Self.lastStitchPruneDateKey) as? Date
+        lastStitchPruneFreedBytes = Int64(defaults.double(forKey: Self.lastStitchPruneFreedBytesKey))
         // End all Live Activities on launch if disabled
         endAllLiveActivitiesOnLaunch()
     }
@@ -442,6 +462,13 @@ final class AlarmCoordinator {
                 managedIDs: managedIDs,
                 reason: reason
             )
+            // Track the sound files the armed set references - the armed-aware
+            // cache prune must never delete these.
+            lastArmedSoundFileNames = Set(desired.compactMap { item -> String? in
+                if case .named(let name) = item.alarmKitSound { return name }
+                return nil
+            })
+            maybePruneStitchCacheDaily()
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
             try persistence.save(candidate.snapshot)
@@ -1296,6 +1323,29 @@ final class AlarmCoordinator {
             let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             return l < r
         }
+    }
+
+    // MARK: - Stitch cache maintenance (armed-aware)
+    /// Prunes the stitch cache at most once per day, after a successful
+    /// reconcile. Files referenced by armed alarms are never deleted.
+    private func maybePruneStitchCacheDaily() {
+        let defaults = UserDefaults.standard
+        if let last = defaults.object(forKey: Self.lastStitchPruneDateKey) as? Date,
+           now().timeIntervalSince(last) < 86_400 {
+            return
+        }
+        pruneStitchCacheNow()
+    }
+    /// On-demand (Diagnostics button) / daily prune; keeps files referenced by
+    /// armed alarms. Synchronous - the Diagnostics screen calls it directly.
+    func pruneStitchCacheNow() {
+        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+        let defaults = UserDefaults.standard
+        let pruneTime = now()
+        defaults.set(pruneTime, forKey: Self.lastStitchPruneDateKey)
+        defaults.set(Double(result.freedBytes), forKey: Self.lastStitchPruneFreedBytesKey)
+        lastStitchPruneDate = pruneTime
+        lastStitchPruneFreedBytes = result.freedBytes
     }
 
     /// Record a song that finished playing during an alarm ring

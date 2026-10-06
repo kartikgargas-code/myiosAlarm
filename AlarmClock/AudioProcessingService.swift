@@ -150,6 +150,64 @@ final class AudioProcessingService {
         createProcessedSoundsDirectory()
     }
 
+    /// Cache statistics for the stitched playlist sounds ("playlist_…pct[.wav|.caf]")
+    /// in both Library/ProcessedSounds and Library/Sounds.
+    struct StitchCacheFolderStats {
+        let fileCount: Int
+        let totalBytes: Int64
+    }
+
+    func stitchCacheStats() -> (processed: StitchCacheFolderStats, sounds: StitchCacheFolderStats) {
+        func stats(_ dir: URL?) -> StitchCacheFolderStats {
+            guard let dir else { return StitchCacheFolderStats(fileCount: 0, totalBytes: 0) }
+            let files = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            let stitches = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.contains("pct") && ($0.pathExtension == "wav" || $0.pathExtension == "caf") }
+            let bytes = stitches.reduce(Int64(0)) { total, url in
+                total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+            return StitchCacheFolderStats(fileCount: stitches.count, totalBytes: bytes)
+        }
+        return (stats(processedSoundsDirectory), stats(SoundLibrary.shared.soundsDirectory))
+    }
+
+    /// Delete every cached stitch file that is NOT referenced by a currently
+    /// armed alarm. AlarmKit plays the file by filename, so a file an armed
+    /// alarm points at must never be deleted — the caller passes those names
+    /// in `keeping`. Per-sound processed variants (no "playlist_" prefix) are
+    /// left alone.
+    func pruneUnusedStitchFiles(keeping keepFileNames: Set<String>) -> (deleted: Int, freedBytes: Int64, kept: Int) {
+        let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
+        var deleted = 0
+        var freedBytes: Int64 = 0
+        var kept = 0
+
+        for directory in directories {
+            let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            for file in files {
+                let name = file.lastPathComponent
+                guard name.hasPrefix("playlist_"),
+                      name.contains("pct"),
+                      file.pathExtension == "wav" || file.pathExtension == "caf" else { continue }
+                if keepFileNames.contains(name) {
+                    kept += 1
+                    continue
+                }
+                let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                do {
+                    try fileManager.removeItem(at: file)
+                    deleted += 1
+                    freedBytes += size
+                } catch {
+                    kept += 1
+                }
+            }
+        }
+
+        let freedMB = Double(freedBytes) / (1_048_576.0)
+        SmartWakeDebugLog.log(String(format: "PRECOMPOSE PRUNE: deleted %d files (%.1f MB), kept %d in use.", deleted, freedMB, kept))
+        return (deleted, freedBytes, kept)
+    }
+
     /// A cached stitch with ~zero duration (or size) is a header-only artifact,
     /// e.g. from a render interrupted by app death; AlarmKit would ring it silent.
     private func validateCachedStitch(_ url: URL) -> Bool {

@@ -595,6 +595,13 @@ struct ContentView: View {
 struct DiagnosticsScreen: View {
     @State private var logLines: [String] = []
     @State private var isLoading = false
+    @State private var cacheProcessedCount = 0
+    @State private var cacheProcessedMB: Double = 0
+    @State private var cacheSoundsCount = 0
+    @State private var cacheSoundsMB: Double = 0
+    @State private var armedFileNames: [String] = []
+    @State private var lastPruneDate: Date? = nil
+    @State private var lastPruneFreedMB: Double = 0
     @State private var showUTCNotice = true
     @State private var buildFingerprint: String? = nil
     
@@ -610,6 +617,11 @@ struct DiagnosticsScreen: View {
 
                 // 0b. CAF format experiment
                 cafExperimentSection
+
+                Divider()
+
+                // 0c. Alarm sound cache
+                alarmSoundCacheSection
 
                 Divider()
 
@@ -657,6 +669,7 @@ struct DiagnosticsScreen: View {
         .onAppear {
             loadLog()
             loadBuildFingerprint()
+            loadCacheStats()
         }
     }
     
@@ -690,6 +703,55 @@ struct DiagnosticsScreen: View {
                 Task { await AlarmCoordinator.sharedInstance?.scheduleCAFTestAlarm() }
             }
         }
+    }
+
+    // MARK: - Section 0c: Alarm sound cache
+    private var alarmSoundCacheSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Alarm Sound Cache")
+                .font(.subheadline.weight(.semibold))
+            Text("Library/ProcessedSounds: \(cacheProcessedCount) files (\(String(format: "%.1f", cacheProcessedMB)) MB)")
+                .font(.caption.monospaced())
+            Text("Library/Sounds: \(cacheSoundsCount) files (\(String(format: "%.1f", cacheSoundsMB)) MB)")
+                .font(.caption.monospaced())
+            Text("In use by armed alarms:")
+                .font(.caption.weight(.semibold))
+            if armedFileNames.isEmpty {
+                Text("none")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(armedFileNames, id: \.self) { name in
+                    Text(name)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                }
+            }
+            if let lastPruneDate {
+                Text("Last cleanup: \(lastPruneDate.formatted(date: .abbreviated, time: .shortened)) (freed \(String(format: "%.1f", lastPruneFreedMB)) MB)")
+                    .font(.caption.monospaced())
+            } else {
+                Text("Last cleanup: never")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            Button("Clear unused cached sounds") {
+                AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
+                loadCacheStats()
+            }
+        }
+    }
+
+    private func loadCacheStats() {
+        let stats = AudioProcessingService.shared.stitchCacheStats()
+        cacheProcessedCount = stats.processed.fileCount
+        cacheProcessedMB = Double(stats.processed.totalBytes) / 1_048_576.0
+        cacheSoundsCount = stats.sounds.fileCount
+        cacheSoundsMB = Double(stats.sounds.totalBytes) / 1_048_576.0
+        armedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames.sorted() ?? []
+        lastPruneDate = AlarmCoordinator.sharedInstance?.lastStitchPruneDate
+        lastPruneFreedMB = Double(AlarmCoordinator.sharedInstance?.lastStitchPruneFreedBytes ?? 0) / 1_048_576.0
     }
 
     // MARK: - Section 1: Last Alarm Result
