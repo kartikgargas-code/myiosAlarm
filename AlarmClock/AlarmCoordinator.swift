@@ -1275,14 +1275,7 @@ final class AlarmCoordinator {
         guard let soundID = pendingDeleteSoundID,
               let entryID = pendingDeleteEntryID else { return }
         
-        // Remove sound from all playlists (soundIDs and selectedSoundIDs)
-        for i in SoundLibrary.shared.playlists.indices {
-            SoundLibrary.shared.playlists[i].soundIDs.removeAll { $0 == pendingDeleteSoundID }
-            SoundLibrary.shared.playlists[i].selectedSoundIDs.removeAll { $0 == pendingDeleteSoundID }
-        }
-        SoundLibrary.shared.savePlaylists()
-        
-        // Remove from any alarm using .imported(this sound)
+        // Remove from any alarm using .imported(this sound) - reset to system default
         var candidate = engine
         for alarm in candidate.snapshot.alarms {
             if case .imported(let id) = alarm.sound, id == pendingDeleteSoundID {
@@ -1295,7 +1288,7 @@ final class AlarmCoordinator {
         // Note: alarms.json will be saved when we save history below
         // The engine already has the updated alarms
         
-        // Now delete the sound file
+        // Now delete the sound file (this also removes from all playlists and saves)
         if let soundID = pendingDeleteSoundID {
             SoundLibrary.shared.deleteSoundFileByID(soundID)
         }
