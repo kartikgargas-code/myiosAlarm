@@ -240,14 +240,34 @@ struct SoundPickerView: View {
 
     private func soundRow(sound: AlarmSound, label: String, description: String, previewURL: URL?) -> some View {
         let isSelected = selectedSound.id == sound.id
+        let isPlayingThis = preview.playingSoundID == sound.id
+        
         return Button {
             // Selection updates immediately and independently of preview playback.
             selectedSound = sound
-            if let previewURL {
-                preview.play(url: previewURL, id: sound.id)
-            }
         } label: {
             HStack {
+                // Play/Pause toggle on the left (like playlist editor)
+                if let previewURL {
+                    Button {
+                        if preview.playingSoundID == sound.id {
+                            preview.stop()
+                        } else {
+                            preview.play(url: previewURL, id: sound.id)
+                        }
+                    } label: {
+                        Image(systemName: isPlayingThis ? "pause.circle.fill" : "play.circle")
+                            .font(.title3)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // Placeholder for sounds without preview (e.g., system default)
+                    Image(systemName: "speaker.slash")
+                        .font(.title3)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+                
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label)
                         .font(.body)
@@ -257,7 +277,7 @@ struct SoundPickerView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
                 Spacer()
-                if preview.playingSoundID == sound.id {
+                if isPlayingThis {
                     Image(systemName: "waveform.circle.fill")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                         .font(.title3)
@@ -280,22 +300,45 @@ struct SoundPickerView: View {
         let isSelected = selectedSound.id == randomSound.id
         let selectedCount = playlist.selectedSoundIDs.count
         let totalCount = playlist.soundIDs.count
+        let isPlayingThis = preview.playingSoundID == randomSound.id
+        
+        // Get first song preview URL for the play button
+        let firstSoundID = playlist.selectedSoundIDs.first
+        let firstPreviewURL = firstSoundID.flatMap { soundID in
+            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+        }
+        let isPlayingThis = preview.playingSoundID == randomSound.id
 
         return Button {
             selectedSound = randomSound
             // Play first song as preview
-            let firstSoundID = playlist.selectedSoundIDs.first
-            if let firstSoundID {
-                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID })
-                if let sound {
-                    let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
-                    if let previewURL {
-                        preview.play(url: previewURL, id: randomSound.id)
-                    }
-                }
+            if let firstSoundID = playlist.selectedSoundIDs.first,
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
+               let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory) {
+                preview.play(url: previewURL, id: randomSound.id)
             }
         } label: {
             HStack {
+                // Play/Pause toggle on the left (like playlist editor)
+                if let firstPreviewURL {
+                    Button {
+                        if preview.playingSoundID == randomSound.id {
+                            preview.stop()
+                        } else {
+                            preview.play(url: firstPreviewURL, id: randomSound.id)
+                        }
+                    } label: {
+                        Image(systemName: isPlayingThis ? "pause.circle.fill" : "play.circle")
+                            .font(.title3)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "speaker.slash")
+                        .font(.title3)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+                
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Random — \(playlist.name)")
                         .font(.body)
@@ -305,7 +348,7 @@ struct SoundPickerView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
                 Spacer()
-                if preview.playingSoundID == randomSound.id {
+                if isPlayingThis {
                     Image(systemName: "waveform.circle.fill")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                         .font(.title3)
