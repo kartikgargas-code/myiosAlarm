@@ -101,18 +101,18 @@ final class AlarmCoordinator {
 
     func save(_ alarm: AlarmRecord) async {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log("ALARM SAVE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
+        SmartWakeDebugLog.log(#"ALARM SAVE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
         await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log("ALARM SAVE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
+        SmartWakeDebugLog.log(#"ALARM SAVE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
     }
 
     func delete(id: UUID) async {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log("ALARM DELETE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
+        SmartWakeDebugLog.log(#"ALARM DELETE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
         await commit({ $0.delete(id: id) }, reason: "delete")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log("ALARM DELETE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
+        SmartWakeDebugLog.log(#"ALARM DELETE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
@@ -543,7 +543,7 @@ final class AlarmCoordinator {
             
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
-            SmartWakeDebugLog.log("WIDGET ACTION APPLY: after count=\(idsAfterWidget.count) ids=\(idsAfterWidget.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
+            SmartWakeDebugLog.log(#"WIDGET ACTION APPLY: after count=\(idsAfterWidget.count) ids=\(idsAfterWidget.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
         } catch {
             SmartWakeDebugLog.log("WIDGET ACTION APPLY FAILED: \(error.localizedDescription)")
         }
