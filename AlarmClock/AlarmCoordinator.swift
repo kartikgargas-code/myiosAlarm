@@ -441,7 +441,15 @@ final class AlarmCoordinator {
         do {
             try mutation(&candidate)
             candidate.pruneExpiredOverrides(now: now())
-            let (desired, soundWarnings) = await desiredSystemAlarms(from: candidate)
+            // Fresh stitch on arming events (toggle / skip / reset / time change /
+            // re-arm via synchronize) - one render per arming. Editor saves stay
+            // sticky-cached and fast.
+            let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust", "synchronize"]
+            let (desired, soundWarnings) = await desiredSystemAlarms(
+                from: candidate,
+                freshStitch: freshReasons.contains(reason),
+                protectedFileNames: lastArmedSoundFileNames
+            )
             if !soundWarnings.isEmpty {
                 lastWarnings = soundWarnings
                 os_log(.info, log: warningLog, "Sound resolution issues (alarm still saved, affected system alarms skipped): %{public}s", soundWarnings.joined(separator: " | "))
@@ -627,7 +635,11 @@ final class AlarmCoordinator {
     /// Per-alarm sound isolation: a failure resolving one alarm's sound becomes a
     /// warning for that alarm only; the remaining alarms still get scheduled and
     /// the commit succeeds. Returns (desired system alarms, warnings).
-    private func desiredSystemAlarms(from engine: AlarmEngine) async -> ([DesiredSystemAlarm], [String]) {
+    private func desiredSystemAlarms(
+        from engine: AlarmEngine,
+        freshStitch: Bool = false,
+        protectedFileNames: Set<String> = []
+    ) async -> ([DesiredSystemAlarm], [String]) {
         var mutableEngine = engine
         let now = now()
         // ARM ONLY THE NEXT OCCURRENCE per alarm (plus its -BACKUP if playlist + Smart Wake)
@@ -662,20 +674,44 @@ final class AlarmCoordinator {
                 // Primary alarm at the effective date
                 // For playlist alarms with Smart Wake enabled, we SKIP the primary alarm at wake time
                 // and only schedule the backup alarm (which fires at wakeTime + 30s)
+                // Arming path: roll a fresh random selection (song set AND order)
+                // so each ring differs. The rolled selection is hashed into the
+                // schedule ID, so reconcile re-schedules with the new file.
+                var selectionHash = desiredSelectionHash(for: soundToUse)
+                var forcedSelection: [UUID]? = nil
+                if freshStitch {
+                    let playlistIDForSound: UUID?
+                    if case .precomposedPlaylist(let p, _) = soundToUse { playlistIDForSound = p }
+                    else if case .random(let p) = soundToUse { playlistIDForSound = p }
+                    else { playlistIDForSound = nil }
+                    if let pid = playlistIDForSound,
+                       let rolled = rollFreshSelection(playlistID: pid, songCount: 5),
+                       !rolled.isEmpty {
+                        forcedSelection = rolled
+                        selectionHash = SoundSelectionHash.make(from: rolled.map { $0.uuidString }.sorted().joined(separator: "-"))
+                        SmartWakeDebugLog.log("PRECOMPOSE: fresh selection rolled for \(pid.uuidString.prefix(8)) hash=\(selectionHash)")
+                    }
+                }
+                
                 let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
                 
                 if shouldSchedulePrimaryAtWake {
                     // Only resolve (and for playlists, fully render) the primary
                     // stitch when the primary is actually armed. With Smart Wake on
                     // the primary is never armed, so skip the uncapped render.
-                    let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
+                    let alarmKitSound = try await alarmKitSound(
+                        for: soundToUse,
+                        loudness: alarm.loudness,
+                        forcedSelection: forcedSelection,
+                        protectedFileNames: protectedFileNames
+                    )
                     let primaryItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
                             for: occurrence,
                             label: label,
                             sound: soundToUse,
                             loudness: alarm.loudness,
-                            selectionHash: desiredSelectionHash(for: soundToUse)
+                            selectionHash: selectionHash
                         ),
                         occurrence: occurrence,
                         label: label,
@@ -716,7 +752,9 @@ final class AlarmCoordinator {
                         playlistID: playlistID,
                         loudness: alarm.loudness,
                         songCount: 5,
-                        maxDuration: 60  // Cap total duration at 60s for backup
+                        maxDuration: 60,  // Cap total duration at 60s for backup
+                        forcedSelection: forcedSelection,
+                        protectedFileNames: protectedFileNames
                     )
                     let backupPrecomposedURL = backupPrecomposedTuple.0
                     
@@ -745,7 +783,7 @@ final class AlarmCoordinator {
                             label: label,
                             sound: soundToUse,
                             loudness: alarm.loudness,
-                            selectionHash: desiredSelectionHash(for: soundToUse)
+                            selectionHash: selectionHash
                         ),
                         occurrence: backupOccurrence,
                         label: label,
@@ -841,7 +879,12 @@ final class AlarmCoordinator {
         }
     }
 
-    func alarmKitSound(for sound: AlarmSound, loudness: AlarmLoudness = .hundred) async throws -> AlertConfiguration.AlertSound {
+    func alarmKitSound(
+        for sound: AlarmSound,
+        loudness: AlarmLoudness = .hundred,
+        forcedSelection: [UUID]? = nil,
+        protectedFileNames: Set<String> = []
+    ) async throws -> AlertConfiguration.AlertSound {
         switch sound {
         case .systemDefault:
             return .default
@@ -898,7 +941,9 @@ final class AlarmCoordinator {
             let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
                 playlistID: playlistID,
                 loudness: loudness,
-                songCount: 5
+                songCount: 5,
+                forcedSelection: forcedSelection,
+                protectedFileNames: protectedFileNames
             )
             
             // Record diagnostics
@@ -1348,6 +1393,25 @@ final class AlarmCoordinator {
         defaults.set(Double(result.freedBytes), forKey: Self.lastStitchPruneFreedBytesKey)
         lastStitchPruneDate = pruneTime
         lastStitchPruneFreedBytes = result.freedBytes
+    }
+
+    /// Roll a fresh random selection (song set AND order) for the arming path.
+    /// Returns nil for sequence playlists (listed order is intentional) or an
+    /// empty playlist.
+    private func rollFreshSelection(playlistID: UUID, songCount: Int) -> [UUID]? {
+        guard let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+              !playlist.selectedSoundIDs.isEmpty,
+              playlist.playOrder != .sequence else { return nil }
+        var available = playlist.selectedSoundIDs
+        var selected: [UUID] = []
+        for _ in 0..<min(songCount, playlist.selectedSoundIDs.count) {
+            if available.isEmpty { available = playlist.selectedSoundIDs }
+            if let pick = available.randomElement() {
+                selected.append(pick)
+                available.removeAll { $0 == pick }
+            }
+        }
+        return selected.isEmpty ? nil : selected
     }
 
     /// Record a song that finished playing during an alarm ring

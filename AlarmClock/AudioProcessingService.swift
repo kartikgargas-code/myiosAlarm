@@ -311,7 +311,9 @@ final class AudioProcessingService {
         loudness: AlarmLoudness,
         songCount: Int = 5,
         alarmID: UUID? = nil,
-        maxDuration: TimeInterval? = nil  // Cap total duration (e.g., 60s for backup alarms)
+        maxDuration: TimeInterval? = nil,  // Cap total duration (e.g., 60s for backup alarms)
+        forcedSelection: [UUID]? = nil,  // Arming path passes a freshly rolled selection so each ring differs
+        protectedFileNames: Set<String> = []  // Files the armed set still references - never deleted here
     ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {
         // Capture MainActor-isolated values before detaching
         let soundsDir = SoundLibrary.shared.soundsDirectory
@@ -395,9 +397,12 @@ final class AudioProcessingService {
             return (sticky, preparationEntry, generatedFileEntry)
         }
 
-        // Select songs based on play order: random or sequence
+        // Select songs based on play order: random or sequence. The arming path
+        // may force a freshly rolled selection so each ring differs.
         let selectedSoundIDs: [UUID]
-        if playlist.playOrder == .sequence {
+        if let forcedSelection {
+            selectedSoundIDs = forcedSelection
+        } else if playlist.playOrder == .sequence {
             // Use selected songs in their listed order (up to songCount)
             selectedSoundIDs = Array(soundIDs.prefix(min(songCount, soundIDs.count)))
         } else {
@@ -680,13 +685,15 @@ final class AudioProcessingService {
             appearsComplete: metadata.map { abs($0.duration - expectedTotalDuration) < 1.0 } ?? false
         )
         
-        // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection
+        // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection.
+        // Never delete a file the currently armed set still references - AlarmKit
+        // plays by filename; the armed-aware prune removes them once unused.
         let patternPrefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
         let patternSuffix = "_\(loudness.percentage)pct\(capPart).wav"
         let allFiles = (try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)) ?? []
         for file in allFiles {
             let fileName = file.lastPathComponent
-            if fileName.hasPrefix(patternPrefix) && fileName.hasSuffix(patternSuffix) && fileName != precomposedFileName {
+            if fileName.hasPrefix(patternPrefix) && fileName.hasSuffix(patternSuffix) && fileName != precomposedFileName && !protectedFileNames.contains(fileName) {
                 try? fileManager.removeItem(at: file)
             }
         }
