@@ -25,7 +25,6 @@ struct ContentView: View {
     // Copy button feedback states
     @State private var smartWakeLogCopied = false
     @State private var smartWakeLogUnavailable = false
-    @State private var showingExportPicker = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
 
@@ -69,9 +68,7 @@ struct ContentView: View {
                             Task {
                                 do {
                                     let url = try await BackupRestoreService.shared.exportArchive()
-                                    let data = try Data(contentsOf: url)
                                     exportURL = url
-                                    showingExportPicker = true
                                 } catch {
                                     coordinator.lastError = "Export failed: \(error.localizedDescription)"
                                 }
@@ -248,13 +245,16 @@ struct ContentView: View {
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
             }
-            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(url: exportURL!), contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
-                switch result {
-                case .success(let url):
-                    SmartWakeDebugLog.log("Backup exported to \(url.path)")
-                case .failure(let error):
-                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                }
+            .sheet(item: $exportURL) { url in
+                ExportDocument(url: url)
+                    .fileExporter(contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
+                        switch result {
+                        case .success(let url):
+                            SmartWakeDebugLog.log("Backup exported to \(url.path)")
+                        case .failure(let error):
+                            coordinator.lastError = "Export failed: \(error.localizedDescription)"
+                        }
+                    }
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
