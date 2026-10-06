@@ -59,7 +59,10 @@ final class AlarmCoordinator {
     private let ringDetectionOSLog = OSLog(subsystem: "com.example.alarmclock", category: "RingDetection")
     
     /// Engine for backup/restore access
-    var currentEngine: AlarmEngine { engine }
+    var currentEngine: AlarmEngine {
+        get { engine }
+        set { engine = newValue }
+    }
 
     // Track emergency re-ring IDs so reconcile doesn't cancel them as orphans
     private var emergencyReRingIDs: Set<UUID> = []

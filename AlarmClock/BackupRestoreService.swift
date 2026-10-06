@@ -203,7 +203,7 @@ final class BackupRestoreService {
     
     /// Create a zip archive from a directory
     private func createZipArchive(sourceDir: URL, destinationURL: URL) throws {
-        let process = Process()
+        let process = Foundation.Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.arguments = ["-r", "-q", destinationURL.path, "."]
         process.currentDirectoryURL = sourceDir
@@ -224,7 +224,7 @@ final class BackupRestoreService {
     
     /// Extract a zip archive to a directory
     private func extractZipArchive(sourceURL: URL, destinationDir: URL) throws {
-        let process = Process()
+        let process = Foundation.Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         process.arguments = ["-q", "-o", sourceURL.path, "-d", destinationDir.path]
         
