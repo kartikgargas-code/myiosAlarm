@@ -5,6 +5,9 @@ import AlarmClockShared
 struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: AlarmCoordinator
+    @State private var showingClearAllConfirmation = false
+    @State private var showingDeleteSoundConfirmation = false
+    @State private var entryToDeleteWithSound: PlayHistoryEntry?
     
     init(coordinator: AlarmCoordinator) {
         _coordinator = State(initialValue: coordinator)
@@ -26,6 +29,30 @@ struct HistoryView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                if !coordinator.playHistory.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Clear All") {
+                            showingClearAllConfirmation = true
+                        }
+                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                    }
+                }
+            }
+            .confirmationDialog("Clear All History", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
+                Button("Clear All", role: .destructive) {
+                    coordinator.clearAllHistory(deleteSoundFiles: false)
+                }
+                Button("Clear All + Delete Song Files", role: .destructive) {
+                    coordinator.clearAllHistory(deleteSoundFiles: true)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove all history entries. Optionally also delete the song files from the app (only if not used by any alarm or playlist).")
+            }
+            .alert("Cannot Delete Song File", isPresented: $showingDeleteSoundConfirmation, presenting: entryToDeleteWithSound) { entry in
+                Button("OK", role: .cancel) {}
+            } message: { entry in
+                Text("This song is still used by an alarm or playlist. Only the history entry will be deleted.")
             }
         }
     }
@@ -50,9 +77,22 @@ struct HistoryView: View {
                 historyRow(entry)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
-                            coordinator.deleteHistoryEntry(id: entry.id)
+                            coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: false)
                         } label: {
                             Label("Delete", systemImage: "trash")
+                        }
+                        if entry.soundID != nil {
+                            Button(role: .destructive) {
+                                coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: true)
+                                if coordinator.lastError?.contains("still referenced") == true {
+                                    entryToDeleteWithSound = entry
+                                    showingDeleteSoundConfirmation = true
+                                    coordinator.lastError = nil
+                                }
+                            } label: {
+                                Label("Delete + Song", systemImage: "trash.fill")
+                            }
+                            .tint(.orange)
                         }
                     }
             }

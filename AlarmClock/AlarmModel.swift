@@ -475,19 +475,38 @@ public struct PlayHistoryEntry: Codable, Identifiable, Equatable {
     public let alarmLabel: String
     public let alarmID: UUID
     public let timestamp: Date
+    // Optional: sound ID if the song is still in the library (added in Phase 9h-4 for delete-with-song)
+    public let soundID: UUID?
 
     public init(
         id: UUID = UUID(),
         songName: String,
         alarmLabel: String,
         alarmID: UUID,
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        soundID: UUID? = nil
     ) {
         self.id = id
         self.songName = songName
         self.alarmLabel = alarmLabel
         self.alarmID = alarmID
         self.timestamp = timestamp
+        self.soundID = soundID
+    }
+
+    /// Backward-compatible decoder: old persisted history has no soundID
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        songName = try container.decode(String.self, forKey: .songName)
+        alarmLabel = try container.decode(String.self, forKey: .alarmLabel)
+        alarmID = try container.decode(UUID.self, forKey: .alarmID)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        soundID = try container.decodeIfPresent(UUID.self, forKey: .soundID)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, songName, alarmLabel, alarmID, timestamp, soundID
     }
 
     /// Display name for the alarm (label or "Alarm at HH:MM")

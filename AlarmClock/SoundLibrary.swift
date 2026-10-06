@@ -434,6 +434,23 @@ final class SoundLibrary {
         }
         savePlaylists()
     }
+    
+    /// Delete a sound file by its ID (for Play History delete-with-song)
+    func deleteSoundFileByID(_ soundID: UUID) {
+        guard let sound = importedSounds.first(where: { $0.id == soundID }) else { return }
+        AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
+            try? fileManager.removeItem(at: localURL)
+        }
+        removeDisplayNameOverride(for: sound.fileName)
+        importedSounds.removeAll { $0.id == soundID }
+
+        // Remove from any playlists
+        for i in playlists.indices {
+            playlists[i].soundIDs.removeAll { $0 == soundID }
+        }
+        savePlaylists()
+    }
 
     func renameSound(_ sound: ImportedSound, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)

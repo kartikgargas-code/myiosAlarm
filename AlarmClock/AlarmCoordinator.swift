@@ -1074,12 +1074,13 @@ final class AlarmCoordinator {
 
     /// Record a song that finished playing during an alarm ring
     /// Call this when a song completes playback (not when skipped/cut off)
-    func recordPlayHistory(songName: String, alarmID: UUID, alarmLabel: String) {
+    func recordPlayHistory(songName: String, alarmID: UUID, alarmLabel: String, soundID: UUID? = nil) {
         let entry = PlayHistoryEntry(
             songName: songName,
             alarmLabel: alarmLabel,
             alarmID: alarmID,
-            timestamp: now()
+            timestamp: now(),
+            soundID: soundID
         )
         playHistory.insert(entry, at: 0) // Newest first
         
@@ -1101,12 +1102,69 @@ final class AlarmCoordinator {
         try? persistence.save(candidate.snapshot)
     }
 
-    /// Delete a history entry
-    func deleteHistoryEntry(id: UUID) {
+    /// Delete a history entry, optionally also deleting the associated sound file
+    func deleteHistoryEntry(id: UUID, deleteSoundFile: Bool = false) {
+        if let entry = playHistory.first(where: { $0.id == id }) {
+            if deleteSoundFile, let soundID = entry.soundID {
+                // Check if any alarm/playlist still references this sound
+                if !isSoundReferenced(soundID: soundID) {
+                    SoundLibrary.shared.deleteSoundFileByID(soundID)
+                } else {
+                    // Sound is still referenced - could log a warning or set an error
+                    lastError = "Cannot delete song file: still referenced by an alarm or playlist"
+                    return
+                }
+            }
+        }
         playHistory.removeAll { $0.id == id }
         Task {
             await saveHistory()
         }
+    }
+    
+    /// Clear all play history entries
+    func clearAllHistory(deleteSoundFiles: Bool = false) {
+        if deleteSoundFiles {
+            // Delete sound files for entries that have soundIDs and aren't referenced
+            for entry in playHistory {
+                if let soundID = entry.soundID, !isSoundReferenced(soundID: soundID) {
+                    SoundLibrary.shared.deleteSoundFileByID(soundID)
+                }
+            }
+        }
+        playHistory.removeAll()
+        Task {
+            await saveHistory()
+        }
+    }
+    
+    /// Check if a sound ID is still referenced by any alarm or playlist
+    private func isSoundReferenced(soundID: UUID) -> Bool {
+        // Check alarms
+        for alarm in alarms {
+            if case .imported(let id) = alarm.sound, id == soundID {
+                return true
+            }
+            if case .random(let pid) = alarm.sound {
+                let playlist = try? SoundLibrary.shared.playlist(for: pid)
+                if playlist?.soundIDs.contains(soundID) == true {
+                    return true
+                }
+            }
+            if case .precomposedPlaylist(let pid, _) = alarm.sound {
+                let playlist = try? SoundLibrary.shared.playlist(for: pid)
+                if playlist?.soundIDs.contains(soundID) == true {
+                    return true
+                }
+            }
+        }
+        // Check all playlists
+        for playlist in SoundLibrary.shared.playlists {
+            if playlist.soundIDs.contains(soundID) {
+                return true
+            }
+        }
+        return false
     }
 
     /// Toggle playback of a history entry: press plays, press again stops.

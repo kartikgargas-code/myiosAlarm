@@ -1010,10 +1010,15 @@ final class AlarmPlaybackService: NSObject {
         guard let currentTrackName,
               let alarm = currentAlarm,
               let coordinator = AlarmCoordinator.sharedInstance else { return }
+        
+        // Get the sound ID for the currently playing track
+        let soundID = currentTrackIndex < selectedSoundIDs.count ? selectedSoundIDs[currentTrackIndex] : nil
+        
         coordinator.recordPlayHistory(
             songName: currentTrackName,
             alarmID: alarm.id,
-            alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label
+            alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label,
+            soundID: soundID
         )
     }
 
