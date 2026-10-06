@@ -659,14 +659,16 @@ final class AlarmCoordinator {
                         try mutableEngine.upsert(updatedAlarm, now: now)
                     }
                 }
-                let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
-                
                 // Primary alarm at the effective date
                 // For playlist alarms with Smart Wake enabled, we SKIP the primary alarm at wake time
                 // and only schedule the backup alarm (which fires at wakeTime + 30s)
                 let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
                 
                 if shouldSchedulePrimaryAtWake {
+                    // Only resolve (and for playlists, fully render) the primary
+                    // stitch when the primary is actually armed. With Smart Wake on
+                    // the primary is never armed, so skip the uncapped render.
+                    let alarmKitSound = try await alarmKitSound(for: soundToUse, loudness: alarm.loudness)
                     let primaryItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
                             for: occurrence,
