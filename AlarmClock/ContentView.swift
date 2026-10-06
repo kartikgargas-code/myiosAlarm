@@ -248,7 +248,7 @@ struct ContentView: View {
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
             }
-            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(data: exportURL.flatMap { try? Data(contentsOf: $0) }), contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
+            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(url: exportURL!), contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
                 switch result {
                 case .success(let url):
                     SmartWakeDebugLog.log("Backup exported to \(url.path)")

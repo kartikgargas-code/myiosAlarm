@@ -3,25 +3,22 @@ import UniformTypeIdentifiers
 import SwiftUI
 import os.log
 
-/// Document wrapper for .fileExporter - exports as JSON file
+/// Document wrapper for .fileExporter - exports as JSON file from a file URL
 struct ExportDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
     
-    let data: Data?
+    let url: URL
     
-    init(data: Data?) {
-        self.data = data
+    init(url: URL) {
+        self.url = url
     }
     
     init(configuration: ReadConfiguration) throws {
-        self.data = nil
+        self.url = URL(fileURLWithPath: "")
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        guard let data = data else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        return FileWrapper(regularFileWithContents: data)
+        return try FileWrapper(url: url, options: .immediate)
     }
 }
 
@@ -89,21 +86,22 @@ final class BackupRestoreService {
             sounds: soundFiles
         )
         
-        // Write JSON directly to temp file (no zip needed)
-        let tempDir = fileManager.temporaryDirectory.appendingPathComponent("AlarmClockBackup_\(UUID().uuidString)")
-        try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
+        let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let backupDir = docsDir.appendingPathComponent("AlarmClock_Backups", isDirectory: true)
+        try fileManager.createDirectory(at: backupDir, withIntermediateDirectories: true)
         
-        let archiveURL = tempDir.appendingPathComponent("AlarmClock_Backup.json")
+        let archiveURL = backupDir.appendingPathComponent("AlarmClock_Backup_\(Date().timeIntervalSince1970).json")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(archive)
         try data.write(to: archiveURL, options: .atomic)
         
-        // Clean up temp directory
-        try? fileManager.removeItem(at: tempDir)
-        
-        os_log(.info, log: log, "Exported backup to %{public}s (%d sounds, %d alarms)", archiveURL.path, soundFiles.count, archive.alarms.alarms.count)
+        // Log the file details
+        let exists = fileManager.fileExists(atPath: archiveURL.path)
+        let byteSize = (try? fileManager.attributesOfItem(atPath: archiveURL.path)[.size] as? Int) ?? 0
+        os_log(.info, log: log, "Exported backup to %{public}s (exists=%{public}d, bytes=%{public}d, %d sounds, %d alarms)", archiveURL.path, exists ? 1 : 0, byteSize, soundFiles.count, archive.alarms.alarms.count)
         
         return archiveURL
     }
