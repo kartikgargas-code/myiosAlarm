@@ -841,17 +841,20 @@ final class AlarmPlaybackService: NSObject {
                             }
                         }
                         if playbackConfirmed {
-                            do {
-                                try await AlarmManager.shared.cancel(id: snoozeID)
-                                SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancelled delayed backup alarm \(snoozeID.uuidString)")
-                            } catch {
-                                SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup FAILED: \(error.localizedDescription)")
-                            }
-                            AlarmPlaybackService.shared.consumeSnoozeForTakeover()
-                            SmartWakeService.shared.stopSilentPlayerOnly(reason: "snooze playlist takeover completed")
-                        } else {
-                            SmartWakeDebugLog.log("SNOOZE-PLAYLIST: playback did not confirm; delayed backup left as fallback")
-                        }
+                              do {
+                                  try await AlarmManager.shared.cancel(id: snoozeID)
+                                  SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancelled delayed backup alarm \(snoozeID.uuidString)")
+                              } catch {
+                                  SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup FAILED: \(error.localizedDescription)")
+                              }
+                              // Promote to primary session for lock-screen controls (same as wake path)
+                              AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
+                              SmartWakeDebugLog.log("SNOOZE-PLAYLIST: LOCKSCREEN CONTROLS published")
+                              AlarmPlaybackService.shared.consumeSnoozeForTakeover()
+                              SmartWakeService.shared.stopSilentPlayerOnly(reason: "snooze playlist takeover completed")
+                          } else {
+                              SmartWakeDebugLog.log("SNOOZE-PLAYLIST: playback did not confirm; delayed backup left as fallback")
+                          }
                     }
                 } else {
                     SmartWakeDebugLog.log("SNOOZE: delay <= 0 or no playlist, skipping playlist start (snooze time in past)")
@@ -866,11 +869,11 @@ final class AlarmPlaybackService: NSObject {
                 
                 // Post local notification for snooze feedback
                 let content = UNMutableNotificationContent()
-                content.title = "Snoozed \(snoozeMinutes) min"
                 let formatter = DateFormatter()
                 formatter.setLocalizedDateFormatFromTemplate("j:mm a")
                 formatter.timeZone = TimeZone.current
-                content.body = "Next ring \(formatter.string(from: snoozeFireDate))"
+                content.title = "Snoozed \(snoozeMinutes) min at \(formatter.string(from: snoozeFireDate))"
+                content.body = ""
                 content.sound = nil // Silent notification
                 
                 let request = UNNotificationRequest(
