@@ -407,7 +407,20 @@ struct SkipNextAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.skip, reason: "skipNext")
+        
+        // Also update the widget snapshot locally so the Lock Screen updates immediately
+        let service = WidgetAlarmService()
+        let snapshot = try service.loadSnapshot()
+        let engine = AlarmEngine(snapshot: snapshot)
+        guard let occurrence = engine.earliestOccurrence(now: Date()),
+              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+            return .result()
+        }
+        try await service.skipNextAlarm(alarmID: alarm.id)
+        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=skipNext reloaded=yes")
+        
         return .result()
     }
 }
@@ -420,7 +433,20 @@ struct AlarmMinus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.adjustEarlier, reason: "adjust-10")
+        
+        // Also update the widget snapshot locally so the Lock Screen updates immediately
+        let service = WidgetAlarmService()
+        let snapshot = try service.loadSnapshot()
+        let engine = AlarmEngine(snapshot: snapshot)
+        guard let occurrence = engine.earliestOccurrence(now: Date()),
+              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+            return .result()
+        }
+        try await service.adjustNextAlarm(alarmID: alarm.id, minutes: -10)
+        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=adjust-10 reloaded=yes")
+        
         return .result()
     }
 }
@@ -433,7 +459,20 @@ struct AlarmPlus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.adjustLater, reason: "adjust+10")
+        
+        // Also update the widget snapshot locally so the Lock Screen updates immediately
+        let service = WidgetAlarmService()
+        let snapshot = try service.loadSnapshot()
+        let engine = AlarmEngine(snapshot: snapshot)
+        guard let occurrence = engine.earliestOccurrence(now: Date()),
+              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+            return .result()
+        }
+        try await service.adjustNextAlarm(alarmID: alarm.id, minutes: 10)
+        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=adjust+10 reloaded=yes")
+        
         return .result()
     }
 }
