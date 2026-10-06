@@ -37,9 +37,10 @@ struct AppearanceView: View {
                                         .font(.title2)
                                 }
                             }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .contentShape(Rectangle())
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 ThemeManager.shared.deleteUserTheme(id: userTheme.id)
@@ -91,11 +92,6 @@ struct AppearanceView: View {
                                     Text(theme.rawValue)
                                         .font(.body)
                                         .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                    if theme == .custom {
-                                        Text("Customize colors below")
-                                            .font(.caption)
-                                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                    }
                                 }
 
                                 Spacer()
@@ -106,23 +102,10 @@ struct AppearanceView: View {
                                         .font(.title2)
                                 }
                             }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-                    }
-                }
-
-                if ThemeManager.shared.currentTheme == .custom {
-                    Section("Custom Colors") {
-                        ForEach(ColorRole.allCases) { role in
-                            customColorRow(role)
-                        }
-
-                        Button("Open Color Picker") {
-                            customColors = ThemeManager.shared.customThemeColors
-                            showingCustomColors = true
-                        }
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
                     }
                 }
 
