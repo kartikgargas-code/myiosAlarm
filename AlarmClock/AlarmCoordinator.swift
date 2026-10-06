@@ -16,7 +16,7 @@ final class AlarmCoordinator {
 
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
-    fileprivate(set) var lastError: String?
+    var lastError: String? = nil
     /// Non-fatal per-alarm issues from the last commit (e.g. one alarm's sound
     /// failed to precompose). The alarm list still saved; affected system
     /// alarms were skipped this round.
