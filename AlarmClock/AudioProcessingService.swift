@@ -502,20 +502,35 @@ final class AudioProcessingService {
             let gain = Float(loudness.gainFactor)
             var appendedSongs = 0
             var framesRemaining: Int64? = maxDuration.map { Int64($0 * outputFormat.sampleRate) }
+            // Spread the cap evenly across the selected songs so the capped
+            // floor stitch keeps the playlist's variety (cap/selectedCount per
+            // song) instead of one song's opening seconds.
+            let perSongFrames: Int64? = maxDuration.map { cap in
+                Int64(cap * outputFormat.sampleRate) / Int64(max(selectedSoundIDs.count, 1))
+            }
+            var songFramesRemaining: Int64? = nil
             var capReached = false
+            var songCapReached = false
             var currentSongHasFrames = false
 
-            // Writes a chunk, truncating at the cap boundary when maxDuration is
-            // set. Truncate rather than skip so a capped stitch whose next song
-            // is longer than the cap still contains audio; otherwise AlarmKit's
-            // guaranteed fallback could ring silent.
+            // Writes a chunk, clamped by the total cap and the per-song share.
+            // Truncate rather than skip so a capped stitch always contains audio
+            // from every selected song; otherwise AlarmKit's guaranteed fallback
+            // could ring silent or lose the playlist's variety.
             func writeClamped(_ buffer: AVAudioPCMBuffer) throws {
                 if let remaining = framesRemaining, remaining <= 0 {
                     capReached = true
                     return
                 }
+                if let songRemaining = songFramesRemaining, songRemaining <= 0 {
+                    songCapReached = true
+                    return
+                }
                 let length = Int(buffer.frameLength)
-                let toWrite = framesRemaining.map { min(Int64(length), $0) } ?? Int64(length)
+                var toWrite = framesRemaining.map { min(Int64(length), $0) } ?? Int64(length)
+                if let songRemaining = songFramesRemaining {
+                    toWrite = min(toWrite, songRemaining)
+                }
                 guard toWrite > 0 else { return }
                 let out: AVAudioPCMBuffer
                 if toWrite == Int64(length) {
@@ -552,6 +567,11 @@ final class AudioProcessingService {
                     framesRemaining = left
                     if left <= 0 { capReached = true }
                 }
+                if let songRemaining = songFramesRemaining {
+                    let songLeft = songRemaining - toWrite
+                    songFramesRemaining = songLeft
+                    if songLeft <= 0 { songCapReached = true }
+                }
             }
 
             songLoop: for soundID in selectedSoundIDs {
@@ -562,6 +582,8 @@ final class AudioProcessingService {
                 }
 
                 currentSongHasFrames = false
+                songCapReached = false
+                songFramesRemaining = perSongFrames
                 do {
                     let audioFile = try AVAudioFile(forReading: soundURL)
                     let sourceFormat = audioFile.processingFormat
@@ -575,6 +597,7 @@ final class AudioProcessingService {
                             if chunk.frameLength == 0 { break }
                             try writeClamped(chunk)
                             if capReached { break songLoop }
+                            if songCapReached { break }
                             if chunk.frameLength < chunkFrames { break }
                         }
                     } else {
@@ -616,6 +639,7 @@ final class AudioProcessingService {
                                 try writeClamped(dstChunk)
                             }
                             if capReached { break songLoop }
+                            if songCapReached { break }
                             if status == .endOfStream { break }
                             if dstChunk.frameLength == 0 && status == .haveData { continue }
                             if dstChunk.frameLength < dstCapacity && status == .haveData { continue }
@@ -637,8 +661,9 @@ final class AudioProcessingService {
             if let cap = maxDuration {
                 let totalSeconds = Double(totalFrames) / outputFormat.sampleRate
                 let bytes = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+                let shareText = perSongFrames.map { String(format: "%.1fs", Double($0) / outputFormat.sampleRate) } ?? "none"
                 let truncated = capReached ? String(format: "%.1fs", totalSeconds) : "none"
-                SmartWakeDebugLog.log(String(format: "PRECOMPOSE: cap=%.0fs songs=%d truncatedAt=%@ total=%.1fs bytes=%lld", cap, appendedSongs, truncated, totalSeconds, bytes))
+                SmartWakeDebugLog.log(String(format: "PRECOMPOSE: cap=%.0fs share=%@ songs=%d truncatedAt=%@ total=%.1fs bytes=%lld", cap, shareText, appendedSongs, truncated, totalSeconds, bytes))
             }
 
             return precomposedURL
