@@ -150,6 +150,15 @@ final class AudioProcessingService {
         createProcessedSoundsDirectory()
     }
 
+    /// A cached stitch with ~zero duration (or size) is a header-only artifact,
+    /// e.g. from a render interrupted by app death; AlarmKit would ring it silent.
+    private func validateCachedStitch(_ url: URL) -> Bool {
+        let size = (try? fileManager.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        guard size >= 1_000 else { return false }
+        guard let metadata = audioMetadata(for: url), metadata.duration > 0.5 else { return false }
+        return true
+    }
+
     /// Precompose a playlist into a single WAV file for AlarmKit
     /// Selects multiple random songs (or uses sequence order), concatenates them with loudness applied
     /// Returns the URL of the combined file
@@ -188,12 +197,22 @@ final class AudioProcessingService {
         // cache miss -> full WAV re-render during every save. A new selection
         // happens only after the file is deleted (playlist edit) or loudness
         // changes.
+        var stickyHit: URL?
         if playlist.playOrder != .sequence,
            let sticky = findStickyPrecomposedFile(
             playlistName: playlistName,
             playlistID: playlistID,
             loudness: loudness,
             maxDuration: maxDuration) {
+            if validateCachedStitch(sticky) {
+                stickyHit = sticky
+            } else {
+                // Empty/corrupt artifact; AlarmKit would ring silent. Delete and re-render.
+                SmartWakeDebugLog.log("PRECOMPOSE: cached stitch invalid (empty) — deleting \(sticky.lastPathComponent)")
+                try? fileManager.removeItem(at: sticky)
+            }
+        }
+        if let sticky = stickyHit {
             let metadata = audioMetadata(for: sticky)
             let preparationEndTime = Date()
             let preparationEntry = PlaylistDiagnostics.PreparationEntry(
@@ -264,6 +283,13 @@ final class AudioProcessingService {
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
         // If already exists for THIS specific selection, return it
+        if fileManager.fileExists(atPath: precomposedURL.path)
+            && !validateCachedStitch(precomposedURL) {
+            // Empty/corrupt artifact: delete and re-render instead of returning
+            // a file AlarmKit would ring silent.
+            SmartWakeDebugLog.log("PRECOMPOSE: cached stitch invalid (empty) — deleting \(precomposedFileName) and re-rendering")
+            try? fileManager.removeItem(at: precomposedURL)
+        }
         if fileManager.fileExists(atPath: precomposedURL.path) {
             let preparationEndTime = Date()
             let preparationEntry = PlaylistDiagnostics.PreparationEntry(
@@ -327,44 +353,70 @@ final class AudioProcessingService {
             let outputFormat = outputFile.processingFormat
             let gain = Float(loudness.gainFactor)
             var appendedSongs = 0
+            var framesRemaining: Int64? = maxDuration.map { Int64($0 * outputFormat.sampleRate) }
+            var capReached = false
+            var currentSongHasFrames = false
 
-            func writeConverted(_ buffer: AVAudioPCMBuffer) throws {
+            // Writes a chunk, truncating at the cap boundary when maxDuration is
+            // set. Truncate rather than skip so a capped stitch whose next song
+            // is longer than the cap still contains audio; otherwise AlarmKit's
+            // guaranteed fallback could ring silent.
+            func writeClamped(_ buffer: AVAudioPCMBuffer) throws {
+                if let remaining = framesRemaining, remaining <= 0 {
+                    capReached = true
+                    return
+                }
+                let length = Int(buffer.frameLength)
+                let toWrite = framesRemaining.map { min(Int64(length), $0) } ?? Int64(length)
+                guard toWrite > 0 else { return }
+                let out: AVAudioPCMBuffer
+                if toWrite == Int64(length) {
+                    out = buffer
+                } else {
+                    guard let trimmed = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: AVAudioFrameCount(toWrite)) else {
+                        throw AudioProcessingError.bufferCreationFailed
+                    }
+                    for channel in 0..<Int(buffer.format.channelCount) {
+                        guard let src = buffer.floatChannelData?[channel],
+                              let dst = trimmed.floatChannelData?[channel] else { continue }
+                        memcpy(dst, src, Int(toWrite) * MemoryLayout<Float>.stride)
+                    }
+                    trimmed.frameLength = AVAudioFrameCount(toWrite)
+                    out = trimmed
+                }
                 if gain != 1.0 {
-                    let channels = Int(buffer.format.channelCount)
-                    let frames = Int(buffer.frameLength)
+                    let channels = Int(out.format.channelCount)
+                    let frames = Int(out.frameLength)
                     for channel in 0..<channels {
-                        guard let channelData = buffer.floatChannelData?[channel] else { continue }
+                        guard let channelData = out.floatChannelData?[channel] else { continue }
                         for frame in 0..<frames {
                             channelData[frame] *= gain
                         }
                     }
                 }
-                try outputFile.write(from: buffer)
+                try outputFile.write(from: out)
+                if !currentSongHasFrames {
+                    currentSongHasFrames = true
+                    appendedSongs += 1
+                }
+                if let remaining = framesRemaining {
+                    let left = remaining - toWrite
+                    framesRemaining = left
+                    if left <= 0 { capReached = true }
+                }
             }
 
-            for soundID in selectedSoundIDs {
+            songLoop: for soundID in selectedSoundIDs {
                 guard let sound = importedSounds.first(where: { $0.id == soundID }),
                       let soundURL = sound.localURL(soundsDirectory: soundsDir),
                       fileManager.fileExists(atPath: soundURL.path) else {
                     continue
                 }
 
+                currentSongHasFrames = false
                 do {
                     let audioFile = try AVAudioFile(forReading: soundURL)
                     let sourceFormat = audioFile.processingFormat
-                    
-                    // Calculate duration of this song
-                    let songDuration = Double(audioFile.length) / sourceFormat.sampleRate
-                    
-                    // Check if adding this song would exceed maxDuration
-                    if let maxDuration = maxDuration {
-                        let currentDuration = Double(outputFile.length) / outputFormat.sampleRate
-                        if currentDuration + songDuration > maxDuration {
-                            // Skip this song, we've hit the cap
-                            SmartWakeDebugLog.log("BACKUP: skipping song \(sound.name) (would exceed \(maxDuration)s cap, current=\(currentDuration)s)")
-                            break
-                        }
-                    }
 
                     if sourceFormat == outputFormat {
                         // Fast path: same format, straight chunk copy.
@@ -373,7 +425,8 @@ final class AudioProcessingService {
                         while true {
                             try audioFile.read(into: chunk, frameCount: chunkFrames)
                             if chunk.frameLength == 0 { break }
-                            try writeConverted(chunk)
+                            try writeClamped(chunk)
+                            if capReached { break songLoop }
                             if chunk.frameLength < chunkFrames { break }
                         }
                     } else {
@@ -412,23 +465,32 @@ final class AudioProcessingService {
                             let status = converter.convert(to: dstChunk, error: &convertError, withInputFrom: inputBlock)
                             if status == .error { break }
                             if dstChunk.frameLength > 0 {
-                                try writeConverted(dstChunk)
+                                try writeClamped(dstChunk)
                             }
+                            if capReached { break songLoop }
                             if status == .endOfStream { break }
                             if dstChunk.frameLength == 0 && status == .haveData { continue }
                             if dstChunk.frameLength < dstCapacity && status == .haveData { continue }
                         }
                     }
-                    appendedSongs += 1
                 } catch {
                     // Skip unreadable/corrupt song instead of failing the whole playlist.
                     continue
                 }
             }
 
-            guard appendedSongs > 0 else {
+            let totalFrames = outputFile.length
+            guard totalFrames > 0, appendedSongs > 0 else {
                 try? fileManager.removeItem(at: precomposedURL)
-                throw AudioProcessingError.processingFailed("No songs in playlist could be read")
+                let capText = maxDuration.map { "\(Int($0))s" } ?? "none"
+                throw AudioProcessingError.processingFailed("Stitch rendered with no audio (songs=\(selectedSoundIDs.count), cap=\(capText))")
+            }
+
+            if let cap = maxDuration {
+                let totalSeconds = Double(totalFrames) / outputFormat.sampleRate
+                let bytes = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+                let truncated = capReached ? String(format: "%.1fs", totalSeconds) : "none"
+                SmartWakeDebugLog.log(String(format: "PRECOMPOSE: cap=%.0fs songs=%d truncatedAt=%@ total=%.1fs bytes=%lld", cap, appendedSongs, truncated, totalSeconds, bytes))
             }
 
             return precomposedURL
