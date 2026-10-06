@@ -69,6 +69,7 @@ struct ContentView: View {
                             Task {
                                 do {
                                     let url = try await BackupRestoreService.shared.exportArchive()
+                                    let data = try Data(contentsOf: url)
                                     exportURL = url
                                     showingExportPicker = true
                                 } catch {
@@ -247,7 +248,7 @@ struct ContentView: View {
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
             }
-            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(url: exportURL), contentType: .zip, defaultFilename: "AlarmClock_Backup") { result in
+            .fileExporter(isPresented: $showingExportPicker, document: ExportDocument(data: exportURL.flatMap { try? Data(contentsOf: $0) }), contentType: .json, defaultFilename: "AlarmClock_Backup") { result in
                 switch result {
                 case .success(let url):
                     SmartWakeDebugLog.log("Backup exported to \(url.path)")
@@ -255,7 +256,7 @@ struct ContentView: View {
                     coordinator.lastError = "Export failed: \(error.localizedDescription)"
                 }
             }
-            .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.zip], allowsMultipleSelection: false) { result in
+            .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
                 case .success(let urls):
                     if let url = urls.first {

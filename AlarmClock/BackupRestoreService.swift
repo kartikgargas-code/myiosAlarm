@@ -3,25 +3,25 @@ import UniformTypeIdentifiers
 import SwiftUI
 import os.log
 
-/// Document wrapper for .fileExporter
+/// Document wrapper for .fileExporter - exports as JSON file
 struct ExportDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.zip] }
+    static var readableContentTypes: [UTType] { [.json] }
     
-    let url: URL?
+    let data: Data?
     
-    init(url: URL?) {
-        self.url = url
+    init(data: Data?) {
+        self.data = data
     }
     
     init(configuration: ReadConfiguration) throws {
-        self.url = nil
+        self.data = nil
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        guard let url = url else {
+        guard let data = data else {
             throw CocoaError(.fileNoSuchFile)
         }
-        return try FileWrapper(url: url, options: .immediate)
+        return FileWrapper(regularFileWithContents: data)
     }
 }
 
@@ -43,13 +43,13 @@ final class BackupRestoreService {
         
         struct BackupSoundFile: Codable {
             let fileName: String
-            let data: Data
+            let dataBase64: String  // Base64 encoded
         }
     }
     
     private init() {}
     
-    /// Export all app data to a zip archive
+    /// Export all app data to a JSON file (with base64-encoded sounds)
     func exportArchive() async throws -> URL {
         let fileManager = FileManager.default
         
@@ -62,7 +62,7 @@ final class BackupRestoreService {
             throw BackupError.coordinatorNotAvailable
         }
         
-        // Collect imported sound files
+        // Collect imported sound files as base64
         var soundFiles: [BackupArchive.BackupSoundFile] = []
         let soundsDir = soundLibrary.soundsDirectory
         
@@ -71,7 +71,8 @@ final class BackupRestoreService {
                 let fileURL = soundsDir.appendingPathComponent(sound.fileName)
                 if fileManager.fileExists(atPath: fileURL.path) {
                     let data = try Data(contentsOf: fileURL)
-                    soundFiles.append(BackupArchive.BackupSoundFile(fileName: sound.fileName, data: data))
+                    let base64String = data.base64EncodedString()
+                    soundFiles.append(BackupArchive.BackupSoundFile(fileName: sound.fileName, dataBase64: base64String))
                 }
             }
         }
@@ -88,30 +89,26 @@ final class BackupRestoreService {
             sounds: soundFiles
         )
         
-        // Write to temporary directory
+        // Write JSON directly to temp file (no zip needed)
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent("AlarmClockBackup_\(UUID().uuidString)")
         try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
         
-        let archiveURL = tempDir.appendingPathComponent("backup.json")
+        let archiveURL = tempDir.appendingPathComponent("AlarmClock_Backup.json")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(archive)
         try data.write(to: archiveURL, options: .atomic)
         
-        // Create zip file
-        let zipURL = fileManager.temporaryDirectory.appendingPathComponent("AlarmClock_Backup_\(Date().timeIntervalSince1970).zip")
-        try createZipArchive(sourceDir: tempDir, destinationURL: zipURL)
-        
         // Clean up temp directory
         try? fileManager.removeItem(at: tempDir)
         
-        os_log(.info, log: log, "Exported backup to %{public}s (%d sounds, %d alarms)", zipURL.path, soundFiles.count, archive.alarms.alarms.count)
+        os_log(.info, log: log, "Exported backup to %{public}s (%d sounds, %d alarms)", archiveURL.path, soundFiles.count, archive.alarms.alarms.count)
         
-        return zipURL
+        return archiveURL
     }
     
-    /// Import and restore from a zip archive
+    /// Import and restore from a JSON file
     func importArchive(from url: URL) async throws {
         let fileManager = FileManager.default
         
@@ -119,23 +116,12 @@ final class BackupRestoreService {
         let didStartAccess = url.startAccessingSecurityScopedResource()
         defer { if didStartAccess { url.stopAccessingSecurityScopedResource() } }
         
-        // Extract to temporary directory
-        let tempDir = fileManager.temporaryDirectory.appendingPathComponent("AlarmClockRestore_\(UUID().uuidString)")
-        try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        
-        defer {
-            try? fileManager.removeItem(at: tempDir)
+        // Read backup.json directly
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw BackupError.invalidArchive("Backup file not found")
         }
         
-        try extractZipArchive(sourceURL: url, destinationDir: tempDir)
-        
-        // Read backup.json
-        let archiveURL = tempDir.appendingPathComponent("backup.json")
-        guard fileManager.fileExists(atPath: archiveURL.path) else {
-            throw BackupError.invalidArchive("backup.json not found")
-        }
-        
-        let data = try Data(contentsOf: archiveURL)
+        let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let archive = try decoder.decode(BackupArchive.self, from: data)
@@ -151,14 +137,18 @@ final class BackupRestoreService {
             throw BackupError.coordinatorNotAvailable
         }
         
-        // Stage 1: Restore sound files
+        // Stage 1: Restore sound files from base64
         let soundsDir = SoundLibrary.shared.soundsDirectory
         if let soundsDir {
             try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
             
             for soundFile in archive.sounds {
                 let destURL = soundsDir.appendingPathComponent(soundFile.fileName)
-                try soundFile.data.write(to: destURL, options: .atomic)
+                guard let decodedData = Data(base64Encoded: soundFile.dataBase64) else {
+                    os_log(.error, log: log, "Failed to decode base64 for sound: %{public}s", soundFile.fileName)
+                    continue
+                }
+                try decodedData.write(to: destURL, options: .atomic)
             }
         }
         
@@ -201,47 +191,6 @@ final class BackupRestoreService {
         os_log(.info, log: log, "Imported backup (%d sounds, %d alarms, %d themes)", archive.sounds.count, archive.alarms.alarms.count, archive.userThemes.count)
     }
     
-    /// Create a zip archive from a directory
-    private func createZipArchive(sourceDir: URL, destinationURL: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.arguments = ["-r", "-q", destinationURL.path, "."]
-        process.currentDirectoryURL = sourceDir
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        
-        try process.run()
-        process.waitUntilExit()
-        
-        if process.terminationStatus != 0 {
-            let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorString = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw BackupError.zipCreationFailed(errorString)
-        }
-    }
-    
-    /// Extract a zip archive to a directory
-    private func extractZipArchive(sourceURL: URL, destinationDir: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        process.arguments = ["-q", "-o", sourceURL.path, "-d", destinationDir.path]
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        
-        try process.run()
-        process.waitUntilExit()
-        
-        if process.terminationStatus != 0 {
-            let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
-            let errorString = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw BackupError.zipExtractionFailed(errorString)
-        }
-    }
-    
     enum BackupError: LocalizedError {
         case coordinatorNotAvailable
         case invalidArchive(String)
@@ -258,9 +207,9 @@ final class BackupRestoreService {
             case .unsupportedVersion(let version):
                 return "Unsupported backup version: \(version)"
             case .zipCreationFailed(let reason):
-                return "Failed to create zip: \(reason)"
+                return "Failed to create backup: \(reason)"
             case .zipExtractionFailed(let reason):
-                return "Failed to extract zip: \(reason)"
+                return "Failed to extract backup: \(reason)"
             }
         }
     }
