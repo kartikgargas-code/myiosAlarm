@@ -3,6 +3,7 @@ import ActivityKit
 import Foundation
 import Observation
 import WidgetKit
+import UserNotifications
 import os.log
 
 @MainActor
