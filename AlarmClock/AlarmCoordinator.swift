@@ -108,18 +108,26 @@ final class AlarmCoordinator {
 
     func save(_ alarm: AlarmRecord) async {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM SAVE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let beforeCount = idsBefore.count
+        let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM SAVE: before count=\(beforeCount) ids=\(beforeIds)")
         await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM SAVE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let afterCount = idsAfter.count
+        let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM SAVE: after count=\(afterCount) ids=\(afterIds)")
     }
 
     func delete(id: UUID) async {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM DELETE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let beforeCount = idsBefore.count
+        let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM DELETE: before count=\(beforeCount) ids=\(beforeIds)")
         await commit({ $0.delete(id: id) }, reason: "delete")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM DELETE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let afterCount = idsAfter.count
+        let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM DELETE: after count=\(afterCount) ids=\(afterIds)")
     }
 
     func duplicate(id: UUID) async {
@@ -128,7 +136,9 @@ final class AlarmCoordinator {
             return
         }
         let idsBefore = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM DUPLICATE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let beforeCount = idsBefore.count
+        let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM DUPLICATE: before count=\(beforeCount) ids=\(beforeIds)")
         // Copy alarm with new ID, clear per-occurrence overrides
         let copy = AlarmRecord(
             id: UUID(),
@@ -145,7 +155,9 @@ final class AlarmCoordinator {
         )
         await commit({ try $0.upsert(copy, now: self.now()) }, reason: "duplicate")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
-        SmartWakeDebugLog.log(#"ALARM DUPLICATE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        let afterCount = idsAfter.count
+        let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+        SmartWakeDebugLog.log("ALARM DUPLICATE: after count=\(afterCount) ids=\(afterIds)")
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
@@ -576,7 +588,9 @@ final class AlarmCoordinator {
             
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
-            SmartWakeDebugLog.log(#"WIDGET ACTION APPLY: after count=\(idsAfterWidget.count) ids=\(idsAfterWidget.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+            let count = idsAfterWidget.count
+            let idStrs = idsAfterWidget.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
+            SmartWakeDebugLog.log("WIDGET ACTION APPLY: after count=\(count) ids=\(idStrs)")
         } catch {
             SmartWakeDebugLog.log("WIDGET ACTION APPLY FAILED: \(error.localizedDescription)")
         }
