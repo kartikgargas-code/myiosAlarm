@@ -19,7 +19,7 @@ final class SoundPreviewService: NSObject {
     private(set) var playingSoundID: String?
     private(set) var lastError: String?
 
-    private var player: AVAudioPlayer?
+    var player: AVAudioPlayer?
     private var sessionConfigured = false
 
     static func bundledSoundURL(for fileName: String) -> URL? {
