@@ -76,6 +76,16 @@ struct ContentView: View {
                                 )
                         }
                     }
+                    
+                    // Build fingerprint footer
+                    Section {
+                        if let buildLine = SmartWakeDebugLog.latestBuildLine() {
+                            Text(buildLine)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                    }
                 }
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
@@ -504,12 +514,18 @@ struct DiagnosticsScreen: View {
     @State private var logLines: [String] = []
     @State private var isLoading = false
     @State private var showUTCNotice = true
+    @State private var buildFingerprint: String? = nil
     
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                // 0. Build Fingerprint (always at top)
+                buildFingerprintSection
+                
+                Divider()
+                
                 // 1. Last Alarm Result
                 lastAlarmResultSection
                 
@@ -553,6 +569,25 @@ struct DiagnosticsScreen: View {
         }
         .onAppear {
             loadLog()
+            loadBuildFingerprint()
+        }
+    }
+    
+    // MARK: - Section 0: Build Fingerprint
+    private var buildFingerprintSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Build Fingerprint")
+                .font(.subheadline.weight(.semibold))
+            
+            if let fingerprint = buildFingerprint {
+                Text(fingerprint)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.primary)
+            } else {
+                Text("Build fingerprint not found in log")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
         }
     }
     
@@ -731,5 +766,9 @@ struct DiagnosticsScreen: View {
             .joined(separator: "\n")
         
         UIPasteboard.general.string = lines
+    }
+    
+    private func loadBuildFingerprint() {
+        self.buildFingerprint = SmartWakeDebugLog.latestBuildLine()
     }
 }

@@ -90,6 +90,25 @@ public enum SmartWakeDebugLog {
         }
     }
     
+    /// Returns the most recent BUILD: line from the log, if any
+    static func latestBuildLine() -> String? {
+        guard let url = logURL() else { return nil }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+            .reversed()
+        for line in lines {
+            if line.contains("BUILD: ") {
+                // Extract just the BUILD: part
+                if let buildIdx = line.range(of: "BUILD: ") {
+                    return String(line[buildIdx.lowerBound...])
+                }
+                return line
+            }
+        }
+        return nil
+    }
+    
     static func resetInterruptionLogFlag() {
         hasLoggedInterruption = false
     }
