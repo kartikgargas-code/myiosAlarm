@@ -1265,10 +1265,10 @@ final class AlarmCoordinator {
     }
     
     // State for delete-with-sound confirmation
-    @Published var pendingDeleteSoundID: UUID?
-    @Published var pendingDeletePlaylists: [Playlist] = []
-    @Published var pendingDeleteEntryID: UUID?
-    @Published var showingDeleteWithSoundConfirmation = false
+    var pendingDeleteSoundID: UUID?
+    var pendingDeletePlaylists: [Playlist] = []
+    var pendingDeleteEntryID: UUID?
+    var showingDeleteWithSoundConfirmation = false
     
     /// Confirm and execute deletion of sound file, removing from playlists and alarms
     func confirmDeleteSoundFile() {
