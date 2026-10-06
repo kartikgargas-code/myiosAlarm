@@ -1203,6 +1203,101 @@ final class AlarmCoordinator {
         try? (scheduler as? AlarmKitSchedulingService)?.manager.cancel(id: testID)
     }
 
+    // MARK: - CAF format experiment (measurement only)
+
+    /// Diagnostics: re-render the current 60s floor stitch as compressed CAF
+    /// (IMA4), log both byte sizes, and schedule a one-shot test alarm using the
+    /// CAF file. If AlarmKit refuses the compressed file it rings the stock
+    /// system sound instead — which is exactly what this experiment measures.
+    func scheduleCAFTestAlarm() async {
+        #if DIAGNOSTIC_BUILD
+        lastError = "Alarm scheduling is disabled in AlarmClock Diagnostic."
+        return
+        #endif
+        do {
+            guard let soundsDir = SoundLibrary.shared.soundsDirectory else {
+                throw SoundLibraryError.importFailed("Library/Sounds is unavailable.")
+            }
+
+            // 1. Newest capped floor stitch, or render one from the first playlist.
+            let wavURL: URL
+            if let existing = newestCappedStitchURL(in: soundsDir) {
+                wavURL = existing
+            } else {
+                guard let playlist = SoundLibrary.shared.playlists.first else {
+                    throw SoundLibraryError.playlistNotFound(UUID())
+                }
+                let tuple = try await AudioProcessingService.shared.precomposePlaylist(
+                    playlistID: playlist.id,
+                    loudness: .hundred,
+                    songCount: 5,
+                    maxDuration: 60
+                )
+                wavURL = tuple.0
+                playlistDiagnostics.addPreparation(tuple.1)
+                playlistDiagnostics.addGeneratedFile(tuple.2)
+            }
+
+            // 2. Re-render as CAF/IMA4 and copy into Library/Sounds for AlarmKit.
+            let cafProcessedURL = try await AudioProcessingService.shared.renderCAFIma4(from: wavURL)
+            let cafName = cafProcessedURL.lastPathComponent
+            let cafKitURL = soundsDir.appendingPathComponent(cafName)
+            if !FileManager.default.fileExists(atPath: cafKitURL.path) {
+                try FileManager.default.copyItem(at: cafProcessedURL, to: cafKitURL)
+            }
+
+            let wavBytes = (try? FileManager.default.attributesOfItem(atPath: wavURL.path)[.size] as? Int64) ?? 0
+            let cafBytes = (try? FileManager.default.attributesOfItem(atPath: cafKitURL.path)[.size] as? Int64) ?? 0
+            SmartWakeDebugLog.log("CAF TEST: wav=\(wavBytes) bytes caf=\(cafBytes) bytes file=\(cafName)")
+
+            // 3. One-shot test alarm ~15 s out using the CAF file.
+            let testDate = now().addingTimeInterval(15)
+            let testID = UUID()
+            let alert = AlarmPresentation.Alert(
+                title: LocalizedStringResource(stringLiteral: "CAF Test"),
+                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
+                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+                secondaryButtonBehavior: .countdown
+            )
+            let attributes = AlarmAttributes(
+                presentation: AlarmPresentation(
+                    alert: alert,
+                    countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min")),
+                    paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
+                ),
+                metadata: ScheduledOccurrenceMetadata(
+                    alarmID: testID,
+                    occurrenceKey: "CAF-TEST-\(Int64(testDate.timeIntervalSince1970))",
+                    baseDate: testDate
+                ),
+                tintColor: .orange
+            )
+            let configuration = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
+                countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 600),
+                schedule: .fixed(testDate),
+                attributes: attributes,
+                stopIntent: nil,
+                secondaryIntent: nil,
+                sound: .named(cafName)
+            )
+            _ = try await (scheduler as? AlarmKitSchedulingService)?.manager.schedule(id: testID, configuration: configuration)
+            SmartWakeDebugLog.log("CAF TEST: scheduled \(cafName) fires at \(testDate)")
+        } catch {
+            lastError = "CAF test failed: \(error.localizedDescription)"
+            SmartWakeDebugLog.log("CAF TEST: FAILED \(error.localizedDescription)")
+        }
+    }
+
+    private func newestCappedStitchURL(in dir: URL) -> URL? {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap60.wav") }
+        return candidates.max { lhs, rhs in
+            let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return l < r
+        }
+    }
+
     /// Record a song that finished playing during an alarm ring
     /// Call this when a song completes playback (not when skipped/cut off)
     func recordPlayHistory(songName: String, alarmID: UUID, alarmLabel: String, soundID: UUID? = nil) {

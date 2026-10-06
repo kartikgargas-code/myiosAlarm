@@ -159,6 +159,91 @@ final class AudioProcessingService {
         return true
     }
 
+    /// Experimental: re-render a WAV stitch as compressed CAF (IMA4) so the
+    /// Diagnostics screen can measure whether AlarmKit accepts a compressed
+    /// floor sound. Measurement only — the production format is unchanged.
+    func renderCAFIma4(from wavURL: URL) async throws -> URL {
+        guard let processedDir = processedSoundsDirectory else {
+            throw AudioProcessingError.processedDirectoryUnavailable
+        }
+        let cafName = (wavURL.lastPathComponent as NSString).deletingPathExtension + ".caf"
+        let cafURL = processedDir.appendingPathComponent(cafName)
+        try? fileManager.removeItem(at: cafURL)
+
+        return try await Task.detached(priority: .userInitiated) { [wavURL, cafURL] in
+            let source = try AVAudioFile(forReading: wavURL)
+            let sourceFormat = source.processingFormat
+
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatAppleIMA4,
+                AVSampleRateKey: sourceFormat.sampleRate,
+                AVNumberOfChannelsKey: sourceFormat.channelCount
+            ]
+            let outputFile = try AVAudioFile(forWriting: cafURL, settings: outputSettings)
+            let destinationFormat = outputFile.processingFormat
+
+            if sourceFormat == destinationFormat {
+                let chunkFrames: AVAudioFrameCount = 262_144
+                guard let chunk = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: chunkFrames) else {
+                    throw AudioProcessingError.bufferCreationFailed
+                }
+                while true {
+                    try source.read(into: chunk, frameCount: chunkFrames)
+                    if chunk.frameLength == 0 { break }
+                    try outputFile.write(from: chunk)
+                    if chunk.frameLength < chunkFrames { break }
+                }
+            } else {
+                guard let converter = try? AVAudioConverter(from: sourceFormat, to: destinationFormat) else {
+                    throw AudioProcessingError.processingFailed("IMA4 converter unavailable")
+                }
+                let srcChunkFrames: AVAudioFrameCount = 262_144
+                guard let srcChunk = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: srcChunkFrames) else {
+                    throw AudioProcessingError.bufferCreationFailed
+                }
+                var reachedEOF = false
+
+                let inputBlock: AVAudioConverterInputBlock = { _, status in
+                    if reachedEOF {
+                        status.pointee = .endOfStream
+                        return nil
+                    }
+                    do {
+                        try source.read(into: srcChunk, frameCount: srcChunkFrames)
+                    } catch {
+                        reachedEOF = true
+                        status.pointee = .noDataNow
+                        return nil
+                    }
+                    if srcChunk.frameLength == 0 {
+                        reachedEOF = true
+                        status.pointee = .endOfStream
+                        return nil
+                    }
+                    status.pointee = .haveData
+                    return srcChunk
+                }
+
+                while !reachedEOF {
+                    let dstCapacity: AVAudioFrameCount = 262_144
+                    guard let dstChunk = AVAudioPCMBuffer(pcmFormat: destinationFormat, frameCapacity: dstCapacity) else { break }
+                    var convertError: NSError?
+                    let status = converter.convert(to: dstChunk, error: &convertError, withInputFrom: inputBlock)
+                    if status == .error { break }
+                    if dstChunk.frameLength > 0 {
+                        try outputFile.write(from: dstChunk)
+                    }
+                    if status == .endOfStream { break }
+                }
+            }
+
+            guard outputFile.length > 0 else {
+                throw AudioProcessingError.processingFailed("CAF render produced no audio")
+            }
+            return cafURL
+        }.value
+    }
+
     /// Precompose a playlist into a single WAV file for AlarmKit
     /// Selects multiple random songs (or uses sequence order), concatenates them with loudness applied
     /// Returns the URL of the combined file

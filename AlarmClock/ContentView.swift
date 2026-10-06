@@ -605,9 +605,14 @@ struct DiagnosticsScreen: View {
             VStack(alignment: .leading, spacing: 16) {
                 // 0. Build Fingerprint (always at top)
                 buildFingerprintSection
-                
+
                 Divider()
-                
+
+                // 0b. CAF format experiment
+                cafExperimentSection
+
+                Divider()
+
                 // 1. Last Alarm Result
                 lastAlarmResultSection
                 
@@ -673,6 +678,20 @@ struct DiagnosticsScreen: View {
         }
     }
     
+    // MARK: - Section 0b: CAF format experiment
+    private var cafExperimentSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CAF Format Experiment")
+                .font(.subheadline.weight(.semibold))
+            Text("Renders the current 60s floor stitch a second time as compressed CAF (IMA4), logs both byte sizes, and schedules a one-shot test alarm 15 s out using the CAF. If it rings with your playlist audio, AlarmKit accepts compressed files; if it rings with the stock system sound, it refused the CAF.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("Test CAF floor sound") {
+                Task { await AlarmCoordinator.sharedInstance?.scheduleCAFTestAlarm() }
+            }
+        }
+    }
+
     // MARK: - Section 1: Last Alarm Result
     private var lastAlarmResultSection: some View {
         VStack(alignment: .leading, spacing: 8) {
