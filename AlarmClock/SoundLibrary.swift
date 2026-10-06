@@ -118,7 +118,8 @@ final class SoundLibrary {
         }
     }
 
-    private func loadSounds() {
+    /// Reload imported sounds from disk — used by backup/restore
+    func loadSounds() {
         guard let dir = soundsDirectory else { return }
         do {
             let files = try fileManager.contentsOfDirectory(

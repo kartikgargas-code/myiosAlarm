@@ -14,7 +14,7 @@ final class ThemeManager {
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
-    private(set) var userThemes: [UserTheme] = []
+    var userThemes: [UserTheme] = []  // Public setter for backup/restore
     private(set) var activeUserThemeID: UUID?
 
     private init() {
@@ -127,7 +127,8 @@ final class ThemeManager {
         }
     }
 
-    private func saveUserThemes() {
+    /// Save user themes to UserDefaults — used by backup/restore
+    func saveUserThemes() {
         if let data = try? JSONEncoder().encode(userThemes) {
             defaults.set(data, forKey: userThemesKey)
         }

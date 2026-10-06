@@ -51,11 +51,15 @@ final class AlarmCoordinator {
     private var liveActivity: Activity<NextAlarmAttributes>?
 
     private var engine: AlarmEngine
-    private let persistence: any AlarmPersisting
+    /// Persistence layer - internal for backup/restore access
+    let persistence: any AlarmPersisting
     private let scheduler: any AlarmSystemScheduling
     private let now: () -> Date
     private let maxHistoryEntries = 200
     private let ringDetectionOSLog = OSLog(subsystem: "com.example.alarmclock", category: "RingDetection")
+    
+    /// Engine for backup/restore access
+    var currentEngine: AlarmEngine { engine }
 
     // Track emergency re-ring IDs so reconcile doesn't cancel them as orphans
     private var emergencyReRingIDs: Set<UUID> = []
@@ -440,7 +444,7 @@ final class AlarmCoordinator {
     /// Mirror alarms.json into the shared App Group so Smart Wake (and the
     /// widget/extension world) can read current alarm state. Best-effort:
     /// a missing container (no entitlements / unresolved group) just skips it.
-    private func writeAlarmsToAppGroup(_ snapshot: AlarmStoreSnapshot) {
+    func writeAlarmsToAppGroup(_ snapshot: AlarmStoreSnapshot) {
         guard let groupID = AppGroupResolver.resolve(),
               let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
             return
@@ -881,7 +885,8 @@ final class AlarmCoordinator {
         }
     }
 
-    private func publish() {
+    /// Update published state from engine — call after external snapshot changes
+    func publish() {
         let currentDate = now()
         alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
         let earliest = engine.earliestOccurrence(now: currentDate)

@@ -81,7 +81,7 @@ final class BackupRestoreService {
         let durations = soundLibrary.savedDurationsForBackup()
         
         let archive = BackupArchive(
-            alarms: try coordinator.persistence.load(),
+            alarms: try coordinator.currentEngine.snapshot,
             userThemes: themeManager.userThemes,
             displayNameOverrides: displayNames,
             durationOverrides: durations,
@@ -179,14 +179,14 @@ final class BackupRestoreService {
             if case .imported(let id) = alarm.sound {
                 let sound = soundLibrary.importedSounds.first { $0.id == id }
                 if sound == nil {
-                    os_log(.warning, log: log, "Alarm %{public}s references missing imported sound %{public}s", alarm.id.uuidString, id.uuidString)
+                    os_log(.info, log: log, "Alarm %{public}s references missing imported sound %{public}s", alarm.id.uuidString, id.uuidString)
                 }
             }
         }
         
         // Stage 5: Save alarms snapshot
         try coordinator.persistence.save(archive.alarms)
-        coordinator.engine.snapshot = archive.alarms
+        coordinator.currentEngine.snapshot = archive.alarms
         coordinator.publish()
         coordinator.writeAlarmsToAppGroup(archive.alarms)
         
