@@ -909,7 +909,7 @@ final class AlarmCoordinator {
     ) async throws -> (sound: AlertConfiguration.AlertSound, fileName: String?) {
         switch sound {
         case .systemDefault:
-            return .default
+            return (.default, nil)
         case .builtIn(let name):
             guard let fileName = AlarmSound.builtIn(name).systemFileName else {
                 throw SoundLibraryError.builtInSoundMissing(name)
