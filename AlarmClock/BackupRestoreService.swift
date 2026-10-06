@@ -2,6 +2,28 @@ import Foundation
 import UniformTypeIdentifiers
 import os.log
 
+/// Document wrapper for .fileExporter
+struct ExportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.zip] }
+    
+    let url: URL?
+    
+    init(url: URL?) {
+        self.url = url
+    }
+    
+    init(configuration: ReadConfiguration) throws {
+        self.url = nil
+    }
+    
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        guard let url = url else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try FileWrapper(url: url, options: .immediate)
+    }
+}
+
 @MainActor
 @Observable
 final class BackupRestoreService {

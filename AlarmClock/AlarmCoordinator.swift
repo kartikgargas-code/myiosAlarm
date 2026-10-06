@@ -123,9 +123,19 @@ final class AlarmCoordinator {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
         SmartWakeDebugLog.log(#"ALARM DUPLICATE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
         // Copy alarm with new ID, clear per-occurrence overrides
-        var copy = original
-        copy.id = UUID()
-        copy.overrides = [:]
+        let copy = AlarmRecord(
+            id: UUID(),
+            label: original.label,
+            time: original.time,
+            repeatRule: original.repeatRule,
+            oneTimeDate: original.oneTimeDate,
+            isEnabled: original.isEnabled,
+            adjustmentStepMinutes: original.adjustmentStepMinutes,
+            overrides: [:],
+            sound: original.sound,
+            loudness: original.loudness,
+            snoozeDurationMinutes: original.snoozeDurationMinutes
+        )
         await commit({ try $0.upsert(copy, now: self.now()) }, reason: "duplicate")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
         SmartWakeDebugLog.log(#"ALARM DUPLICATE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
