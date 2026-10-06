@@ -15,6 +15,68 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("My Themes") {
+                    ForEach(ThemeManager.shared.userThemes) { userTheme in
+                        Button {
+                            ThemeManager.shared.selectUserTheme(userTheme)
+                        } label: {
+                            HStack(spacing: 16) {
+                                themePreview(ThemeManager.shared.userThemeColors(userTheme))
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                                Text(userTheme.name)
+                                    .font(.body)
+                                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+
+                                Spacer()
+
+                                if ThemeManager.shared.activeUserThemeID == userTheme.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .font(.title2)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                ThemeManager.shared.deleteUserTheme(id: userTheme.id)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button {
+                                editingThemeID = userTheme.id
+                                showingThemeEditor = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
+                        .contextMenu {
+                            Button("Edit") {
+                                editingThemeID = userTheme.id
+                                showingThemeEditor = true
+                            }
+                            Button("Duplicate") {
+                                ThemeManager.shared.duplicateUserTheme(userTheme)
+                            }
+                            Button("Delete", role: .destructive) {
+                                ThemeManager.shared.deleteUserTheme(id: userTheme.id)
+                            }
+                        }
+                    }
+
+                    Button {
+                        editingThemeID = nil
+                        showingThemeEditor = true
+                    } label: {
+                        Label("New Theme", systemImage: "plus.circle")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                }
+
                 Section("Predefined Themes") {
                     ForEach(ThemeManager.shared.availableThemes) { theme in
                         Button {
@@ -46,6 +108,7 @@ struct AppearanceView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .contentShape(Rectangle())
                     }
                 }
 
@@ -60,53 +123,6 @@ struct AppearanceView: View {
                             showingCustomColors = true
                         }
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    }
-                }
-
-                Section("My Themes") {
-                    ForEach(ThemeManager.shared.userThemes) { userTheme in
-                        Button {
-                            ThemeManager.shared.selectUserTheme(userTheme)
-                        } label: {
-                            HStack(spacing: 16) {
-                                themePreview(ThemeManager.shared.userThemeColors(userTheme))
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                                Text(userTheme.name)
-                                    .font(.body)
-                                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
-
-                                Spacer()
-
-                                if ThemeManager.shared.activeUserThemeID == userTheme.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                                        .font(.title2)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Edit") {
-                                editingThemeID = userTheme.id
-                                showingThemeEditor = true
-                            }
-                            Button("Duplicate") {
-                                ThemeManager.shared.duplicateUserTheme(userTheme)
-                            }
-                            Button("Delete", role: .destructive) {
-                                ThemeManager.shared.deleteUserTheme(id: userTheme.id)
-                            }
-                        }
-                    }
-
-                    Button {
-                        editingThemeID = nil
-                        showingThemeEditor = true
-                    } label: {
-                        Label("New Theme", systemImage: "plus.circle")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
                     }
                 }
 
