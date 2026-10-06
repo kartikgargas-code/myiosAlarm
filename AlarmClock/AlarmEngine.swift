@@ -42,8 +42,10 @@ public struct AlarmEngine {
                 updated.overrides = [:]
             }
             snapshot.alarms[index] = updated
+            SmartWakeDebugLog.log("ALARM ENGINE UPSERT: UPDATE alarm=\(alarm.id.uuidString) count=\(snapshot.alarms.count)")
         } else {
             snapshot.alarms.append(alarm)
+            SmartWakeDebugLog.log("ALARM ENGINE UPSERT: ADD alarm=\(alarm.id.uuidString) count=\(snapshot.alarms.count)")
         }
         pruneExpiredOverrides(now: now)
     }

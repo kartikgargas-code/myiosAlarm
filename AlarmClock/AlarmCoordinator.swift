@@ -100,11 +100,19 @@ final class AlarmCoordinator {
     }
 
     func save(_ alarm: AlarmRecord) async {
+        let idsBefore = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log("ALARM SAVE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
         await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
+        let idsAfter = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log("ALARM SAVE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
     }
 
     func delete(id: UUID) async {
+        let idsBefore = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log("ALARM DELETE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
         await commit({ $0.delete(id: id) }, reason: "delete")
+        let idsAfter = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log("ALARM DELETE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
     }
 
     func setEnabled(_ enabled: Bool, id: UUID) async {
@@ -532,6 +540,10 @@ final class AlarmCoordinator {
                     SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(feedback)")
                 }
             }
+            
+            // Log alarm IDs after widget action apply
+            let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
+            SmartWakeDebugLog.log("WIDGET ACTION APPLY: after count=\(idsAfterWidget.count) ids=\(idsAfterWidget.map { $0.uuidString.prefix(8) }.joined(separator: \", \"))")
         } catch {
             SmartWakeDebugLog.log("WIDGET ACTION APPLY FAILED: \(error.localizedDescription)")
         }
@@ -549,6 +561,9 @@ final class AlarmCoordinator {
         
         let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
         let backupDelay = AlarmCoordinator.backupDelaySeconds
+        
+        // Log the scheduling horizon and number of occurrences
+        SmartWakeDebugLog.log("DESIRED ALARMS: scheduling horizon=\(occurrences.count) occurrences, smartWakeEnabled=\(smartWakeEnabled)")
         
         for occurrence in occurrences {
             guard let alarm = mutableEngine.alarm(id: occurrence.alarmID) else { continue }
@@ -571,7 +586,7 @@ final class AlarmCoordinator {
                 let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
                 
                 if shouldSchedulePrimaryAtWake {
-                    results.append(DesiredSystemAlarm(
+                    let primaryItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
                             for: occurrence,
                             label: label,
@@ -584,7 +599,9 @@ final class AlarmCoordinator {
                         sound: soundToUse,
                         alarmKitSound: alarmKitSound,
                         snoozeDurationMinutes: alarm.snoozeDurationMinutes
-                    ))
+                    )
+                    results.append(primaryItem)
+                    SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(occurrence.occurrenceKey) kind=PRIMARY effectiveDate=\(occurrence.effectiveDate) label=\"\(label)\"")
                 }
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
@@ -639,7 +656,7 @@ final class AlarmCoordinator {
                     
                     let backupAlarmKitSound: AlertConfiguration.AlertSound = .named(processedFileName)
                     
-                    results.append(DesiredSystemAlarm(
+                    let backupItem = DesiredSystemAlarm(
                         id: SystemScheduleID.make(
                             for: backupOccurrence,
                             label: label,
@@ -652,7 +669,9 @@ final class AlarmCoordinator {
                         sound: soundToUse,
                         alarmKitSound: backupAlarmKitSound,
                         snoozeDurationMinutes: alarm.snoozeDurationMinutes
-                    ))
+                    )
+                    results.append(backupItem)
+                    SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(backupOccurrence.occurrenceKey) kind=BACKUP effectiveDate=\(backupOccurrence.effectiveDate) label=\"\(label)\"")
                 }
             } catch {
                 warnings.append("\(label): \(error.localizedDescription)")
@@ -660,6 +679,12 @@ final class AlarmCoordinator {
         }
         // Store the modified engine for persistence
         desiredSystemAlarmsEngine = mutableEngine
+        
+        // Final summary log
+        let primaryCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") == false }.count
+        let backupCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") }.count
+        SmartWakeDebugLog.log("DESIRED ALARMS SUMMARY: total=\(results.count) primary=\(primaryCount) backup=\(backupCount) userAlarms=\(occurrences.count)")
+        
         return (results, warnings)
     }
     
