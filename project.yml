@@ -33,6 +33,7 @@ targets:
       - path: AlarmClock/SoundLibrary.swift
       - path: AlarmClock/SoundPickerView.swift
       - path: AlarmClock/SoundPreviewService.swift
+      - path: AlarmClock/BackupRestoreService.swift
       - path: AlarmClock/ThemeManager.swift
       - path: AlarmClock/AppearanceView.swift
       - path: AlarmClock/AlarmEditorView.swift
