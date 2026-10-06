@@ -115,6 +115,22 @@ final class AlarmCoordinator {
         SmartWakeDebugLog.log(#"ALARM DELETE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
     }
 
+    func duplicate(id: UUID) async {
+        guard let original = engine.alarm(id: id) else {
+            SmartWakeDebugLog.log("ALARM DUPLICATE: alarm not found id=\(id.uuidString.prefix(8))")
+            return
+        }
+        let idsBefore = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log(#"ALARM DUPLICATE: before count=\(idsBefore.count) ids=\(idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+        // Copy alarm with new ID, clear per-occurrence overrides
+        var copy = original
+        copy.id = UUID()
+        copy.overrides = [:]
+        await commit({ try $0.upsert(copy, now: self.now()) }, reason: "duplicate")
+        let idsAfter = engine.snapshot.alarms.map { $0.id }
+        SmartWakeDebugLog.log(#"ALARM DUPLICATE: after count=\(idsAfter.count) ids=\(idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", "))"#)
+    }
+
     func setEnabled(_ enabled: Bool, id: UUID) async {
         let perfStart = CFAbsoluteTimeGetCurrent()
         SmartWakeDebugLog.log("PERF: setEnabled start id=\(id.uuidString.prefix(8)) enabled=\(enabled)")

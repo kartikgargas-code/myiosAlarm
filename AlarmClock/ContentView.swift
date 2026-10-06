@@ -405,6 +405,12 @@ struct ContentView: View {
             
             Divider()
             
+            Button("Duplicate") {
+                Task { await coordinator.duplicate(id: alarm.id) }
+            }
+            
+            Divider()
+            
             Button("Delete", role: .destructive) {
                 Task { await coordinator.delete(id: alarm.id) }
             }
