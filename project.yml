@@ -40,6 +40,7 @@ targets:
       - path: AlarmClock/NextOccurrenceControlsView.swift
       - path: AlarmClock/NextAlarmLiveActivity.swift
       - path: AlarmClock/NextAlarmLiveActivityView.swift
+      - path: AlarmClock/LiveActivityIntentProtocol.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
       - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/SmartWakeService.swift
