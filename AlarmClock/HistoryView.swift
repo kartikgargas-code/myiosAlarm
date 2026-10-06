@@ -6,8 +6,6 @@ struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: AlarmCoordinator
     @State private var showingClearAllConfirmation = false
-    @State private var showingDeleteSoundConfirmation = false
-    @State private var entryToDeleteWithSound: PlayHistoryEntry?
     
     init(coordinator: AlarmCoordinator) {
         _coordinator = State(initialValue: coordinator)
@@ -49,10 +47,17 @@ struct HistoryView: View {
             } message: {
                 Text("This will remove all history entries. Optionally also delete the song files from the app (only if not used by any alarm or playlist).")
             }
-            .alert("Cannot Delete Song File", isPresented: $showingDeleteSoundConfirmation, presenting: entryToDeleteWithSound) { entry in
-                Button("OK", role: .cancel) {}
-            } message: { entry in
-                Text("This song is still used by an alarm or playlist. Only the history entry will be deleted.")
+            // Delete + Song confirmation dialog
+            .alert("Delete Song File", isPresented: $coordinator.showingDeleteWithSoundConfirmation, presenting: coordinator.pendingDeletePlaylists) { playlists in
+                Button("Cancel", role: .cancel) {
+                    coordinator.cancelDeleteSoundFile()
+                }
+                Button("Delete Song", role: .destructive) {
+                    coordinator.confirmDeleteSoundFile()
+                }
+            } message: { playlists in
+                let names = playlists.map { $0.name }.joined(separator: ", ")
+                return Text("This song is in playlist\(playlists.count == 1 ? "" : "s"): \(names).\n\nDeleting will remove it from the playlist\(playlists.count == 1 ? "" : "s"), reset any alarm using it to Default, and delete the MP3 file.\n\nContinue?")
             }
         }
     }
@@ -84,11 +89,6 @@ struct HistoryView: View {
                         if entry.soundID != nil {
                             Button(role: .destructive) {
                                 coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: true)
-                                if coordinator.lastError?.contains("still referenced") == true {
-                                    entryToDeleteWithSound = entry
-                                    showingDeleteSoundConfirmation = true
-                                    coordinator.lastError = nil
-                                }
                             } label: {
                                 Label("Delete + Song", systemImage: "trash.fill")
                             }

@@ -1237,19 +1237,108 @@ final class AlarmCoordinator {
     func deleteHistoryEntry(id: UUID, deleteSoundFile: Bool = false) {
         if let entry = playHistory.first(where: { $0.id == id }) {
             if deleteSoundFile, let soundID = entry.soundID {
-                // Check if any alarm/playlist still references this sound
-                if !isSoundReferenced(soundID: soundID) {
-                    SoundLibrary.shared.deleteSoundFileByID(soundID)
-                } else {
-                    // Sound is still referenced - could log a warning or set an error
-                    lastError = "Cannot delete song file: still referenced by an alarm or playlist"
+                // Check if any alarm directly uses this sound (blocking)
+                if isAlarmDirectlyUsingSound(soundID: soundID) {
+                    lastError = "Cannot delete song file: currently used as alarm sound"
                     return
                 }
+                
+                // Check if sound is in any playlists (confirmation needed)
+                let referencingPlaylists = getPlaylistsReferencingSound(soundID: soundID)
+                if !referencingPlaylists.isEmpty {
+                    // Store for confirmation dialog
+                    pendingDeleteSoundID = soundID
+                    pendingDeletePlaylists = referencingPlaylists
+                    pendingDeleteEntryID = id
+                    showingDeleteWithSoundConfirmation = true
+                    return
+                }
+                
+                // No references - safe to delete directly
+                SoundLibrary.shared.deleteSoundFileByID(soundID)
             }
         }
         playHistory.removeAll { $0.id == id }
         Task {
             await saveHistory()
+        }
+    }
+    
+    // State for delete-with-sound confirmation
+    @Published var pendingDeleteSoundID: UUID?
+    @Published var pendingDeletePlaylists: [Playlist] = []
+    @Published var pendingDeleteEntryID: UUID?
+    @Published var showingDeleteWithSoundConfirmation = false
+    
+    /// Confirm and execute deletion of sound file, removing from playlists and alarms
+    func confirmDeleteSoundFile() {
+        guard let soundID = pendingDeleteSoundID,
+              let entryID = pendingDeleteEntryID else { return }
+        
+        // Remove sound from all playlists (soundIDs and selectedSoundIDs)
+        for i in SoundLibrary.shared.playlists.indices {
+            SoundLibrary.shared.playlists[i].soundIDs.removeAll { $0 == pendingDeleteSoundID }
+            SoundLibrary.shared.playlists[i].selectedSoundIDs.removeAll { $0 == pendingDeleteSoundID }
+        }
+        SoundLibrary.shared.savePlaylists()
+        
+        // Remove from any alarm using .imported(this sound)
+        var candidate = engine
+        for alarm in candidate.snapshot.alarms {
+            if case .imported(let id) = alarm.sound, id == pendingDeleteSoundID {
+                // Reset to system default
+                var updated = alarm
+                updated.sound = .systemDefault
+                try? candidate.upsert(updated, now: now())
+            }
+        }
+        // Note: alarms.json will be saved when we save history below
+        // The engine already has the updated alarms
+        
+        // Now delete the sound file
+        if let soundID = pendingDeleteSoundID {
+            SoundLibrary.shared.deleteSoundFileByID(soundID)
+        }
+        
+        // Clean up state
+        pendingDeleteSoundID = nil
+        pendingDeletePlaylists = []
+        pendingDeleteEntryID = nil
+        showingDeleteWithSoundConfirmation = false
+        
+        // Remove the history entry
+        playHistory.removeAll { $0.id == entryID }
+        Task {
+            await saveHistory()
+        }
+        
+        // Refresh widget snapshot
+        publish()
+        writeAlarmsToAppGroup(engine.snapshot)
+    }
+    
+    /// Cancel the pending delete-with-sound confirmation
+    func cancelDeleteSoundFile() {
+        pendingDeleteSoundID = nil
+        pendingDeletePlaylists = []
+        pendingDeleteEntryID = nil
+        showingDeleteWithSoundConfirmation = false
+    }
+    
+    /// Check if any alarm directly uses this sound as its .imported sound
+    private func isAlarmDirectlyUsingSound(soundID: UUID) -> Bool {
+        for alarm in alarms {
+            if case .imported(let id) = alarm.sound, id == soundID {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /// Get playlists that reference this sound (in soundIDs or selectedSoundIDs)
+    private func getPlaylistsReferencingSound(soundID: UUID) -> [Playlist] {
+        SoundLibrary.shared.playlists.filter { playlist in
+            playlist.soundIDs.contains(soundID) || playlist.selectedSoundIDs.contains(soundID)
         }
     }
     
