@@ -287,6 +287,12 @@ struct ContentView: View {
                 if smartWakeService.isSmartWakeEnabled {
                     await smartWakeService.startIfReadyForeground()
                 }
+                
+                // TASK 3: Log bundle icon keys at launch
+                let iconName = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconName") as? String ?? "none"
+                let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+                let hasIcons = icons != nil
+                SmartWakeDebugLog.log("ICON KEYS: CFBundleIconName=\(iconName) CFBundleIcons=\(hasIcons ? "present" : "absent")")
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {

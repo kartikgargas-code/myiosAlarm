@@ -201,6 +201,39 @@ jobs:
           cp -R "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphoneos/AlarmClock.app" "$RUNNER_TEMP/Payload/"
           ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/Payload" "$RUNNER_TEMP/AlarmClock-unsigned.ipa"
 
+      - name: TASK 3 - IPA ICON CHECK
+        run: |
+          set -euo pipefail
+          IPA="$RUNNER_TEMP/AlarmClock-unsigned.ipa"
+          TMPDIR="$RUNNER_TEMP/IconCheck"
+          rm -rf "$TMPDIR"
+          mkdir -p "$TMPDIR"
+          unzip -q "$IPA" -d "$TMPDIR"
+          
+          # Find all icon files in the IPA
+          echo "=== IPA ICON CHECK ==="
+          ICON_FILES=$(find "$TMPDIR" -name "*.png" -o -name "*.icns" -o -name "AppIcon*" | sort)
+          if [ -z "$ICON_FILES" ]; then
+            echo "IPA ICON CHECK: NO ICON FILES FOUND in IPA"
+          else
+            while IFS= read -r icon; do
+              BYTES=$(stat -f%z "$icon" 2>/dev/null || stat -c%s "$icon" 2>/dev/null)
+              # Compare with source
+              SOURCE_ICON="AlarmClock/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+              if [ -f "$SOURCE_ICON" ]; then
+                SOURCE_BYTES=$(stat -f%z "$SOURCE_ICON" 2>/dev/null || stat -c%s "$SOURCE_ICON" 2>/dev/null)
+                if [ "$BYTES" = "$SOURCE_BYTES" ]; then
+                  MATCHES="yes"
+                else
+                  MATCHES="no"
+                fi
+              else
+                MATCHES="source-missing"
+              fi
+              echo "IPA ICON CHECK: $icon bytes=$BYTES matchesSource=$MATCHES"
+            done <<< "$ICON_FILES"
+          fi
+
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:

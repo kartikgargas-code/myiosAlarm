@@ -1763,6 +1763,7 @@ final class AlarmCoordinator {
         do {
             try await center.add(request)
             SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(text)")
+            SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=app id=\(request.identifier)")
             
             // Auto-remove after ~6 seconds
             try? await Task.sleep(nanoseconds: 6_000_000_000)
