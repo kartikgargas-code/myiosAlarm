@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showingAppearance = false
     @State private var showingNextAlarmControl = false
     @State private var showingHistory = false
+    @State private var showingSounds = false
     @State private var currentRingSongName: String? = nil
     @State private var pendingEnabled: [UUID: Bool] = [:]
     @State private var editorIdentity = UUID()
@@ -61,6 +62,7 @@ struct ContentView: View {
                         Button("AlarmKit Diagnostics") { showingDiagnostics = true }
                         Button("Themes") { showingAppearance = true }
                         Button("Play History") { showingHistory = true }
+                        Button("Sounds") { showingSounds = true }
                     }
                     
                     Section("Backup & Restore") {
@@ -244,6 +246,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingHistory) {
                 HistoryView(coordinator: coordinator)
+            }
+            .sheet(isPresented: $showingSounds) {
+                SoundsView(alarms: coordinator.alarms)
             }
             .fileExporter(
                 isPresented: Binding(
@@ -1044,5 +1049,219 @@ struct DiagnosticsScreen: View {
     
     private func loadBuildFingerprint() {
         self.buildFingerprint = SmartWakeDebugLog.latestBuildLine()
+    }
+}
+
+// MARK: - Sounds View (Sound Manager)
+struct SoundsView: View {
+    @Environment(\.dismiss) private var dismiss
+    let alarms: [AlarmRecord]
+    
+    @State private var showingDocumentPicker = false
+    @State private var importError: String?
+    @State private var pickerMode: PickerMode = .files
+    private enum PickerMode { case files, folder }
+    
+    private let preview = SoundPreviewService.shared
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                // Import actions at top for easy access
+                Section("Import") {
+                    Button {
+                        pickerMode = .files
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Import MP3 from Files")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                        }
+                    }
+
+                    Button {
+                        pickerMode = .folder
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "folder.badge.plus")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Import MP3 Folder as Playlist")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                        }
+                    }
+                }
+                
+                Section("Imported Sounds") {
+                    if SoundLibrary.shared.importedSounds.isEmpty {
+                        Text("No imported sounds yet. Tap 'Import MP3 from Files' to add sounds.")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    } else {
+                        ForEach(SoundLibrary.shared.importedSounds) { sound in
+                            soundRow(sound: sound)
+                        }
+                    }
+                }
+                
+                if let importError {
+                    Section("Import Error") {
+                        Text(importError)
+                            .font(.footnote)
+                            .foregroundStyle(ThemeManager.shared.colors.destructive)
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle("Sounds")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .fileImporter(
+                isPresented: $showingDocumentPicker,
+                allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
+                allowsMultipleSelection: pickerMode == .files
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if pickerMode == .files {
+                        guard !urls.isEmpty else { return }
+                        for url in urls {
+                            Task { await importSound(from: url) }
+                        }
+                    } else {
+                        // Folder mode
+                        guard let url = urls.first else { return }
+                        Task { await importFolder(from: url) }
+                    }
+                case .failure(let error):
+                    importError = "Picker failed: \(error.localizedDescription)"
+                }
+            }
+            .onDisappear {
+                preview.stop()
+            }
+        }
+    }
+    
+    private func soundRow(sound: ImportedSound) -> some View {
+        let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+        let isPlayingThis = preview.playingSoundID == sound.fileName
+        let isReferenced = isSoundReferenced(sound)
+        
+        return HStack(spacing: 12) {
+            // Play/Pause toggle on the left
+            if let previewURL {
+                Button {
+                    if preview.playingSoundID == sound.fileName {
+                        preview.stop()
+                    } else {
+                        preview.play(url: previewURL, id: sound.fileName)
+                    }
+                } label: {
+                    Image(systemName: isPlayingThis ? "pause.circle.fill" : "play.circle")
+                        .font(.title3)
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Image(systemName: "speaker.slash")
+                    .font(.title3)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    .frame(width: 36, height: 36)
+            }
+            
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sound.name)
+                    .font(.body)
+                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                if isReferenced {
+                    Text("In use by alarm/playlist")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            
+            Spacer()
+            
+            if isPlayingThis {
+                Image(systemName: "waveform.circle.fill")
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                    .font(.title3)
+            }
+            
+            // Delete button
+            Button(role: .destructive) {
+                // Check if referenced before allowing delete
+                if isReferenced {
+                    importError = "Cannot delete: sound is in use by an alarm or playlist"
+                } else {
+                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                }
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(isReferenced ? ThemeManager.shared.colors.secondaryText : ThemeManager.shared.colors.destructive)
+                    .font(.title3)
+            }
+            .disabled(isReferenced)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+    }
+    
+    private func isSoundReferenced(_ sound: ImportedSound) -> Bool {
+        // Check alarms
+        for alarm in alarms {
+            if case .imported(let id) = alarm.sound, id == sound.id {
+                return true
+            }
+            if case .random(let pid) = alarm.sound {
+                let playlist = try? SoundLibrary.shared.playlist(for: pid)
+                if playlist?.soundIDs.contains(sound.id) == true || playlist?.selectedSoundIDs.contains(sound.id) == true {
+                    return true
+                }
+            }
+            if case .precomposedPlaylist(let pid, _) = alarm.sound {
+                let playlist = try? SoundLibrary.shared.playlist(for: pid)
+                if playlist?.soundIDs.contains(sound.id) == true || playlist?.selectedSoundIDs.contains(sound.id) == true {
+                    return true
+                }
+            }
+        }
+        // Check all playlists
+        for playlist in SoundLibrary.shared.playlists {
+            if playlist.soundIDs.contains(sound.id) || playlist.selectedSoundIDs.contains(sound.id) {
+                return true
+            }
+        }
+        return false
+    }
+    
+    private func importSound(from url: URL) async {
+        do {
+            let _ = try await SoundLibrary.shared.importMP3(from: url)
+            importError = nil
+        } catch {
+            importError = "Import failed: \(error.localizedDescription)"
+        }
+    }
+    
+    private func importFolder(from url: URL) async {
+        do {
+            let _ = try await SoundLibrary.shared.importFolder(from: url)
+            importError = nil
+        } catch {
+            importError = "Folder import failed: \(error.localizedDescription)"
+        }
     }
 }
