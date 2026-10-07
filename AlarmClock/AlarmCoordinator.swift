@@ -750,7 +750,7 @@ final class AlarmCoordinator {
                         bytes: metadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
                         duration: metadata?.duration ?? 0,
                         isCapped: false,
-                        armedAt: now()
+                        armedAt: now
                     )
                     lastArmedRecords.append(primaryRecord)
                     
@@ -857,7 +857,7 @@ final class AlarmCoordinator {
                         bytes: backupMetadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
                         duration: backupMetadata?.duration ?? 0,
                         isCapped: true, // backup is always capped at 60s
-                        armedAt: now()
+                        armedAt: now
                     )
                     lastArmedRecords.append(backupRecord)
                     
