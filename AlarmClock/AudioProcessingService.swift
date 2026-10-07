@@ -417,8 +417,12 @@ final class AudioProcessingService {
         // cache miss -> full WAV re-render during every save. A new selection
         // happens only after the file is deleted (playlist edit) or loudness
         // changes.
+        // BYPASS sticky finder when forcedSelection is provided (arming path),
+        // because the filename already encodes the selection hash, so it's a
+        // natural cache miss. Sticky reuse must only apply to the save path.
         var stickyHit: URL?
-        if playlist.playOrder != .sequence,
+        let useStickyFinder = forcedSelection == nil && playlist.playOrder != .sequence
+        if useStickyFinder,
            let sticky = findStickyPrecomposedFile(
             playlistName: playlistName,
             playlistID: playlistID,
@@ -469,8 +473,13 @@ final class AudioProcessingService {
                 fileReadable: metadata != nil,
                 appearsComplete: metadata != nil
             )
-            SmartWakeDebugLog.log("PRECOMPOSE: sticky reuse \(sticky.lastPathComponent) (no re-render)")
+            SmartWakeDebugLog.log("PRECOMPOSE: sticky reuse for save path \(sticky.lastPathComponent) (no re-render)")
             return (sticky, preparationEntry, generatedFileEntry)
+        }
+        
+        // If we get here, either forcedSelection was provided (arming path) or no sticky file found
+        if forcedSelection != nil {
+            SmartWakeDebugLog.log("PRECOMPOSE: used fresh render for arming path (forcedSelection provided)")
         }
 
         // Select songs based on play order: random or sequence. The arming path
