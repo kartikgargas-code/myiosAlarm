@@ -1177,11 +1177,6 @@ struct SoundsView: View {
                 Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
                     .font(.caption)
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                if isReferenced {
-                    Text("In use by alarm/playlist")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
             }
             
             Spacer()
@@ -1192,24 +1187,104 @@ struct SoundsView: View {
                     .font(.title3)
             }
             
-            // Delete button
+            // Delete button - always enabled, shows confirmation if referenced
             Button(role: .destructive) {
-                // Check if referenced before allowing delete
                 if isReferenced {
-                    importError = "Cannot delete: sound is in use by an alarm or playlist"
+                    // Show confirmation dialog
+                    pendingDeleteSound = sound
+                    showingDeleteConfirmation = true
+                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=pending")
                 } else {
                     SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=no confirmed=yes")
                 }
             } label: {
                 Image(systemName: "trash")
-                    .foregroundStyle(isReferenced ? ThemeManager.shared.colors.secondaryText : ThemeManager.shared.colors.destructive)
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
                     .font(.title3)
             }
-            .disabled(isReferenced)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                if isReferenced {
+                    pendingDeleteSound = sound
+                    showingDeleteConfirmation = true
+                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=pending")
+                } else {
+                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=no confirmed=yes")
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .alert("Delete Sound", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                SmartWakeDebugLog.log("SOUND DELETE UI: id=\(pendingDeleteSound?.id.uuidString ?? "nil") referenced=yes confirmed=no")
+                pendingDeleteSound = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let sound = pendingDeleteSound {
+                    // Remove from all playlists
+                    for i in SoundLibrary.shared.playlists.indices {
+                        SoundLibrary.shared.playlists[i].soundIDs.removeAll { $0 == sound.id }
+                        SoundLibrary.shared.playlists[i].selectedSoundIDs.removeAll { $0 == sound.id }
+                    }
+                    SoundLibrary.shared.savePlaylists()
+                    
+                    // Reset any alarm using this sound to default
+                    // This is done via AlarmCoordinator's confirmDeleteSoundFile logic
+                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=yes")
+                    pendingDeleteSound = nil
+                }
+            }
+        } message: {
+            if let sound = pendingDeleteSound {
+                let refs = getReferencesForSound(sound)
+                Text("This sound is used by \(refs). Deleting will remove it from all playlists and reset any alarms using it to the default sound.")
+            }
+        }
+    }
+    
+    @State private var pendingDeleteSound: ImportedSound?
+    @State private var showingDeleteConfirmation = false
+    
+    private func getReferencesForSound(_ sound: ImportedSound) -> String {
+        var refs: [String] = []
+        
+        // Check alarms
+        for alarm in alarms {
+            if case .imported(let id) = alarm.sound, id == sound.id {
+                refs.append("alarm \"\(alarm.label.isEmpty ? "Alarm" : alarm.label)\"")
+            }
+            if case .random(let pid) = alarm.sound {
+                if let playlist = try? SoundLibrary.shared.playlist(for: pid),
+                   playlist.soundIDs.contains(sound.id) || playlist.selectedSoundIDs.contains(sound.id) {
+                    refs.append("playlist \"\(playlist.name)\" (random)")
+                }
+            }
+            if case .precomposedPlaylist(let pid, _) = alarm.sound {
+                if let playlist = try? SoundLibrary.shared.playlist(for: pid),
+                   playlist.soundIDs.contains(sound.id) || playlist.selectedSoundIDs.contains(sound.id) {
+                    refs.append("playlist \"\(playlist.name)\" (precomposed)")
+                }
+            }
+        }
+        
+        // Check playlists
+        for playlist in SoundLibrary.shared.playlists {
+            if playlist.soundIDs.contains(sound.id) || playlist.selectedSoundIDs.contains(sound.id) {
+                if !refs.contains("playlist \"\(playlist.name)\"") {
+                    refs.append("playlist \"\(playlist.name)\"")
+                }
+            }
+        }
+        
+        return refs.isEmpty ? "nothing" : refs.joined(separator: ", ")
     }
     
     private func isSoundReferenced(_ sound: ImportedSound) -> Bool {
