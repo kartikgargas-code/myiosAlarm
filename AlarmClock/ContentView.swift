@@ -1228,12 +1228,8 @@ struct SoundsView: View {
             }
             Button("Delete", role: .destructive) {
                 if let sound = pendingDeleteSound {
-                    // Remove from all playlists
-                    for i in SoundLibrary.shared.playlists.indices {
-                        SoundLibrary.shared.playlists[i].soundIDs.removeAll { $0 == sound.id }
-                        SoundLibrary.shared.playlists[i].selectedSoundIDs.removeAll { $0 == sound.id }
-                    }
-                    SoundLibrary.shared.savePlaylists()
+                    // Remove from all playlists using the proper API
+                    SoundLibrary.shared.removeSoundFromAllPlaylists(sound.id)
                     
                     // Reset any alarm using this sound to default
                     // This is done via AlarmCoordinator's confirmDeleteSoundFile logic

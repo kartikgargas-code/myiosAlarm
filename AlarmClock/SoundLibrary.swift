@@ -429,6 +429,15 @@ final class SoundLibrary {
         AudioProcessingService.shared.removePrecomposedPlaylist(for: playlist.id)
         savePlaylists()
     }
+    
+    /// Remove a sound from all playlists (both soundIDs and selectedSoundIDs) and save
+    func removeSoundFromAllPlaylists(_ soundID: UUID) {
+        for i in playlists.indices {
+            playlists[i].soundIDs.removeAll { $0 == soundID }
+            playlists[i].selectedSoundIDs.removeAll { $0 == soundID }
+        }
+        savePlaylists()
+    }
 
     func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
         guard !isReferenced(sound, by: alarms) else { return }
