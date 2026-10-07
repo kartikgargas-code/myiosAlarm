@@ -449,18 +449,45 @@ final class SoundLibrary {
     /// Delete a sound file by its ID (for Play History delete-with-song)
     func deleteSoundFileByID(_ soundID: UUID) {
         guard let sound = importedSounds.first(where: { $0.id == soundID }) else { return }
+        let fileName = sound.fileName
+        
+        // Remove processed sounds (gain-adjusted variants)
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        SmartWakeDebugLog.log("SOUND DELETE: removeProcessedSounds ran for id=\(soundID.uuidString) file=\(fileName)")
+        
+        // Delete the actual sound file with verification
+        var deleteError: String?
+        var verifiedGone = false
         if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
-            try? fileManager.removeItem(at: localURL)
+            let path = localURL.path
+            do {
+                try fileManager.removeItem(at: localURL)
+                verifiedGone = !fileManager.fileExists(atPath: path)
+            } catch {
+                deleteError = error.localizedDescription
+                verifiedGone = !fileManager.fileExists(atPath: path)
+            }
+        } else {
+            deleteError = "soundsDirectory is nil, localURL is nil"
         }
-        removeDisplayNameOverride(for: sound.fileName)
+        
+        // Log the deletion result
+        let verifiedStatus = verifiedGone ? "gone" : "STILL PRESENT"
+        let errMsg = deleteError ?? "none"
+        SmartWakeDebugLog.log("SOUND DELETE: id=\(soundID.uuidString) file=\(fileName) verified=\(verifiedStatus) path=\(sound.localURL(soundsDirectory: soundsDirectory)?.path ?? "nil") err=\(errMsg)")
+        
+        removeDisplayNameOverride(for: fileName)
         importedSounds.removeAll { $0.id == soundID }
 
-        // Remove from any playlists
+        // Remove from any playlists - BOTH soundIDs AND selectedSoundIDs
         for i in playlists.indices {
             playlists[i].soundIDs.removeAll { $0 == soundID }
+            playlists[i].selectedSoundIDs.removeAll { $0 == soundID }
         }
         savePlaylists()
+        
+        // Reset any alarm whose sound is .imported(this id) back to system default
+        // This is done via AlarmCoordinator's confirmDeleteSoundFile which calls this method
     }
 
     func renameSound(_ sound: ImportedSound, to newName: String) {

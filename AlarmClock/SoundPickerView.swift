@@ -180,7 +180,11 @@ struct SoundPickerView: View {
                 }
 
                 Section("Imported Sounds") {
-                    ForEach(SoundLibrary.shared.importedSounds) { sound in
+                    ForEach(SoundLibrary.shared.importedSounds.filter { sound in
+                        // Skip sounds that no longer exist on disk
+                        guard let url = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory) else { return false }
+                        return FileManager.default.fileExists(atPath: url.path)
+                    }) { sound in
                         soundRow(
                             sound: .imported(sound.id),
                             label: sound.name,
