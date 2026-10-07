@@ -39,3 +39,35 @@ re-read whole files.
 After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
+
+<!-- builder-discipline:start -->
+## Builder discipline rules (learned the hard way — follow these)
+
+1. **If CI is red, READ THE ERROR before changing any code. Never guess twice.**
+   Get the real compiler error first:
+   - `gh api 'repos/kartikgargas-code/myiosAlarm/actions/runs/<RUN_ID>/jobs' --jq '.jobs[] | [.id,.conclusion,.name] | @tsv'`
+   - `gh run view --job <JOB_ID> --log 2>&1 | Select-String 'error:' | Select-Object -First 25`
+
+   Guessing at a compile error cost us eight consecutive red builds for a one-line
+   mistake. One read of the log ends it immediately.
+2. **Never push a speculative fix.** A red push spends a full CI run (~10 min) and
+   produces no IPA, so nothing can be tested. Fix first, then push once.
+3. **Do not chain red pushes.** If two attempts in a row fail, STOP and report the
+   exact error text instead of trying a third idea.
+4. **Do not churn build configuration to explain a compile error.** Moving files
+   between targets (`project.yml` membership) is a last resort, not a hypothesis to
+   try — it has already broken dependencies and been reverted once.
+5. **Do the smallest possible edit.** If the error names a duplicate declaration,
+   delete the duplicate. Do not restructure, rename, or reorder anything else.
+6. **Read the instruction literally.** "Remove the subtitle" means delete the line,
+   not reword it. "Commit locally, do not push yet" means do not push.
+7. **Never leave the tree dirty and never commit scratch files.** One commit per
+   task, and chain `git add` + `git commit` (+ `git push` only when asked) in a
+   single call. `.agent_tmp/` stays ignored.
+8. **Report the RUN NUMBER and confirm the run is GREEN.** The run number is the
+   app's build number, so a wrong one wastes a device-test cycle.
+9. **Never claim "verified on device".** Only the user can verify on device.
+10. **When a reported bug is one the code should already handle, first add one log
+    line that proves which branch ran.** Do not change logic until the evidence says
+    which path is actually taken.
+<!-- builder-discipline:end -->
