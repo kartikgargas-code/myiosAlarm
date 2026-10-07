@@ -1777,7 +1777,8 @@ final class AlarmCoordinator {
     }
     
     /// Post a local notification for Control Center feedback (visible on Lock Screen)
-    /// and auto-remove it after ~6 seconds to avoid Notification Center clutter.
+    /// Uses a FIXED identifier so each press replaces the previous notification.
+    /// Auto-removes after ~6 seconds and sweeps stale "cc-feedback-*" notifications.
     private func postCCFeedbackNotification(_ text: String) async {
         let content = UNMutableNotificationContent()
         content.title = "Alarm Clock"
@@ -1785,21 +1786,35 @@ final class AlarmCoordinator {
         content.sound = nil // silent - we just want the banner
         content.threadIdentifier = "cc-feedback"
         
+        let fixedIdentifier = "cc-feedback"
         let request = UNNotificationRequest(
-            identifier: "cc-feedback-\(UUID().uuidString)",
+            identifier: fixedIdentifier,
             content: content,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
         
         let center = UNUserNotificationCenter.current()
         do {
+            // Remove any existing notification with the same fixed identifier
+            center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
+            
             try await center.add(request)
             SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(text)")
-            SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=app id=\(request.identifier)")
+            SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=app id=\(fixedIdentifier)")
             
-            // Auto-remove after ~6 seconds
+            // Auto-remove after ~6 seconds AND sweep any stale "cc-feedback-*" notifications
             try? await Task.sleep(nanoseconds: 6_000_000_000)
-            center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
+            center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
+            
+            // Sweep any stale "cc-feedback-*" notifications from older builds
+            let allDelivered = await center.deliveredNotifications()
+            let staleIds = allDelivered
+                .filter { $0.request.identifier.hasPrefix("cc-feedback-") }
+                .map { $0.request.identifier }
+            if !staleIds.isEmpty {
+                center.removeDeliveredNotifications(withIdentifiers: staleIds)
+                SmartWakeDebugLog.log("CC FEEDBACK notification swept stale: \(staleIds.count) items")
+            }
             SmartWakeDebugLog.log("CC FEEDBACK notification auto-removed")
         } catch {
             SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")

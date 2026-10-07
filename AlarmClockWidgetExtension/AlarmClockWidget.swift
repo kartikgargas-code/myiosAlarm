@@ -715,7 +715,8 @@ private func postDarwinNotification(_ name: String) {
 }
 
 /// Post local notification from the extension for immediate CC feedback
-/// Called at press time so the banner appears even if app is suspended
+/// Uses a FIXED identifier so each press replaces the previous notification.
+/// Auto-removes after ~6 seconds and sweeps stale notifications.
 @MainActor
 private func postCCFeedbackFromExtension(_ text: String) async {
     let content = UNMutableNotificationContent()
@@ -724,16 +725,36 @@ private func postCCFeedbackFromExtension(_ text: String) async {
     content.sound = nil
     content.threadIdentifier = "cc-feedback-extension"
     
+    let fixedIdentifier = "cc-feedback-extension"
     let request = UNNotificationRequest(
-        identifier: "cc-feedback-extension-\(UUID().uuidString)",
+        identifier: fixedIdentifier,
         content: content,
         trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
     )
     
     let center = UNUserNotificationCenter.current()
     do {
+        // Remove any existing notification with the same fixed identifier
+        center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
+        
         try await center.add(request)
         SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification posted: \(text)")
+        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=\(fixedIdentifier)")
+        
+        // Auto-remove after ~6 seconds AND sweep any stale "cc-feedback-extension-*" notifications
+        try? await Task.sleep(nanoseconds: 6_000_000_000)
+        center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
+        
+        // Sweep any stale "cc-feedback-extension-*" notifications
+        let allDelivered = await center.deliveredNotifications()
+        let staleIds = allDelivered
+            .filter { $0.request.identifier.hasPrefix("cc-feedback-extension-") }
+            .map { $0.request.identifier }
+        if !staleIds.isEmpty {
+            center.removeDeliveredNotifications(withIdentifiers: staleIds)
+            SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification swept stale: \(staleIds.count) items")
+        }
+        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification auto-removed")
     } catch {
         // Extension may not have notification permission - log and don't fail silently
         SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification FAILED (may lack permission): \(error.localizedDescription)")
