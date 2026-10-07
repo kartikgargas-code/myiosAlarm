@@ -841,11 +841,23 @@ final class AlarmPlaybackService: NSObject {
                             }
                         }
                         if playbackConfirmed {
-                              do {
-                                  try await AlarmManager.shared.cancel(id: snoozeID)
-                                  SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancelled delayed backup alarm \(snoozeID.uuidString)")
-                              } catch {
-                                  SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup FAILED: \(error.localizedDescription)")
+                              // Retry cancel with short delays to ensure the parked floor alarm cannot survive
+                              var cancelled = false
+                              for attempt in 1...3 {
+                                  do {
+                                      try await AlarmManager.shared.cancel(id: snoozeID)
+                                      cancelled = true
+                                      SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancelled delayed backup alarm \(snoozeID.uuidString) (attempt \(attempt))")
+                                      break
+                                  } catch {
+                                      SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup attempt \(attempt) FAILED for \(snoozeID.uuidString): \(error.localizedDescription)")
+                                      if attempt < 3 {
+                                          try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s delay between retries
+                                      }
+                                  }
+                              }
+                              if !cancelled {
+                                  SmartWakeDebugLog.log("SNOOZE-PLAYLIST: cancel delayed backup GAVE UP after 3 attempts for \(snoozeID.uuidString)")
                               }
                               // Promote to primary session for lock-screen controls (same as wake path)
                               AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()

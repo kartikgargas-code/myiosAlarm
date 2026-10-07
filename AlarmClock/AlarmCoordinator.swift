@@ -6,6 +6,8 @@ import WidgetKit
 import UserNotifications
 import os.log
 
+// AudioProcessingError is defined in AudioProcessingService.swift (same module)
+
 @MainActor
 @Observable
 final class AlarmCoordinator {
@@ -679,12 +681,20 @@ final class AlarmCoordinator {
                     // Only resolve (and for playlists, fully render) the primary
                     // stitch when the primary is actually armed. With Smart Wake on
                     // the primary is never armed, so skip the uncapped render.
-                    let resolvedAlarmKitSound = try await alarmKitSoundWithFileName(
-                        for: soundToUse,
-                        loudness: alarm.loudness,
-                        forcedSelection: forcedSelection,
-                        protectedFileNames: protectedFileNames
-                    )
+                    let resolvedAlarmKitSound: (sound: AlertConfiguration.AlertSound, fileName: String?)
+                    do {
+                        resolvedAlarmKitSound = try await alarmKitSoundWithFileName(
+                            for: soundToUse,
+                            loudness: alarm.loudness,
+                            forcedSelection: forcedSelection,
+                            protectedFileNames: protectedFileNames
+                        )
+                    } catch let err as AudioProcessingError {
+                        // Playlist empty → fall back to classic-bell so the alarm still rings
+                        SmartWakeDebugLog.log("DESIRED ALARMS: primary sound failed (\(err)), falling back to classic-bell")
+                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav")
+                        warnings.append("\(label): primary sound unavailable, using default")
+                    }
                     let alarmKitSound = resolvedAlarmKitSound.sound
                     if let soundFileName = resolvedAlarmKitSound.fileName {
                         armedSoundFileNames.insert(soundFileName)
@@ -732,31 +742,45 @@ final class AlarmCoordinator {
                     }
                     
                     // Create short floor sound for backup (cap at 60s total duration)
-                    let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
-                        playlistID: playlistID,
-                        loudness: alarm.loudness,
-                        songCount: 5,
-                        maxDuration: 60,  // Cap total duration at 60s for backup
-                        forcedSelection: forcedSelection,
-                        protectedFileNames: protectedFileNames
-                    )
-                    let backupPrecomposedURL = backupPrecomposedTuple.0
+                    let backupPrecomposedURL: URL
+                    do {
+                        let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
+                            playlistID: playlistID,
+                            loudness: alarm.loudness,
+                            songCount: 5,
+                            maxDuration: 60,  // Cap total duration at 60s for backup
+                            forcedSelection: forcedSelection,
+                            protectedFileNames: protectedFileNames
+                        )
+                        backupPrecomposedURL = backupPrecomposedTuple.0
+                        
+                        // Record diagnostics
+                        playlistDiagnostics.addPreparation(backupPrecomposedTuple.1)
+                        playlistDiagnostics.addGeneratedFile(backupPrecomposedTuple.2)
+                    } catch let err as AudioProcessingError {
+                        // Playlist empty → fall back to classic-bell so the alarm still rings
+                        SmartWakeDebugLog.log("DESIRED ALARMS: backup sound failed (\(err)), falling back to classic-bell")
+                        backupPrecomposedURL = URL(fileURLWithPath: "")
+                        warnings.append("\(label): backup sound unavailable, using default")
+                    }
                     
-                    // Record diagnostics
-                    playlistDiagnostics.addPreparation(backupPrecomposedTuple.1)
-                    playlistDiagnostics.addGeneratedFile(backupPrecomposedTuple.2)
-                    
-                    // Copy to Library/Sounds for AlarmKit access
-                    let processedFileName = backupPrecomposedURL.lastPathComponent
-                    let soundsDir = SoundLibrary.shared.soundsDirectory!
-                    let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
-                    
-                    if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
-                        // File copy off the main actor — a multi-MB WAV copy
-                        // stalls every UI interaction on the save path.
-                        try await Task.detached(priority: .utility) {
-                            try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
-                        }.value
+                    var processedFileName: String
+                    if backupPrecomposedURL.path.isEmpty {
+                        // Fallback to classic-bell
+                        processedFileName = "classic-bell.wav"
+                    } else {
+                        // Copy to Library/Sounds for AlarmKit access
+                        processedFileName = backupPrecomposedURL.lastPathComponent
+                        let soundsDir = SoundLibrary.shared.soundsDirectory!
+                        let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
+                        
+                        if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
+                            // File copy off the main actor — a multi-MB WAV copy
+                            // stalls every UI interaction on the save path.
+                            try await Task.detached(priority: .utility) {
+                                try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
+                            }.value
+                        }
                     }
                     
                     let backupAlarmKitSound: AlertConfiguration.AlertSound = .named(processedFileName)

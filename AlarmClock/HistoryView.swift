@@ -82,17 +82,10 @@ struct HistoryView: View {
                 historyRow(entry)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
-                            coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: false)
+                            // Single Delete action - confirmation dialog handles song deletion
+                            coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: entry.soundID != nil)
                         } label: {
                             Label("Delete", systemImage: "trash")
-                        }
-                        if entry.soundID != nil {
-                            Button(role: .destructive) {
-                                coordinator.deleteHistoryEntry(id: entry.id, deleteSoundFile: true)
-                            } label: {
-                                Label("Delete + Song", systemImage: "trash.fill")
-                            }
-                            .tint(.orange)
                         }
                     }
             }
