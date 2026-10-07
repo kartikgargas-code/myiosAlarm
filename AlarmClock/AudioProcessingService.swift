@@ -493,35 +493,7 @@ final class AudioProcessingService {
         // Songs are converted to the output format (44.1k stereo) with
         // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
         // CAF/IMA4 is ~3.8× smaller than WAV and plays on device.
-        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
-        let outputFileURL = precomposedURL.deletingPathExtension().appendingPathExtension(outputExtension)
-        let outputSettings: [String: Any]
-        if Self.useCAFFormat {
-            outputSettings = [
-                AVFormatIDKey: kAudioFormatAppleIMA4,
-                AVSampleRateKey: 44_100.0,
-                AVNumberOfChannelsKey: 2
-            ]
-        } else {
-            outputSettings = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVSampleRateKey: 44_100.0,
-                AVNumberOfChannelsKey: 2,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false,
-                AVLinearPCMIsNonInterleaved: false
-            ]
-        }
-
         let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
-            // Concatenate songs into a single CAF/IMA4 by streaming each song's frames
-            // to disk as they are read. Holding every song's PCM in one buffer
-            // peaked at hundreds of MB and got the app killed (jetsam) mid-commit.
-            // Memory stays at a few chunk buffers regardless of song count/length.
-            // Songs are converted to the output format (44.1k stereo) with
-            // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
-            // CAF/IMA4 is ~3.8× smaller than WAV and plays on device.
             let outputExtension = Self.useCAFFormat ? "caf" : "wav"
             let outputFileURL = precomposedURL.deletingPathExtension().appendingPathExtension(outputExtension)
             let outputSettings: [String: Any]
