@@ -746,11 +746,42 @@ final class AlarmCoordinator {
                     
                     // Log armed alarm record - stat the real file for honest byte size
                     let soundFileName = resolvedAlarmKitSound.fileName ?? "classic-bell.wav"
-                    let format = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
-                    let soundsDir = SoundLibrary.shared.soundsDirectory
-                    let fileURL = soundsDir?.appendingPathComponent(soundFileName)
-                    let fileSize = fileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
-                    let metadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(soundFileName)) }
+                    
+                    // TASK 5: Determine if this is a built-in sound (not stitched)
+                    // Check the original sound type to determine format
+                    let isBuiltInSound: Bool
+                    let isStitchedSound: Bool
+                    let format: String
+                    let fileURL: URL?
+                    let fileSize: Int64?
+                    let metadata: (duration: TimeInterval, sampleRate: Double, channelCount: Int)?
+                    
+                    if case .builtIn = soundToUse {
+                        isBuiltInSound = true
+                        isStitchedSound = false
+                        format = "built-in"
+                        fileURL = SoundPreviewService.bundledSoundURL(for: soundFileName)
+                        fileSize = fileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
+                        metadata = fileURL.flatMap { AudioProcessingService.shared.audioMetadata(for: $0) }
+                    } else if case .precomposedPlaylist = soundToUse {
+                        isBuiltInSound = false
+                        isStitchedSound = true
+                        format = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
+                        let soundsDir = SoundLibrary.shared.soundsDirectory
+                        fileURL = soundsDir?.appendingPathComponent(soundFileName)
+                        fileSize = fileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
+                        metadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(soundFileName)) }
+                    } else {
+                        // Imported or system default
+                        isBuiltInSound = false
+                        isStitchedSound = false
+                        format = "imported"
+                        let soundsDir = SoundLibrary.shared.soundsDirectory
+                        fileURL = soundsDir?.appendingPathComponent(soundFileName)
+                        fileSize = fileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
+                        metadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(soundFileName)) }
+                    }
+                    
                     let primaryRecord = ArmedAlarmRecord(
                         alarmID: alarm.id,
                         occurrenceKey: occurrence.occurrenceKey,
@@ -767,7 +798,8 @@ final class AlarmCoordinator {
                     
                     SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(occurrence.occurrenceKey) kind=PRIMARY effectiveDate=\(occurrence.effectiveDate) label=\"\(label)\"")
                     let bytesStr = fileSize.map { "\($0)" } ?? "unknown"
-                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=PRIMARY file=\(soundFileName) format=\(format) bytes=\(bytesStr) duration=\(String(format: "%.1f", primaryRecord.duration))s")
+                    let durationStr = isBuiltInSound ? "n/a" : String(format: "%.1f", primaryRecord.duration)
+                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=PRIMARY file=\(soundFileName) format=\(format) bytes=\(bytesStr) duration=\(durationStr)s")
                 }
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
