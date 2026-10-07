@@ -65,20 +65,20 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
             return false
         }
         
-        // Verify this is still the next alarm
+        // Verify this is still the next alarm - but still write snapshot even if stale
         let currentNext = engine.earliestOccurrence(now: now())
-        guard currentNext?.alarmID == alarmID else {
-            return false // Stale - next alarm changed
-        }
+        let isCurrentNext = currentNext?.alarmID == alarmID
         
-        try engine.adjustNext(id: alarmID, byMinutes: minutes, now: now())
+        if isCurrentNext {
+            try engine.adjustNext(id: alarmID, byMinutes: minutes, now: now())
+        }
         
         try saveSnapshot(engine.snapshot)
         
-        // Write updated widget snapshot
+        // Write updated widget snapshot ALWAYS (not just when isCurrentNext)
         writeNextAlarmSnapshot(engine: engine)
         
-        return true
+        return isCurrentNext
     }
     
     /// Set custom next time for alarm
@@ -91,15 +91,18 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
         }
         
         let currentNext = engine.earliestOccurrence(now: now())
-        guard currentNext?.alarmID == alarmID else {
-            return false
+        let isCurrentNext = currentNext?.alarmID == alarmID
+        
+        if isCurrentNext {
+            try engine.setNextTime(id: alarmID, date: date, now: now())
         }
         
-        try engine.setNextTime(id: alarmID, date: date, now: now())
         try saveSnapshot(engine.snapshot)
+        
+        // Write updated widget snapshot ALWAYS (not just when isCurrentNext)
         writeNextAlarmSnapshot(engine: engine)
         
-        return true
+        return isCurrentNext
     }
     
     /// Reset next alarm to base schedule
@@ -112,16 +115,18 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
         }
         
         let currentNext = engine.earliestOccurrence(now: now())
-        guard currentNext?.alarmID == alarmID else {
-            return false
+        let isCurrentNext = currentNext?.alarmID == alarmID
+        
+        if isCurrentNext {
+            try engine.resetNext(id: alarmID, now: now())
         }
         
-        try engine.resetNext(id: alarmID, now: now())
-        
         try saveSnapshot(engine.snapshot)
+        
+        // Write updated widget snapshot ALWAYS (not just when isCurrentNext)
         writeNextAlarmSnapshot(engine: engine)
         
-        return true
+        return isCurrentNext
     }
     
     /// Skip next occurrence
@@ -134,16 +139,18 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
         }
         
         let currentNext = engine.earliestOccurrence(now: now())
-        guard currentNext?.alarmID == alarmID else {
-            return false
+        let isCurrentNext = currentNext?.alarmID == alarmID
+        
+        if isCurrentNext {
+            try engine.skipNext(id: alarmID, now: now())
         }
         
-        try engine.skipNext(id: alarmID, now: now())
-        
         try saveSnapshot(engine.snapshot)
+        
+        // Write updated widget snapshot ALWAYS (not just when isCurrentNext)
         writeNextAlarmSnapshot(engine: engine)
         
-        return true
+        return isCurrentNext
     }
     
     /// Undo skip for next occurrence
@@ -156,16 +163,18 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
         }
         
         let currentNext = engine.earliestOccurrence(now: now())
-        guard currentNext?.alarmID == alarmID else {
-            return false
+        let isCurrentNext = currentNext?.alarmID == alarmID
+        
+        if isCurrentNext {
+            try engine.undoSkip(id: alarmID, now: now())
         }
         
-        try engine.undoSkip(id: alarmID, now: now())
-        
         try saveSnapshot(engine.snapshot)
+        
+        // Write updated widget snapshot ALWAYS (not just when isCurrentNext)
         writeNextAlarmSnapshot(engine: engine)
         
-        return true
+        return isCurrentNext
     }
     
     /// Write next alarm snapshot to App Group for widget

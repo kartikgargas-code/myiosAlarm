@@ -407,19 +407,47 @@ struct SkipNextAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        SmartWakeDebugLog.log("INTENT STEP: queued action=skipNext")
+        
         // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.skip, reason: "skipNext")
+        SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=skipNext")
         
         // Also update the widget snapshot locally so the Lock Screen updates immediately
         let service = WidgetAlarmService()
-        let snapshot = try service.loadSnapshot()
-        let engine = AlarmEngine(snapshot: snapshot)
-        guard let occurrence = engine.earliestOccurrence(now: Date()),
-              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
-            return .result()
+        do {
+            let snapshot = try service.loadSnapshot()
+            let engine = AlarmEngine(snapshot: snapshot)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=skipNext")
+            
+            guard let occurrence = engine.earliestOccurrence(now: Date()) else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: no occurrence action=skipNext")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: occurrence=\(occurrence.effectiveDate) alarm=\(occurrence.alarmID) action=skipNext")
+            
+            guard let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: alarm not found action=skipNext")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: mutated action=skipNext")
+            
+            // Call skipNextAlarm but always write snapshot + reload, even if guard fails
+            let success = try await service.skipNextAlarm(alarmID: alarm.id)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=skipNext success=\(success)")
+            
+            // Force reload for both widget and control kinds
+            if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(widgetKind) action=skipNext")
+            }
+            if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=skipNext")
+            }
+        } catch {
+            SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=skipNext")
         }
-        try await service.skipNextAlarm(alarmID: alarm.id)
-        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=skipNext reloaded=yes")
         
         return .result()
     }
@@ -433,19 +461,47 @@ struct AlarmMinus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        SmartWakeDebugLog.log("INTENT STEP: queued action=adjust-10")
+        
         // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.adjustEarlier, reason: "adjust-10")
+        SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=adjust-10")
         
         // Also update the widget snapshot locally so the Lock Screen updates immediately
         let service = WidgetAlarmService()
-        let snapshot = try service.loadSnapshot()
-        let engine = AlarmEngine(snapshot: snapshot)
-        guard let occurrence = engine.earliestOccurrence(now: Date()),
-              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
-            return .result()
+        do {
+            let snapshot = try service.loadSnapshot()
+            let engine = AlarmEngine(snapshot: snapshot)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=adjust-10")
+            
+            guard let occurrence = engine.earliestOccurrence(now: Date()) else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: no occurrence action=adjust-10")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: occurrence=\(occurrence.effectiveDate) alarm=\(occurrence.alarmID) action=adjust-10")
+            
+            guard let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: alarm not found action=adjust-10")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: mutated action=adjust-10")
+            
+            // Call adjustNextAlarm but always write snapshot + reload, even if guard fails
+            let success = try await service.adjustNextAlarm(alarmID: alarm.id, minutes: -10)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=adjust-10 success=\(success)")
+            
+            // Force reload for both widget and control kinds
+            if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(widgetKind) action=adjust-10")
+            }
+            if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=adjust-10")
+            }
+        } catch {
+            SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust-10")
         }
-        try await service.adjustNextAlarm(alarmID: alarm.id, minutes: -10)
-        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=adjust-10 reloaded=yes")
         
         return .result()
     }
@@ -459,19 +515,47 @@ struct AlarmPlus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        SmartWakeDebugLog.log("INTENT STEP: queued action=adjust+10")
+        
         // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.adjustLater, reason: "adjust+10")
+        SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=adjust+10")
         
         // Also update the widget snapshot locally so the Lock Screen updates immediately
         let service = WidgetAlarmService()
-        let snapshot = try service.loadSnapshot()
-        let engine = AlarmEngine(snapshot: snapshot)
-        guard let occurrence = engine.earliestOccurrence(now: Date()),
-              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
-            return .result()
+        do {
+            let snapshot = try service.loadSnapshot()
+            let engine = AlarmEngine(snapshot: snapshot)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=adjust+10")
+            
+            guard let occurrence = engine.earliestOccurrence(now: Date()) else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: no occurrence action=adjust+10")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: occurrence=\(occurrence.effectiveDate) alarm=\(occurrence.alarmID) action=adjust+10")
+            
+            guard let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+                SmartWakeDebugLog.log("INTENT SNAPSHOT SKIP: alarm not found action=adjust+10")
+                return .result()
+            }
+            SmartWakeDebugLog.log("INTENT STEP: mutated action=adjust+10")
+            
+            // Call adjustNextAlarm but always write snapshot + reload, even if guard fails
+            let success = try await service.adjustNextAlarm(alarmID: alarm.id, minutes: 10)
+            SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=adjust+10 success=\(success)")
+            
+            // Force reload for both widget and control kinds
+            if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(widgetKind) action=adjust+10")
+            }
+            if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=adjust+10")
+            }
+        } catch {
+            SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust+10")
         }
-        try await service.adjustNextAlarm(alarmID: alarm.id, minutes: 10)
-        SmartWakeDebugLog.log("WIDGET SNAPSHOT: wrote next=\(occurrence.effectiveDate) kind=adjust+10 reloaded=yes")
         
         return .result()
     }
