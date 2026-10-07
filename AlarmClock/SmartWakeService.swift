@@ -832,7 +832,7 @@ final class SmartWakeService {
     
     /// Cancel the coordinator-scheduled -BACKUP alarm for this occurrence (computed the
     /// same way AlarmCoordinator builds its SystemScheduleID) plus any AlarmKit alarm
-    /// still alerting.
+    /// still alerting. Retries the backup cancel with verification.
     func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String?) {
         let backupSystemID = SystemScheduleID.make(
             for: backupOccurrence,
@@ -841,13 +841,33 @@ final class SmartWakeService {
             loudness: loudness,
             selectionHash: selectionHash
         )
-        do {
-            try AlarmManager.shared.cancel(id: backupSystemID)
-            SmartWakeDebugLog.log("BACKUP ALARM cancelled id=\(backupSystemID.uuidString)")
-        } catch {
-            SmartWakeDebugLog.log("BACKUP ALARM cancel FAILED: \(error.localizedDescription)")
+        
+        // Retry backup cancel up to 3 times with short delays
+        var cancelled = false
+        for attempt in 1...3 {
+            do {
+                try AlarmManager.shared.cancel(id: backupSystemID)
+                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 id=\(backupSystemID.uuidString)")
+                cancelled = true
+                break
+            } catch {
+                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 FAILED id=\(backupSystemID.uuidString): \(error.localizedDescription)")
+                if attempt < 3 {
+                    // Short delay before retry
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+            }
         }
+        
+        // Verify against alarm list
         let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+        let stillPresent = kitAlarms.contains { $0.id == backupSystemID }
+        SmartWakeDebugLog.log("BACKUP ALARM cancel VERIFY: id=\(backupSystemID.uuidString) stillPresent=\(stillPresent ? "yes" : "no")")
+        if stillPresent {
+            SmartWakeDebugLog.log("BACKUP ALARM cancel WARNING: still present after retries id=\(backupSystemID.uuidString)")
+        }
+        
+        // Also cancel any alerting alarms
         for kitAlarm in kitAlarms where kitAlarm.state == .alerting {
             try? AlarmManager.shared.cancel(id: kitAlarm.id)
             SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
