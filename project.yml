@@ -23,7 +23,6 @@ targets:
       - path: AlarmClock/BuiltInSounds
         type: folder
         buildPhase: resources
-      - path: AlarmClock/AudioProcessingService.swift
       - path: AlarmClock/AlarmCoordinator.swift
       - path: AlarmClock/AlarmKitSchedulingService.swift
       - path: AlarmClock/AlarmProofOfConceptModel.swift
@@ -118,6 +117,7 @@ targets:
       - path: AlarmClock/AppGroupResolver.swift
       - path: AlarmClock/SmartWakeDebugLog.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
+      - path: AlarmClock/AudioProcessingService.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:
