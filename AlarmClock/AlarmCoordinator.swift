@@ -600,24 +600,6 @@ final class AlarmCoordinator {
                 }
             }
             
-            // Post local notification for background feedback
-            let content = UNMutableNotificationContent()
-            content.title = "Alarm Clock"
-            content.body = feedback
-            content.sound = nil
-            let request = UNNotificationRequest(
-                identifier: "CC_FEEDBACK_\(action.alarmID.uuidString)_\(Date().timeIntervalSince1970)",
-                content: content,
-                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-            )
-            UNUserNotificationCenter.current().add(request) { error in
-                if let error = error {
-                    SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")
-                } else {
-                    SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(feedback)")
-                }
-            }
-            
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
             let count = idsAfterWidget.count
@@ -1316,9 +1298,9 @@ final class AlarmCoordinator {
             }
 
             // 1. Newest capped floor stitch, or render one from the first playlist.
-            let wavURL: URL
+            let cafURL: URL
             if let existing = newestCappedStitchURL(in: soundsDir) {
-                wavURL = existing
+                cafURL = existing
             } else {
                 guard let playlist = SoundLibrary.shared.playlists.first else {
                     throw SoundLibraryError.playlistNotFound(UUID())
@@ -1329,22 +1311,20 @@ final class AlarmCoordinator {
                     songCount: 5,
                     maxDuration: 60
                 )
-                wavURL = tuple.0
+                cafURL = tuple.0
                 playlistDiagnostics.addPreparation(tuple.1)
                 playlistDiagnostics.addGeneratedFile(tuple.2)
             }
 
-            // 2. Re-render as CAF/IMA4 and copy into Library/Sounds for AlarmKit.
-            let cafProcessedURL = try await AudioProcessingService.shared.renderCAFIma4(from: wavURL)
-            let cafName = cafProcessedURL.lastPathComponent
+            // The production format is now CAF/IMA4 — use it directly for the test.
+            let cafName = cafURL.lastPathComponent
             let cafKitURL = soundsDir.appendingPathComponent(cafName)
             if !FileManager.default.fileExists(atPath: cafKitURL.path) {
-                try FileManager.default.copyItem(at: cafProcessedURL, to: cafKitURL)
+                try FileManager.default.copyItem(at: cafURL, to: cafKitURL)
             }
 
-            let wavBytes = (try? FileManager.default.attributesOfItem(atPath: wavURL.path)[.size] as? Int64) ?? 0
             let cafBytes = (try? FileManager.default.attributesOfItem(atPath: cafKitURL.path)[.size] as? Int64) ?? 0
-            SmartWakeDebugLog.log("CAF TEST: wav=\(wavBytes) bytes caf=\(cafBytes) bytes file=\(cafName)")
+            SmartWakeDebugLog.log("CAF TEST: caf=\(cafBytes) bytes file=\(cafName)")
 
             // 3. One-shot test alarm ~15 s out using the CAF file.
             let testDate = now().addingTimeInterval(15)
@@ -1386,7 +1366,8 @@ final class AlarmCoordinator {
 
     private func newestCappedStitchURL(in dir: URL) -> URL? {
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap60.wav") }
+        let outputExtension = AudioProcessingService.useCAFFormat ? "caf" : "wav"
+        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap60.\(outputExtension)") }
         return candidates.max { lhs, rhs in
             let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast

@@ -150,7 +150,11 @@ final class AudioProcessingService {
         createProcessedSoundsDirectory()
     }
 
-    /// Cache statistics for the stitched playlist sounds ("playlist_…pct[.wav|.caf]")
+    /// Production format for stitched sounds: CAF/IMA4 (~3.8× smaller than WAV, plays on device).
+    /// Keep WAV code path available behind this constant for one release so we can revert instantly.
+    static let useCAFFormat = true
+
+    /// Cache statistics for the stitched playlist sounds ("playlist_…pct[.caf|.wav]")
     /// in both Library/ProcessedSounds and Library/Sounds.
     struct StitchCacheFolderStats {
         let fileCount: Int
@@ -380,12 +384,13 @@ final class AudioProcessingService {
                 error: nil
             )
             let fileSize = (try? fileManager.attributesOfItem(atPath: sticky.path)[.size] as? Int64) ?? 0
+            let formatString = Self.useCAFFormat ? "CAF" : "WAV"
             let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
                 timestamp: Date(),
                 playlistID: playlistID,
                 fileExists: true,
                 fileSizeBytes: fileSize,
-                audioFormat: "WAV",
+                audioFormat: formatString,
                 sampleRate: metadata?.sampleRate ?? 0,
                 channelCount: metadata?.channelCount ?? 0,
                 actualDuration: metadata?.duration ?? 0,
@@ -427,7 +432,8 @@ final class AudioProcessingService {
         let selectionKey = selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
         let selectionHash = SoundSelectionHash.make(from: selectionKey)
         let capPart = maxDuration.map { "_cap\(Int($0))" } ?? ""
-        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct\(capPart).wav"
+        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
+        let precomposedFileName = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_\(selectionHash)_\(loudness.percentage)pct\(capPart).\(outputExtension)"
         let precomposedURL = processedDir.appendingPathComponent(precomposedFileName)
         
         // If already exists for THIS specific selection, return it
@@ -480,14 +486,24 @@ final class AudioProcessingService {
             return (precomposedURL, preparationEntry, generatedFileEntry)
         }
         
-        // Concatenate songs into a single WAV by streaming each song's frames
+        // Concatenate songs into a single CAF/IMA4 by streaming each song's frames
         // to disk as they are read. Holding every song's PCM in one buffer
         // peaked at hundreds of MB and got the app killed (jetsam) mid-commit.
         // Memory stays at a few chunk buffers regardless of song count/length.
         // Songs are converted to the output format (44.1k stereo) with
         // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
-        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
-            let outputSettings = [
+        // CAF/IMA4 is ~3.8× smaller than WAV and plays on device.
+        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
+        let outputFileURL = precomposedURL.deletingPathExtension().appendingPathExtension(outputExtension)
+        let outputSettings: [String: Any]
+        if Self.useCAFFormat {
+            outputSettings = [
+                AVFormatIDKey: kAudioFormatAppleIMA4,
+                AVSampleRateKey: 44_100.0,
+                AVNumberOfChannelsKey: 2
+            ]
+        } else {
+            outputSettings = [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: 44_100.0,
                 AVNumberOfChannelsKey: 2,
@@ -495,9 +511,39 @@ final class AudioProcessingService {
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsBigEndianKey: false,
                 AVLinearPCMIsNonInterleaved: false
-            ] as [String: Any]
+            ]
+        }
 
-            let outputFile = try AVAudioFile(forWriting: precomposedURL, settings: outputSettings)
+        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
+            // Concatenate songs into a single CAF/IMA4 by streaming each song's frames
+            // to disk as they are read. Holding every song's PCM in one buffer
+            // peaked at hundreds of MB and got the app killed (jetsam) mid-commit.
+            // Memory stays at a few chunk buffers regardless of song count/length.
+            // Songs are converted to the output format (44.1k stereo) with
+            // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
+            // CAF/IMA4 is ~3.8× smaller than WAV and plays on device.
+            let outputExtension = Self.useCAFFormat ? "caf" : "wav"
+            let outputFileURL = precomposedURL.deletingPathExtension().appendingPathExtension(outputExtension)
+            let outputSettings: [String: Any]
+            if Self.useCAFFormat {
+                outputSettings = [
+                    AVFormatIDKey: kAudioFormatAppleIMA4,
+                    AVSampleRateKey: 44_100.0,
+                    AVNumberOfChannelsKey: 2
+                ]
+            } else {
+                outputSettings = [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: 44_100.0,
+                    AVNumberOfChannelsKey: 2,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false,
+                    AVLinearPCMIsNonInterleaved: false
+                ]
+            }
+
+            let outputFile = try AVAudioFile(forWriting: outputFileURL, settings: outputSettings)
             let outputFormat = outputFile.processingFormat
             let gain = Float(loudness.gainFactor)
             var appendedSongs = 0
@@ -653,20 +699,21 @@ final class AudioProcessingService {
 
             let totalFrames = outputFile.length
             guard totalFrames > 0, appendedSongs > 0 else {
-                try? fileManager.removeItem(at: precomposedURL)
+                try? fileManager.removeItem(at: outputFileURL)
                 let capText = maxDuration.map { "\(Int($0))s" } ?? "none"
                 throw AudioProcessingError.processingFailed("Stitch rendered with no audio (songs=\(selectedSoundIDs.count), cap=\(capText))")
             }
 
             if let cap = maxDuration {
                 let totalSeconds = Double(totalFrames) / outputFormat.sampleRate
-                let bytes = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
+                let bytes = (try? fileManager.attributesOfItem(atPath: outputFileURL.path)[.size] as? Int64) ?? 0
                 let shareText = perSongFrames.map { String(format: "%.1fs", Double($0) / outputFormat.sampleRate) } ?? "none"
                 let truncated = capReached ? String(format: "%.1fs", totalSeconds) : "none"
-                SmartWakeDebugLog.log(String(format: "PRECOMPOSE: cap=%.0fs share=%@ songs=%d truncatedAt=%@ total=%.1fs bytes=%lld", cap, shareText, appendedSongs, truncated, totalSeconds, bytes))
+                let formatText = Self.useCAFFormat ? "CAF" : "WAV"
+                SmartWakeDebugLog.log(String(format: "PRECOMPOSE: cap=%.0fs share=%@ songs=%d truncatedAt=%@ total=%.1fs bytes=%lld format=%@", cap, shareText, appendedSongs, truncated, totalSeconds, bytes, formatText))
             }
 
-            return precomposedURL
+            return outputFileURL
         }.value
         
         let preparationEndTime = Date()
@@ -692,16 +739,19 @@ final class AudioProcessingService {
             error: nil
         )
         
-        let fileExists = fileManager.fileExists(atPath: precomposedURL.path)
-        let fileSize = (try? fileManager.attributesOfItem(atPath: precomposedURL.path)[.size] as? Int64) ?? 0
-        let metadata = audioMetadata(for: precomposedURL)
+        // Use the actual output file URL (could be .caf or .wav)
+        let outputURL = resultURL
+        let fileExists = fileManager.fileExists(atPath: outputURL.path)
+        let fileSize = (try? fileManager.attributesOfItem(atPath: outputURL.path)[.size] as? Int64) ?? 0
+        let metadata = audioMetadata(for: outputURL)
         let actualDuration = metadata?.duration ?? 0
+        let formatString = Self.useCAFFormat ? "CAF" : "WAV"
         let generatedFileEntry = PlaylistDiagnostics.GeneratedFileEntry(
             timestamp: Date(),
             playlistID: playlistID,
             fileExists: fileExists,
             fileSizeBytes: fileSize,
-            audioFormat: "WAV",
+            audioFormat: formatString,
             sampleRate: metadata?.sampleRate ?? 0,
             channelCount: metadata?.channelCount ?? 0,
             actualDuration: actualDuration,
@@ -713,17 +763,18 @@ final class AudioProcessingService {
         // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection.
         // Never delete a file the currently armed set still references - AlarmKit
         // plays by filename; the armed-aware prune removes them once unused.
+        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
         let patternPrefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
-        let patternSuffix = "_\(loudness.percentage)pct\(capPart).wav"
+        let patternSuffix = "_\(loudness.percentage)pct\(capPart).\(outputExtension)"
         let allFiles = (try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)) ?? []
         for file in allFiles {
             let fileName = file.lastPathComponent
-            if fileName.hasPrefix(patternPrefix) && fileName.hasSuffix(patternSuffix) && fileName != precomposedFileName && !protectedFileNames.contains(fileName) {
+            if fileName.hasPrefix(patternPrefix) && fileName.hasSuffix(patternSuffix) && fileName != outputURL.lastPathComponent && !protectedFileNames.contains(fileName) {
                 try? fileManager.removeItem(at: file)
             }
         }
         
-        return (precomposedURL, preparationEntry, generatedFileEntry)
+        return (outputURL, preparationEntry, generatedFileEntry)
     }
     
     /// Find an existing precomposed file for this (playlist, loudness, cap)
@@ -738,7 +789,8 @@ final class AudioProcessingService {
         guard let dir = processedSoundsDirectory else { return nil }
         let prefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
         let capPart = maxDuration.map { "_cap\(Int($0))" } ?? ""
-        let suffix = "_\(loudness.percentage)pct\(capPart).wav"
+        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
+        let suffix = "_\(loudness.percentage)pct\(capPart).\(outputExtension)"
         let allFiles = (try? fileManager.contentsOfDirectory(
             at: dir,
             includingPropertiesForKeys: [URLResourceKey.contentModificationDateKey]
@@ -775,11 +827,12 @@ final class AudioProcessingService {
     func removePrecomposedPlaylist(for playlistID: UUID) {
         guard let dir = processedSoundsDirectory else { return }
         let identifier = "_\(playlistID.uuidString.prefix(8))_"
+        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
 
         let files = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         for file in files where file.lastPathComponent.hasPrefix("playlist_")
             && file.lastPathComponent.contains(identifier)
-            && file.lastPathComponent.hasSuffix("pct.wav") {
+            && file.lastPathComponent.hasSuffix("pct.\(outputExtension)") {
             try? fileManager.removeItem(at: file)
         }
     }

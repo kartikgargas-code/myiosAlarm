@@ -184,7 +184,7 @@ struct SoundPickerView: View {
                         soundRow(
                             sound: .imported(sound.id),
                             label: sound.name,
-                            description: "Imported",
+                            description: "",
                             previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
                         )
                     }
@@ -290,9 +290,11 @@ struct SoundPickerView: View {
                     Text(label)
                         .font(.body)
                         .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    if !description.isEmpty {
+                        Text(description)
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
                 }
                 Spacer()
                 if isPlayingThis {
