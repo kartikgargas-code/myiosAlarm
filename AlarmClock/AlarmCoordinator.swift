@@ -613,6 +613,7 @@ final class AlarmCoordinator {
             
             // Set feedback for in-app toast (if foreground)
             self.ccActionFeedback = feedback
+            SmartWakeDebugLog.log("CC FEEDBACK toast shown: \(feedback)")
             
             // Clear feedback after 5 seconds
             Task {
@@ -621,6 +622,9 @@ final class AlarmCoordinator {
                     self.ccActionFeedback = nil
                 }
             }
+            
+            // Post local notification for Lock Screen visibility (when app is backgrounded)
+            await postCCFeedbackNotification(feedback)
             
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
@@ -1727,5 +1731,34 @@ final class AlarmCoordinator {
     /// Stop any history/preview playback started from Play History.
     func stopHistoryPlayback() {
         SoundPreviewService.shared.stop()
+    }
+    
+    /// Post a local notification for Control Center feedback (visible on Lock Screen)
+    /// and auto-remove it after ~6 seconds to avoid Notification Center clutter.
+    private func postCCFeedbackNotification(_ text: String) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Alarm Clock"
+        content.body = text
+        content.sound = nil // silent - we just want the banner
+        content.threadIdentifier = "cc-feedback"
+        
+        let request = UNNotificationRequest(
+            identifier: "cc-feedback-\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+        
+        let center = UNUserNotificationCenter.current()
+        do {
+            try await center.add(request)
+            SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(text)")
+            
+            // Auto-remove after ~6 seconds
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
+            SmartWakeDebugLog.log("CC FEEDBACK notification auto-removed")
+        } catch {
+            SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")
+        }
     }
 }
