@@ -114,6 +114,16 @@ struct AppearanceView: View {
                         .font(.footnote)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
+                
+                Section("Alarm List") {
+                    Toggle("Compact Mode", isOn: Binding(
+                        get: { ThemeManager.shared.isCompactModeEnabled },
+                        set: { ThemeManager.shared.isCompactModeEnabled = $0 }
+                    ))
+                    Text("When enabled, each alarm row shows only the time and label - no repeat rule or 'Next:' line.")
+                        .font(.footnote)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)

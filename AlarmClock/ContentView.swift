@@ -369,6 +369,7 @@ struct ContentView: View {
         let colors = ThemeManager.shared.colors
         let occurrence = coordinator.occurrence(for: alarm.id)
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
+        let isCompact = ThemeManager.shared.isCompactModeEnabled
 
         return HStack(spacing: 12) {
             // Alarm details - tapping opens editor
@@ -383,23 +384,26 @@ struct ContentView: View {
                     Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
                         .font(.subheadline)
                         .foregroundStyle(colors.primaryText)
-                    Text(alarm.repeatRule.displayName)
-                        .font(.caption)
-                        .foregroundStyle(colors.accent)
-                    if let occurrence {
-                        HStack(spacing: 4) {
-                            if let skipped = skippedOccurrence {
-                                Label("Skipped", systemImage: "slash.circle.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(colors.accent)
-                            } else if occurrence.isAdjusted {
-                                Label(adjustmentDescription(occurrence), systemImage: "clock.badge.checkmark.fill")
-                                    .font(.caption2)
-                                    .foregroundStyle(colors.accent)
-                            } else {
-                                Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption)
-                                    .foregroundStyle(colors.accent)
+                    
+                    if !isCompact {
+                        Text(alarm.repeatRule.displayName)
+                            .font(.caption)
+                            .foregroundStyle(colors.accent)
+                        if let occurrence {
+                            HStack(spacing: 4) {
+                                if let skipped = skippedOccurrence {
+                                    Label("Skipped", systemImage: "slash.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(colors.accent)
+                                } else if occurrence.isAdjusted {
+                                    Label(adjustmentDescription(occurrence), systemImage: "clock.badge.checkmark.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(colors.accent)
+                                } else {
+                                    Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.caption)
+                                        .foregroundStyle(colors.accent)
+                                }
                             }
                         }
                     }

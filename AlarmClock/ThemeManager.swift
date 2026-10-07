@@ -11,11 +11,14 @@ final class ThemeManager {
     private let customColorsKey = "customThemeColors"
     private let userThemesKey = "userThemes"
     private let activeUserThemeKey = "activeUserThemeID"
+    private let compactModeKey = "compactModeEnabled"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
     var userThemes: [UserTheme] = []  // Public setter for backup/restore
     private(set) var activeUserThemeID: UUID?
+    
+    @AppStorage("compactModeEnabled") var isCompactModeEnabled: Bool = false
 
     private init() {
         loadUserThemes()
