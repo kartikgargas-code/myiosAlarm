@@ -735,7 +735,6 @@ final class AudioProcessingService {
         // Cleanup: delete old precomposed files for this playlist+loudness that don't match current selection.
         // Never delete a file the currently armed set still references - AlarmKit
         // plays by filename; the armed-aware prune removes them once unused.
-        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
         let patternPrefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
         let patternSuffix = "_\(loudness.percentage)pct\(capPart).\(outputExtension)"
         let allFiles = (try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)) ?? []
