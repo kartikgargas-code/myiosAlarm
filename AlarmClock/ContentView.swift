@@ -26,6 +26,10 @@ struct ContentView: View {
     @State private var smartWakeLogUnavailable = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
+    // Track foreground state for CC feedback gating
+    @State private var isAppInForeground = true
+    // Static property accessible from AlarmCoordinator
+    static var isAppInForegroundStatic: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -180,8 +184,8 @@ struct ContentView: View {
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
                 }
                 
-                // Control Center action feedback toast
-                if let feedback = coordinator.ccActionFeedback {
+                // Control Center action feedback toast - ONLY when app is in foreground
+                if let feedback = coordinator.ccActionFeedback, isAppInForeground {
                     VStack {
                         HStack {
                             Image(systemName: "bell.badge")
@@ -286,6 +290,8 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
+                    isAppInForeground = true
+                    ContentView.isAppInForegroundStatic = true
                     // Apply any Control Center widget action queued while the
                     // app was closed/backgrounded (app is the sole AlarmKit party).
                     Task {
@@ -293,6 +299,8 @@ struct ContentView: View {
                     }
                     checkForActiveRing()
                 } else if newPhase == .background {
+                    isAppInForeground = false
+                    ContentView.isAppInForegroundStatic = false
                     // Start Smart Wake when app backgrounds if enabled and alarm armed
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
@@ -300,6 +308,8 @@ struct ContentView: View {
                         }
                     }
                 } else if newPhase == .inactive {
+                    isAppInForeground = false
+                    ContentView.isAppInForegroundStatic = false
                     // Last foreground moment before lock/suspend — ensure Smart Wake is running
                     if smartWakeService.isSmartWakeEnabled {
                         Task {

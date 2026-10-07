@@ -611,20 +611,25 @@ final class AlarmCoordinator {
             }
             let feedback = "\(actionText) · next \(nextTime)"
             
-            // Set feedback for in-app toast (if foreground)
-            self.ccActionFeedback = feedback
-            SmartWakeDebugLog.log("CC FEEDBACK toast shown: \(feedback)")
-            
-            // Clear feedback after 5 seconds
-            Task {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if self.ccActionFeedback == feedback {
-                    self.ccActionFeedback = nil
+            // Gate feedback by app state: toast ONLY when foreground, notification ONLY when background
+            let isForeground = await MainActor.run { ContentView.isAppInForegroundStatic }
+            if isForeground {
+                // Set feedback for in-app toast
+                self.ccActionFeedback = feedback
+                SmartWakeDebugLog.log("CC FEEDBACK channel=toast: \(feedback)")
+                
+                // Clear feedback after 5 seconds
+                Task {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    if self.ccActionFeedback == feedback {
+                        self.ccActionFeedback = nil
+                    }
                 }
+            } else {
+                // Post local notification for Lock Screen visibility
+                await postCCFeedbackNotification(feedback)
+                SmartWakeDebugLog.log("CC FEEDBACK channel=notification: \(feedback)")
             }
-            
-            // Post local notification for Lock Screen visibility (when app is backgrounded)
-            await postCCFeedbackNotification(feedback)
             
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }

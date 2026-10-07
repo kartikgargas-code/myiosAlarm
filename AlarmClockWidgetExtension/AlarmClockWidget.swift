@@ -6,6 +6,7 @@ import AlarmClockShared
 import os.log
 import CoreFoundation
 import AlarmKit
+import UserNotifications
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
@@ -458,6 +459,11 @@ struct SkipNextAlarmIntent: AppIntent {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=skipNext")
         }
         
+        // Post local notification IMMEDIATELY from the extension at press time
+        // (if app is backgrounded, this provides instant feedback)
+        await postCCFeedbackFromExtension("Next alarm skipped")
+        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=skipNext")
+        
         return .result()
     }
 }
@@ -525,6 +531,10 @@ struct AlarmMinus10Intent: AppIntent {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust-10")
         }
         
+        // Post local notification IMMEDIATELY from the extension at press time
+        await postCCFeedbackFromExtension("Alarm moved -10 min")
+        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust-10")
+        
         return .result()
     }
 }
@@ -591,6 +601,10 @@ struct AlarmPlus10Intent: AppIntent {
         } catch {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust+10")
         }
+        
+        // Post local notification IMMEDIATELY from the extension at press time
+        await postCCFeedbackFromExtension("Alarm moved +10 min")
+        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust+10")
         
         return .result()
     }
@@ -698,4 +712,30 @@ private func postDarwinNotification(_ name: String) {
     let center = CFNotificationCenterGetDarwinNotifyCenter()
     let name = CFNotificationName(name as CFString)
     CFNotificationCenterPostNotification(center, name, nil, nil, true)
+}
+
+/// Post local notification from the extension for immediate CC feedback
+/// Called at press time so the banner appears even if app is suspended
+@MainActor
+private func postCCFeedbackFromExtension(_ text: String) async {
+    let content = UNMutableNotificationContent()
+    content.title = "Alarm Clock"
+    content.body = text
+    content.sound = nil
+    content.threadIdentifier = "cc-feedback-extension"
+    
+    let request = UNNotificationRequest(
+        identifier: "cc-feedback-extension-\(UUID().uuidString)",
+        content: content,
+        trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+    )
+    
+    let center = UNUserNotificationCenter.current()
+    do {
+        try await center.add(request)
+        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification posted: \(text)")
+    } catch {
+        // Extension may not have notification permission - log and don't fail silently
+        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification FAILED (may lack permission): \(error.localizedDescription)")
+    }
 }
