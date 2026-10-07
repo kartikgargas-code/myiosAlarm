@@ -10,19 +10,22 @@ struct ImportedSound: Identifiable, Codable, Hashable {
     var fileName: String
     var duration: TimeInterval?
     var dateAdded: Date
+    var folder: String?  // Which imported folder this sound came from
 
     init(
         id: UUID = UUID(),
         name: String,
         fileName: String,
         duration: TimeInterval? = nil,
-        dateAdded: Date = Date()
+        dateAdded: Date = Date(),
+        folder: String? = nil
     ) {
         self.id = id
         self.name = name
         self.fileName = fileName
         self.duration = duration
         self.dateAdded = dateAdded
+        self.folder = folder
     }
 
     func localURL(soundsDirectory: URL?) -> URL? {
@@ -296,7 +299,8 @@ final class SoundLibrary {
             id: stableID(for: copied.fileName),
             name: displayName,
             fileName: copied.fileName,
-            duration: copied.duration
+            duration: copied.duration,
+            folder: nil  // Single file import - no folder
         )
         if let d = copied.duration {
             setDurationOverride(d, for: copied.fileName)
@@ -384,7 +388,8 @@ final class SoundLibrary {
                     id: info.id,
                     name: info.name,
                     fileName: info.fileName,
-                    duration: info.duration
+                    duration: info.duration,
+                    folder: folderName
                 )
                 if let d = info.duration {
                     self.setDurationOverride(d, for: info.fileName)

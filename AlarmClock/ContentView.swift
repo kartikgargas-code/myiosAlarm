@@ -1071,7 +1071,43 @@ struct SoundsView: View {
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
     
+    @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
+    private var sortOption: SoundSortOption {
+        get { SoundSortOption(rawValue: sortOptionRaw) ?? .name }
+        set { sortOptionRaw = newValue.rawValue }
+    }
+    private enum SoundSortOption: String, CaseIterable, Identifiable {
+        case name = "Name"
+        case dateAdded = "Date Added"
+        case size = "Size"
+        case folder = "Folder"
+        case duration = "Duration"
+        
+        var id: String { rawValue }
+    }
+    
     private let preview = SoundPreviewService.shared
+    
+    private var sortedSounds: [ImportedSound] {
+        let sounds = SoundLibrary.shared.importedSounds
+        switch sortOption {
+        case .name:
+            return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .dateAdded:
+            return sounds.sorted { $0.dateAdded > $1.dateAdded }
+        case .size:
+            // Size requires reading file attributes - for now sort by filename as proxy
+            return sounds.sorted { $0.fileName.localizedCaseInsensitiveCompare($1.fileName) == .orderedAscending }
+        case .folder:
+            return sounds.sorted { 
+                let f1 = $0.folder ?? ""
+                let f2 = $1.folder ?? ""
+                return f1.localizedCaseInsensitiveCompare(f2) == .orderedAscending
+            }
+        case .duration:
+            return sounds.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -1109,7 +1145,7 @@ struct SoundsView: View {
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     } else {
-                        ForEach(SoundLibrary.shared.importedSounds) { sound in
+                        ForEach(sortedSounds) { sound in
                             soundRow(sound: sound)
                         }
                     }
@@ -1129,6 +1165,18 @@ struct SoundsView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Picker("Sort by", selection: $sortOption) {
+                            ForEach(SoundSortOption.allCases) { option in
+                                Text(option.rawValue).tag(option)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
                 }
             }
             .fileImporter(
