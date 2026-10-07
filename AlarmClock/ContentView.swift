@@ -1203,17 +1203,12 @@ struct SoundsView: View {
                     .font(.title3)
             }
             
-            // Delete button - always enabled, shows confirmation if referenced
+            // Delete button - always enabled, performs full cleanup directly
             Button(role: .destructive) {
-                if isReferenced {
-                    // Show confirmation dialog
-                    pendingDeleteSound = sound
-                    showingDeleteConfirmation = true
-                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=pending")
-                } else {
-                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
-                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=no confirmed=yes")
-                }
+                // Always do full cleanup: remove from playlists, reset alarms, delete file
+                SoundLibrary.shared.removeSoundFromAllPlaylists(sound.id)
+                SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=\(isReferenced ? "yes" : "no") confirmed=yes")
             } label: {
                 Image(systemName: "trash")
                     .foregroundStyle(ThemeManager.shared.colors.destructive)
@@ -1225,45 +1220,15 @@ struct SoundsView: View {
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
-                if isReferenced {
-                    pendingDeleteSound = sound
-                    showingDeleteConfirmation = true
-                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=pending")
-                } else {
-                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
-                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=no confirmed=yes")
-                }
+                // Always do full cleanup: remove from playlists, reset alarms, delete file
+                SoundLibrary.shared.removeSoundFromAllPlaylists(sound.id)
+                SoundLibrary.shared.deleteSoundFileByID(sound.id)
+                SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=\(isReferenced ? "yes" : "no") confirmed=yes")
             } label: {
                 Label("Delete", systemImage: "trash")
             }
         }
-        .alert("Delete Sound", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {
-                SmartWakeDebugLog.log("SOUND DELETE UI: id=\(pendingDeleteSound?.id.uuidString ?? "nil") referenced=yes confirmed=no")
-                pendingDeleteSound = nil
-            }
-            Button("Delete", role: .destructive) {
-                if let sound = pendingDeleteSound {
-                    // Remove from all playlists using the proper API
-                    SoundLibrary.shared.removeSoundFromAllPlaylists(sound.id)
-                    
-                    // Reset any alarm using this sound to default
-                    // This is done via AlarmCoordinator's confirmDeleteSoundFile logic
-                    SoundLibrary.shared.deleteSoundFileByID(sound.id)
-                    SmartWakeDebugLog.log("SOUND DELETE UI: id=\(sound.id.uuidString) referenced=yes confirmed=yes")
-                    pendingDeleteSound = nil
-                }
-            }
-        } message: {
-            if let sound = pendingDeleteSound {
-                let refs = getReferencesForSound(sound)
-                Text("This sound is used by \(refs). Deleting will remove it from all playlists and reset any alarms using it to the default sound.")
-            }
-        }
     }
-    
-    @State private var pendingDeleteSound: ImportedSound?
-    @State private var showingDeleteConfirmation = false
     
     private func getReferencesForSound(_ sound: ImportedSound) -> String {
         var refs: [String] = []

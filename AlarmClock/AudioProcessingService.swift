@@ -394,6 +394,10 @@ final class AudioProcessingService {
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
         let playlist = try SoundLibrary.shared.playlist(for: playlistID)
+        
+        // TASK 4: Self-heal playlists - remove missing IDs before building track list
+        SoundLibrary.shared.selfHealPlaylists()
+        
         let soundIDs = playlist.selectedSoundIDs
         let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
         let importedSounds = SoundLibrary.shared.importedSounds  // Capture imported sounds

@@ -213,11 +213,36 @@ final class SoundLibrary {
             return
         }
         playlists = decoded
+        selfHealPlaylists()
     }
 
     private func savePlaylists() {
         if let encoded = try? JSONEncoder().encode(playlists) {
             UserDefaults.standard.set(encoded, forKey: playlistKey)
+        }
+    }
+    
+    /// Remove sound IDs from playlists that no longer exist in importedSounds
+    /// Called on load and before playback/stitch to keep playlists clean
+    private func selfHealPlaylists() {
+        let validIDs = Set(importedSounds.map { $0.id })
+        var totalRemoved = 0
+        
+        for i in playlists.indices {
+            let beforeSoundCount = playlists[i].soundIDs.count
+            let beforeSelectedCount = playlists[i].selectedSoundIDs.count
+            
+            playlists[i].soundIDs = playlists[i].soundIDs.filter { validIDs.contains($0) }
+            playlists[i].selectedSoundIDs = playlists[i].selectedSoundIDs.filter { validIDs.contains($0) }
+            
+            let removed = (beforeSoundCount - playlists[i].soundIDs.count) + (beforeSelectedCount - playlists[i].selectedSoundIDs.count)
+            totalRemoved += removed
+        }
+        
+        if totalRemoved > 0 {
+            SmartWakeDebugLog.log("PLAYLIST SELF-HEAL: removed \(totalRemoved) missing ids across \(playlists.count) playlists")
+            // Save the healed playlists
+            savePlaylists()
         }
     }
 
