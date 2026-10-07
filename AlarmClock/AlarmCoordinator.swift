@@ -627,8 +627,7 @@ final class AlarmCoordinator {
                 }
             } else {
                 // Post local notification for Lock Screen visibility
-                await postCCFeedbackNotification(feedback)
-                SmartWakeDebugLog.log("CC FEEDBACK channel=notification: \(feedback)")
+                SmartWakeDebugLog.log("CC FEEDBACK: app skipping duplicate banner (extension already posted) channel=none: \(feedback)")
             }
             
             // Log alarm IDs after widget action apply
