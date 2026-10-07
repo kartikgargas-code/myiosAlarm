@@ -8,8 +8,7 @@ import os.log
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
     @State private var coordinator = AlarmCoordinator()
-    @State private var editorAlarm: AlarmRecord?
-    @State private var showingEditor = false
+    @State private var editorPresentation: EditorPresentation?
     @State private var controlsAlarm: AlarmRecord?
     @State private var showingDiagnostics = false
     @State private var showingAppearance = false
@@ -18,7 +17,6 @@ struct ContentView: View {
     @State private var showingSounds = false
     @State private var currentRingSongName: String? = nil
     @State private var pendingEnabled: [UUID: Bool] = [:]
-    @State private var editorIdentity = UUID()
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
@@ -114,12 +112,7 @@ struct ContentView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
-                            editorAlarm = nil
-                            // Fresh identity only when ADDING a new alarm —
-                            // regenerating on every body eval rebuilt the editor
-                            // mid-typing (lost input, ate taps).
-                            editorIdentity = UUID()
-                            showingEditor = true
+                            editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
                         } label: {
                             Image(systemName: "plus")
                         }
@@ -211,11 +204,9 @@ struct ContentView: View {
                     .animation(.easeInOut(duration: 0.2), value: coordinator.ccActionFeedback)
                 }
             }
-            .sheet(isPresented: $showingEditor) {
-                // Fresh identity per alarm so @State(initialValue:) re-runs —
-                // otherwise the editor keeps the first-opened alarm's sound.
+            .sheet(item: $editorPresentation) { presentation in
                 AlarmEditorView(
-                    existingAlarm: editorAlarm,
+                    existingAlarm: presentation.alarm,
                     alarms: coordinator.alarms,
                     onSave: { alarm in
                         await coordinator.save(alarm)
@@ -224,9 +215,6 @@ struct ContentView: View {
                         await coordinator.scheduleTestAlarm(alarm, delay: delay)
                     }
                 )
-                .id(editorAlarm?.id ?? editorIdentity)
-                .onAppear { SmartWakeDebugLog.log("EDITOR SHEET: appeared alarm=\(editorAlarm?.id.uuidString ?? "new")") }
-                .onDisappear { SmartWakeDebugLog.log("EDITOR SHEET: disappeared") }
             }
             .sheet(item: $controlsAlarm) { alarm in
                 NextOccurrenceControlsView(
@@ -370,8 +358,7 @@ struct ContentView: View {
             // Alarm details - tapping opens editor
             Button {
                 SmartWakeDebugLog.log("EDITOR OPEN: tapped \(alarm.id.uuidString)")
-                editorAlarm = alarm
-                showingEditor = true
+                editorPresentation = EditorPresentation(id: alarm.id, alarm: alarm)
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(timeText(alarm.time))
@@ -1050,6 +1037,12 @@ struct DiagnosticsScreen: View {
     private func loadBuildFingerprint() {
         self.buildFingerprint = SmartWakeDebugLog.latestBuildLine()
     }
+}
+
+// MARK: - Editor Presentation (item-based, travels with sheet)
+struct EditorPresentation: Identifiable {
+    let id: UUID
+    let alarm: AlarmRecord?  // nil = Add new alarm
 }
 
 // MARK: - Sounds View (Sound Manager)
