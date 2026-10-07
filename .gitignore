@@ -10,3 +10,6 @@ AlarmClock.xcodeproj/
 .swiftpm/
 .build/
 .openhands/
+.agent_tmp/
+NOTES-*.md
+builder-prompts-*.*

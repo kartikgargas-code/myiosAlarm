@@ -50,6 +50,26 @@ final class AlarmCoordinator {
     /// desired set (the armed alarms). The stitch-cache prune never deletes
     /// these; persisted so a button-press right after launch is also safe.
     private(set) var lastArmedSoundFileNames: Set<String> = []
+    
+    /// Arm-time record for each armed alarm: kind, time, sound file, format, bytes, duration, capped
+    struct ArmedAlarmRecord: Codable {
+        let alarmID: UUID
+        let occurrenceKey: String
+        let kind: String // "primary" or "backup"
+        let effectiveDate: Date
+        let soundFileName: String
+        let format: String // "CAF" or "WAV"
+        let bytes: Int64
+        let duration: TimeInterval
+        let isCapped: Bool
+        let armedAt: Date
+        var firedAt: Date? = nil
+        var reArmedAt: Date? = nil
+        var skipped: Bool = false
+    }
+    
+    /// Currently armed alarms (persisted across launches)
+    private(set) var lastArmedRecords: [ArmedAlarmRecord] = []
 
     /// Last armed-aware stitch cache prune (persisted for Diagnostics).
     private(set) var lastStitchPruneDate: Date? = nil
@@ -714,7 +734,28 @@ final class AlarmCoordinator {
                         snoozeDurationMinutes: alarm.snoozeDurationMinutes
                     )
                     results.append(primaryItem)
+                    
+                    // Log armed alarm record
+                    let soundFileName = resolvedAlarmKitSound.fileName ?? "classic-bell.wav"
+                    let format = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
+                    let soundsDir = SoundLibrary.shared.soundsDirectory
+                    let metadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(soundFileName)) }
+                    let primaryRecord = ArmedAlarmRecord(
+                        alarmID: alarm.id,
+                        occurrenceKey: occurrence.occurrenceKey,
+                        kind: "primary",
+                        effectiveDate: occurrence.effectiveDate,
+                        soundFileName: soundFileName,
+                        format: format,
+                        bytes: metadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
+                        duration: metadata?.duration ?? 0,
+                        isCapped: false,
+                        armedAt: now()
+                    )
+                    lastArmedRecords.append(primaryRecord)
+                    
                     SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(occurrence.occurrenceKey) kind=PRIMARY effectiveDate=\(occurrence.effectiveDate) label=\"\(label)\"")
+                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=PRIMARY file=\(soundFileName) format=\(format) bytes=\(primaryRecord.bytes) duration=\(String(format: "%.1f", primaryRecord.duration))s")
                 }
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
@@ -801,7 +842,27 @@ final class AlarmCoordinator {
                         snoozeDurationMinutes: alarm.snoozeDurationMinutes
                     )
                     results.append(backupItem)
+                    
+                    // Log armed alarm record for backup
+                    let backupFormat = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
+                    let soundsDir = SoundLibrary.shared.soundsDirectory
+                    let backupMetadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(processedFileName)) }
+                    let backupRecord = ArmedAlarmRecord(
+                        alarmID: alarm.id,
+                        occurrenceKey: backupOccurrence.occurrenceKey,
+                        kind: "backup",
+                        effectiveDate: backupOccurrence.effectiveDate,
+                        soundFileName: processedFileName,
+                        format: backupFormat,
+                        bytes: backupMetadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
+                        duration: backupMetadata?.duration ?? 0,
+                        isCapped: true, // backup is always capped at 60s
+                        armedAt: now()
+                    )
+                    lastArmedRecords.append(backupRecord)
+                    
                     SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(backupOccurrence.occurrenceKey) kind=BACKUP effectiveDate=\(backupOccurrence.effectiveDate) label=\"\(label)\"")
+                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=BACKUP file=\(processedFileName) format=\(backupFormat) bytes=\(backupRecord.bytes) duration=\(String(format: "%.1f", backupRecord.duration))s capped=YES")
                 }
             } catch {
                 warnings.append("\(label): \(error.localizedDescription)")

@@ -604,6 +604,7 @@ struct DiagnosticsScreen: View {
     @State private var lastPruneFreedMB: Double = 0
     @State private var showUTCNotice = true
     @State private var buildFingerprint: String? = nil
+    @State private var armedRecords: [AlarmCoordinator.ArmedAlarmRecord] = []
     
     @Environment(\.dismiss) private var dismiss
     
@@ -622,6 +623,11 @@ struct DiagnosticsScreen: View {
 
                 // 0c. Alarm sound cache
                 alarmSoundCacheSection
+
+                Divider()
+
+                // 0d. Armed right now
+                armedRightNowSection
 
                 Divider()
 
@@ -752,8 +758,79 @@ struct DiagnosticsScreen: View {
         armedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames.sorted() ?? []
         lastPruneDate = AlarmCoordinator.sharedInstance?.lastStitchPruneDate
         lastPruneFreedMB = Double(AlarmCoordinator.sharedInstance?.lastStitchPruneFreedBytes ?? 0) / 1_048_576.0
+        loadArmedRecords()
     }
-
+    
+    private func loadArmedRecords() {
+        armedRecords = AlarmCoordinator.sharedInstance?.lastArmedRecords ?? []
+    }
+    
+    // MARK: - Section 0d: Armed right now
+    private var armedRightNowSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Armed Right Now")
+                .font(.subheadline.weight(.semibold))
+            
+            if armedRecords.isEmpty {
+                Text("No alarms currently armed")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(armedRecords, id: \.alarmID) { record in
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(record.kind.uppercased())
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(record.kind == "primary" ? .green : .orange)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(3)
+                            Text(record.soundFileName)
+                                .font(.caption.monospaced())
+                                .lineLimit(1)
+                            Spacer()
+                            Text(record.format)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                            if record.isCapped {
+                                Text("CAPPED")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 3)
+                                    .padding(.vertical, 1)
+                                    .background(Color.orange.opacity(0.2))
+                                    .cornerRadius(3)
+                            }
+                        }
+                        Text("Fire: \(record.effectiveDate.formatted(date: .abbreviated, time: .standard))  Duration: \(String(format: "%.1f", record.duration))s  Bytes: \(record.bytes)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                        if record.firedAt != nil {
+                            Text("FIRED at \(record.firedAt!.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.red)
+                        } else if record.reArmedAt != nil {
+                            Text("Re-armed at \(record.reArmedAt!.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.blue)
+                        } else if record.skipped {
+                            Text("SKIPPED")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.orange)
+                        } else {
+                            Text("Armed at \(record.armedAt.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Divider()
+                }
+            }
+        }
+    }
+    
     // MARK: - Section 1: Last Alarm Result
     private var lastAlarmResultSection: some View {
         VStack(alignment: .leading, spacing: 8) {
