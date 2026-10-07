@@ -143,4 +143,3 @@ struct AppearanceView: View {
             }
         }
     }
-
