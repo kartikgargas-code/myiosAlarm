@@ -494,7 +494,8 @@ final class AudioProcessingService {
         // Songs are converted to the output format (44.1k stereo) with
         // AVAudioConverter so mixed-rate/mono MP3s still play at correct speed.
         // CAF/IMA4 is ~3.8× smaller than WAV and plays on device.
-        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds, outputExtension] in
+        let resultURL = try await Task.detached(priority: .userInitiated) { [soundsDir, processedDir, selectedSoundIDs, loudness, precomposedURL, playlistName, playlistID, fileManager, importedSounds] in
+            let outputExtension = Self.useCAFFormat ? "caf" : "wav"
             let outputFileURL = precomposedURL.deletingPathExtension().appendingPathExtension(outputExtension)
             let outputSettings: [String: Any]
             if Self.useCAFFormat {
