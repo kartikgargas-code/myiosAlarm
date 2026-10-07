@@ -20,7 +20,10 @@ final class ThemeManager {
     
     var isCompactModeEnabled: Bool {
         get { defaults.bool(forKey: compactModeKey) }
-        set { defaults.set(newValue, forKey: compactModeKey) }
+        set { 
+            defaults.set(newValue, forKey: compactModeKey)
+            objectWillChange.send()  // Notify SwiftUI of the change
+        }
     }
 
     private init() {

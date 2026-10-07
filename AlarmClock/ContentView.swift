@@ -62,7 +62,7 @@ struct ContentView: View {
 
                     Section {
                         Button("AlarmKit Diagnostics") { showingDiagnostics = true }
-                        Button("Themes") { showingAppearance = true }
+                        Button("Appearance") { showingAppearance = true }
                         Button("Play History") { showingHistory = true }
                         Button("Sounds") { showingSounds = true }
                     }
