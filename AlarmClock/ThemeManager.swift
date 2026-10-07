@@ -18,7 +18,10 @@ final class ThemeManager {
     var userThemes: [UserTheme] = []  // Public setter for backup/restore
     private(set) var activeUserThemeID: UUID?
     
-    @AppStorage("compactModeEnabled") var isCompactModeEnabled: Bool = false
+    var isCompactModeEnabled: Bool {
+        get { defaults.bool(forKey: compactModeKey) }
+        set { defaults.set(newValue, forKey: compactModeKey) }
+    }
 
     private init() {
         loadUserThemes()
