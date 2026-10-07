@@ -404,6 +404,8 @@ struct SkipNextAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        let tok = String(UUID().uuidString.prefix(8))
+        SmartWakeDebugLog.log("CC INVOKE action=skipNext tok=\(tok) bundle=\(Bundle.main.bundleIdentifier) pid=\(ProcessInfo.processInfo.processIdentifier)")
         SmartWakeDebugLog.log("INTENT STEP: queued action=skipNext")
         
         // First, queue the pending action for the app to apply AlarmKit scheduling
@@ -461,7 +463,7 @@ struct SkipNextAlarmIntent: AppIntent {
         
         // Post local notification IMMEDIATELY from the extension at press time
         // (if app is backgrounded, this provides instant feedback)
-        await postCCFeedbackFromExtension("Next alarm skipped")
+        await postCCFeedbackFromExtension("Next alarm skipped", token: tok)
         SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=skipNext")
         
         return .result()
@@ -476,6 +478,8 @@ struct AlarmMinus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        let tok = String(UUID().uuidString.prefix(8))
+        SmartWakeDebugLog.log("CC INVOKE action=-10 tok=\(tok) bundle=\(Bundle.main.bundleIdentifier) pid=\(ProcessInfo.processInfo.processIdentifier)")
         SmartWakeDebugLog.log("INTENT STEP: queued action=adjust-10")
         
         // First, queue the pending action for the app to apply AlarmKit scheduling
@@ -532,7 +536,7 @@ struct AlarmMinus10Intent: AppIntent {
         }
         
         // Post local notification IMMEDIATELY from the extension at press time
-        await postCCFeedbackFromExtension("Alarm moved -10 min")
+        await postCCFeedbackFromExtension("Alarm moved -10 min", token: tok)
         SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust-10")
         
         return .result()
@@ -547,6 +551,8 @@ struct AlarmPlus10Intent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        let tok = String(UUID().uuidString.prefix(8))
+        SmartWakeDebugLog.log("CC INVOKE action=+10 tok=\(tok) bundle=\(Bundle.main.bundleIdentifier) pid=\(ProcessInfo.processInfo.processIdentifier)")
         SmartWakeDebugLog.log("INTENT STEP: queued action=adjust+10")
         
         // First, queue the pending action for the app to apply AlarmKit scheduling
@@ -603,7 +609,7 @@ struct AlarmPlus10Intent: AppIntent {
         }
         
         // Post local notification IMMEDIATELY from the extension at press time
-        await postCCFeedbackFromExtension("Alarm moved +10 min")
+        await postCCFeedbackFromExtension("Alarm moved +10 min", token: tok)
         SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust+10")
         
         return .result()
@@ -718,7 +724,7 @@ private func postDarwinNotification(_ name: String) {
 /// Uses a FIXED identifier so each press replaces the previous notification.
 /// Auto-removes after ~6 seconds and sweeps stale notifications.
 @MainActor
-private func postCCFeedbackFromExtension(_ text: String) async {
+private func postCCFeedbackFromExtension(_ text: String, token: String) async {
     let content = UNMutableNotificationContent()
     content.title = "Alarm Clock"
     content.body = text
@@ -726,6 +732,7 @@ private func postCCFeedbackFromExtension(_ text: String) async {
     content.threadIdentifier = "cc-feedback-extension"
     
     let fixedIdentifier = "cc-feedback-extension"
+    SmartWakeDebugLog.log("CC POST begin tok=\(token) id=\(fixedIdentifier) t=\(text)")
     let request = UNNotificationRequest(
         identifier: fixedIdentifier,
         content: content,
@@ -738,6 +745,11 @@ private func postCCFeedbackFromExtension(_ text: String) async {
         center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
         
         try await center.add(request)
+        SmartWakeDebugLog.log("CC POST added tok=\(token)")
+        let p = await center.pendingNotificationRequests()
+        SmartWakeDebugLog.log("NOTIF DUMP pending n=\(p.count) ids=[\(p.map { $0.identifier }.joined(separator: ","))]")
+        let d = await center.deliveredNotifications()
+        SmartWakeDebugLog.log("NOTIF DUMP delivered n=\(d.count) ids=[\(d.map { $0.request.identifier }.joined(separator: ","))] dates=[\(d.map { String(Int($0.date.timeIntervalSince1970)) }.joined(separator: ","))]")
         SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification posted: \(text)")
         SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=\(fixedIdentifier)")
         
