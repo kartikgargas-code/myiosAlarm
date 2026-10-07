@@ -20,6 +20,9 @@ struct AlarmEditorView: View {
     @State private var showingSoundPicker = false
     @State private var isSaving = false
     @State private var draftID = UUID()
+    // Capture the alarm ID at init so a nil existingAlarm at save time
+    // can never silently create a second alarm.
+    private let alarmID: UUID
     
     // Simplified test alarm state
     private enum TestAlarmState: Equatable {
@@ -38,6 +41,8 @@ struct AlarmEditorView: View {
         self.alarms = alarms
         self.onSave = onSave
         self.onTestAlarm = onTestAlarm
+        // Capture the alarm ID once at init
+        self.alarmID = existingAlarm?.id ?? UUID()
         let calendar = Calendar.autoupdatingCurrent
         let now = Date.now
         let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
@@ -356,8 +361,13 @@ struct AlarmEditorView: View {
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
         let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
         let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
+        
+        // Diagnostic line to track what's happening
+        let existingID = existingAlarm?.id.uuidString ?? "nil"
+        SmartWakeDebugLog.log("EDITOR SAVE: existingAlarm=\(existingID) using=\(alarmID.uuidString)")
+        
         let alarm: AlarmRecord = AlarmRecord(
-            id: existingAlarm?.id ?? draftID,
+            id: alarmID,
             label: label,
             time: time,
             repeatRule: resolvedRepeatRule,
