@@ -599,6 +599,10 @@ struct DiagnosticsScreen: View {
     @State private var cacheProcessedMB: Double = 0
     @State private var cacheSoundsCount = 0
     @State private var cacheSoundsMB: Double = 0
+    // Imported sounds stats
+    @State private var importedSoundsCount = 0
+    @State private var importedSoundsMB: Double = 0
+    @State private var orphanedFiles: [AudioProcessingService.OrphanedFile] = []
     @State private var armedFileNames: [String] = []
     @State private var lastPruneDate: Date? = nil
     @State private var lastPruneFreedMB: Double = 0
@@ -716,24 +720,36 @@ struct DiagnosticsScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Alarm Sound Cache")
                 .font(.subheadline.weight(.semibold))
+            
+            // Stitched files (playlist cache)
+            Text("Stitched playlist files:")
+                .font(.caption.weight(.semibold))
             Text("Library/ProcessedSounds: \(cacheProcessedCount) files (\(String(format: "%.1f", cacheProcessedMB)) MB)")
                 .font(.caption.monospaced())
-            Text("Library/Sounds: \(cacheSoundsCount) files (\(String(format: "%.1f", cacheSoundsMB)) MB)")
+            Text("Library/Sounds (playlist_): \(cacheSoundsCount) files (\(String(format: "%.1f", cacheSoundsMB)) MB)")
                 .font(.caption.monospaced())
-            Text("In use by armed alarms:")
+            
+            Divider()
+            
+            // Imported sounds
+            Text("Imported sound files (Library/Sounds):")
                 .font(.caption.weight(.semibold))
-            if armedFileNames.isEmpty {
-                Text("none")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(armedFileNames, id: \.self) { name in
-                    Text(name)
+            Text("Total: \(importedSoundsCount) files (\(String(format: "%.1f", importedSoundsMB)) MB)")
+                .font(.caption.monospaced())
+            
+            // Orphaned files
+            if !orphanedFiles.isEmpty {
+                Text("Orphaned files (no library entry):")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                ForEach(orphanedFiles, id: \.fileName) { orphan in
+                    Text("\(orphan.fileName) — \(String(format: "%.1f", Double(orphan.sizeBytes) / 1_048_576.0)) MB")
                         .font(.caption2.monospaced())
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                 }
             }
+            
             if let lastPruneDate {
                 Text("Last cleanup: \(lastPruneDate.formatted(date: .abbreviated, time: .shortened)) (freed \(String(format: "%.1f", lastPruneFreedMB)) MB)")
                     .font(.caption.monospaced())
@@ -742,9 +758,20 @@ struct DiagnosticsScreen: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
-            Button("Clear unused cached sounds") {
-                AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
-                loadCacheStats()
+            
+            HStack {
+                Button("Clear unused cached sounds") {
+                    AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
+                    loadCacheStats()
+                }
+                
+                if !orphanedFiles.isEmpty {
+                    Button("Clean orphaned sound files") {
+                        let _ = AudioProcessingService.shared.cleanOrphanedSoundFiles()
+                        loadCacheStats()
+                    }
+                    .foregroundStyle(.red)
+                }
             }
         }
     }
@@ -755,6 +782,13 @@ struct DiagnosticsScreen: View {
         cacheProcessedMB = Double(stats.processed.totalBytes) / 1_048_576.0
         cacheSoundsCount = stats.sounds.fileCount
         cacheSoundsMB = Double(stats.sounds.totalBytes) / 1_048_576.0
+        
+        // Load imported sounds stats including orphaned files
+        let importedStats = AudioProcessingService.shared.importedSoundsStats()
+        importedSoundsCount = importedStats.fileCount
+        importedSoundsMB = Double(importedStats.totalBytes) / 1_048_576.0
+        orphanedFiles = importedStats.orphanedFiles
+        
         armedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames.sorted() ?? []
         lastPruneDate = AlarmCoordinator.sharedInstance?.lastStitchPruneDate
         lastPruneFreedMB = Double(AlarmCoordinator.sharedInstance?.lastStitchPruneFreedBytes ?? 0) / 1_048_576.0

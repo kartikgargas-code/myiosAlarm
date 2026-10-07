@@ -161,6 +161,19 @@ final class AudioProcessingService {
         let totalBytes: Int64
     }
 
+    /// Statistics for imported sound files in Library/Sounds
+    struct ImportedSoundsStats {
+        let fileCount: Int
+        let totalBytes: Int64
+        let orphanedFiles: [OrphanedFile]
+    }
+
+    struct OrphanedFile {
+        let fileName: String
+        let sizeBytes: Int64
+        let path: String
+    }
+
     func stitchCacheStats() -> (processed: StitchCacheFolderStats, sounds: StitchCacheFolderStats) {
         func stats(_ dir: URL?) -> StitchCacheFolderStats {
             guard let dir else { return StitchCacheFolderStats(fileCount: 0, totalBytes: 0) }
@@ -172,6 +185,64 @@ final class AudioProcessingService {
             return StitchCacheFolderStats(fileCount: stitches.count, totalBytes: bytes)
         }
         return (stats(processedSoundsDirectory), stats(SoundLibrary.shared.soundsDirectory))
+    }
+
+    /// Get statistics for imported sounds in Library/Sounds, including orphaned files
+    func importedSoundsStats() -> ImportedSoundsStats {
+        guard let soundsDir = SoundLibrary.shared.soundsDirectory else {
+            return ImportedSoundsStats(fileCount: 0, totalBytes: 0, orphanedFiles: [])
+        }
+        
+        // Get all MP3 files on disk
+        let allFiles = (try? fileManager.contentsOfDirectory(at: soundsDir, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])) ?? []
+        let mp3Files = allFiles.filter { $0.pathExtension.lowercased() == "mp3" }
+        
+        // Get all library entries
+        let libraryFileNames = Set(SoundLibrary.shared.importedSounds.map { $0.fileName })
+        
+        var totalBytes: Int64 = 0
+        var orphanedFiles: [OrphanedFile] = []
+        
+        for file in mp3Files {
+            let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            totalBytes += size
+            
+            if !libraryFileNames.contains(file.lastPathComponent) {
+                orphanedFiles.append(OrphanedFile(
+                    fileName: file.lastPathComponent,
+                    sizeBytes: size,
+                    path: file.path
+                ))
+            }
+        }
+        
+        return ImportedSoundsStats(
+            fileCount: mp3Files.count,
+            totalBytes: totalBytes,
+            orphanedFiles: orphanedFiles
+        )
+    }
+
+    /// Delete orphaned sound files (files on disk with no library entry)
+    func cleanOrphanedSoundFiles() -> (deleted: Int, freedBytes: Int64) {
+        let stats = importedSoundsStats()
+        var deleted = 0
+        var freedBytes: Int64 = 0
+        
+        for orphan in stats.orphanedFiles {
+            let url = URL(fileURLWithPath: orphan.path)
+            do {
+                try fileManager.removeItem(at: url)
+                deleted += 1
+                freedBytes += orphan.sizeBytes
+            } catch {
+                SmartWakeDebugLog.log("ORPHAN CLEAN: failed to delete \(orphan.fileName): \(error.localizedDescription)")
+            }
+        }
+        
+        let freedMB = Double(freedBytes) / (1_048_576.0)
+        SmartWakeDebugLog.log(String(format: "SOUND PRUNE: deleted %d orphaned files (%.1f MB)", deleted, freedMB))
+        return (deleted, freedBytes)
     }
 
     /// Delete every cached stitch file that is NOT referenced by a currently
