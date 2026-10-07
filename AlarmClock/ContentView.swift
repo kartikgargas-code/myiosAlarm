@@ -1172,9 +1172,9 @@ struct SoundsView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Picker("Sort by", selection: $sortOption) {
+                        Picker("Sort by", selection: $sortOptionRaw) {
                             ForEach(SoundSortOption.allCases) { option in
-                                Text(option.rawValue).tag(option)
+                                Text(option.rawValue).tag(option.rawValue)
                             }
                         }
                     } label: {

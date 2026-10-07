@@ -227,7 +227,7 @@ final class SoundLibrary {
     
     /// Remove sound IDs from playlists that no longer exist in importedSounds
     /// Called on load and before playback/stitch to keep playlists clean
-    private func selfHealPlaylists() {
+    func selfHealPlaylists() {
         let validIDs = Set(importedSounds.map { $0.id })
         var totalRemoved = 0
         
