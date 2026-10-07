@@ -116,14 +116,10 @@ struct NextAlarmWidgetProvider: TimelineProvider {
         let currentDate = Date()
         let entry = loadEntry()
         
-        // Request update in 15 minutes, but also at the next occurrence time if we have one
-        var nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: currentDate) ?? currentDate
-        
-        // If we have a next alarm time, schedule update around that time too
-        if entry.hasAlarm {
-            let formatter = ISO8601DateFormatter()
-            // We could parse the next occurrence time, but for simplicity use 15 min
-        }
+        // Use a near-future update policy (1 minute) so WidgetKit re-reads
+        // nextAlarmSnapshot.json every minute and self-heals. This keeps the
+        // Lock Screen widget fresh even if reloadTimelines is missed or delayed.
+        let nextUpdate = Calendar.current.date(byAdding: .second, value: 60, to: currentDate) ?? currentDate
         
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
@@ -445,6 +441,19 @@ struct SkipNextAlarmIntent: AppIntent {
                 WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
                 SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=skipNext")
             }
+            
+            // Schedule second reload in 2 seconds for self-healing
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=skipNext kind=\(widgetKind)")
+                }
+                if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=skipNext kind=\(controlKind)")
+                }
+            }
         } catch {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=skipNext")
         }
@@ -499,6 +508,19 @@ struct AlarmMinus10Intent: AppIntent {
                 WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
                 SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=adjust-10")
             }
+            
+            // Schedule second reload in 2 seconds for self-healing
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=adjust-10 kind=\(widgetKind)")
+                }
+                if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=adjust-10 kind=\(controlKind)")
+                }
+            }
         } catch {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust-10")
         }
@@ -552,6 +574,19 @@ struct AlarmPlus10Intent: AppIntent {
             if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
                 WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
                 SmartWakeDebugLog.log("INTENT STEP: reloaded kind=\(controlKind) action=adjust+10")
+            }
+            
+            // Schedule second reload in 2 seconds for self-healing
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=adjust+10 kind=\(widgetKind)")
+                }
+                if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
+                    SmartWakeDebugLog.log("INTENT STEP: reload-scheduled in=2s action=adjust+10 kind=\(controlKind)")
+                }
             }
         } catch {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust+10")

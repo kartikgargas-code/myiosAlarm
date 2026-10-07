@@ -739,10 +739,12 @@ final class AlarmCoordinator {
                     )
                     results.append(primaryItem)
                     
-                    // Log armed alarm record
+                    // Log armed alarm record - stat the real file for honest byte size
                     let soundFileName = resolvedAlarmKitSound.fileName ?? "classic-bell.wav"
                     let format = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
                     let soundsDir = SoundLibrary.shared.soundsDirectory
+                    let fileURL = soundsDir?.appendingPathComponent(soundFileName)
+                    let fileSize = fileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
                     let metadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(soundFileName)) }
                     let primaryRecord = ArmedAlarmRecord(
                         alarmID: alarm.id,
@@ -751,7 +753,7 @@ final class AlarmCoordinator {
                         effectiveDate: occurrence.effectiveDate,
                         soundFileName: soundFileName,
                         format: format,
-                        bytes: metadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
+                        bytes: fileSize ?? 0,
                         duration: metadata?.duration ?? 0,
                         isCapped: false,
                         armedAt: now
@@ -759,7 +761,8 @@ final class AlarmCoordinator {
                     lastArmedRecords.append(primaryRecord)
                     
                     SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(occurrence.occurrenceKey) kind=PRIMARY effectiveDate=\(occurrence.effectiveDate) label=\"\(label)\"")
-                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=PRIMARY file=\(soundFileName) format=\(format) bytes=\(primaryRecord.bytes) duration=\(String(format: "%.1f", primaryRecord.duration))s")
+                    let bytesStr = fileSize.map { "\($0)" } ?? "unknown"
+                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=PRIMARY file=\(soundFileName) format=\(format) bytes=\(bytesStr) duration=\(String(format: "%.1f", primaryRecord.duration))s")
                 }
                 
                 // Phase 7a: Schedule delayed backup for playlist alarms when Smart Wake is enabled
@@ -847,9 +850,11 @@ final class AlarmCoordinator {
                     )
                     results.append(backupItem)
                     
-                    // Log armed alarm record for backup
+                    // Log armed alarm record for backup - stat the real file for honest byte size
                     let backupFormat = AudioProcessingService.useCAFFormat ? "CAF" : "WAV"
                     let soundsDir = SoundLibrary.shared.soundsDirectory
+                    let backupFileURL = soundsDir?.appendingPathComponent(processedFileName)
+                    let backupFileSize = backupFileURL.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int64 }
                     let backupMetadata = soundsDir.flatMap { AudioProcessingService.shared.audioMetadata(for: $0.appendingPathComponent(processedFileName)) }
                     let backupRecord = ArmedAlarmRecord(
                         alarmID: alarm.id,
@@ -858,7 +863,7 @@ final class AlarmCoordinator {
                         effectiveDate: backupOccurrence.effectiveDate,
                         soundFileName: processedFileName,
                         format: backupFormat,
-                        bytes: backupMetadata.map { Int64($0.duration * 44100 * 2 * 2) } ?? 0, // approximate
+                        bytes: backupFileSize ?? 0,
                         duration: backupMetadata?.duration ?? 0,
                         isCapped: true, // backup is always capped at 60s
                         armedAt: now
@@ -866,7 +871,8 @@ final class AlarmCoordinator {
                     lastArmedRecords.append(backupRecord)
                     
                     SmartWakeDebugLog.log("DESIRED ITEM: occurrenceKey=\(backupOccurrence.occurrenceKey) kind=BACKUP effectiveDate=\(backupOccurrence.effectiveDate) label=\"\(label)\"")
-                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=BACKUP file=\(processedFileName) format=\(backupFormat) bytes=\(backupRecord.bytes) duration=\(String(format: "%.1f", backupRecord.duration))s capped=YES")
+                    let backupBytesStr = backupFileSize.map { "\($0)" } ?? "unknown"
+                    SmartWakeDebugLog.log("ARM RECORD: alarm=\(alarm.id.uuidString.prefix(8)) kind=BACKUP file=\(processedFileName) format=\(backupFormat) bytes=\(backupBytesStr) duration=\(String(format: "%.1f", backupRecord.duration))s capped=YES")
                 }
             } catch {
                 warnings.append("\(label): \(error.localizedDescription)")
