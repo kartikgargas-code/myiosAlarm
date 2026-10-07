@@ -18,15 +18,16 @@ final class ThemeManager {
     var userThemes: [UserTheme] = []  // Public setter for backup/restore
     private(set) var activeUserThemeID: UUID?
     
-    var isCompactModeEnabled: Bool {
-        get { defaults.bool(forKey: compactModeKey) }
-        set { 
-            defaults.set(newValue, forKey: compactModeKey)
-            objectWillChange.send()  // Notify SwiftUI of the change
-        }
+    /// Stored (observable) so toggling redraws SwiftUI immediately; persisted on write.
+    var isCompactModeEnabled: Bool = false
+
+    func setCompactMode(_ enabled: Bool) {
+        isCompactModeEnabled = enabled
+        defaults.set(enabled, forKey: compactModeKey)
     }
 
     private init() {
+        isCompactModeEnabled = defaults.bool(forKey: compactModeKey)
         loadUserThemes()
         loadTheme()
     }
