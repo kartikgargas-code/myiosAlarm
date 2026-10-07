@@ -29,7 +29,7 @@ final class AudioProcessingService {
         }
     }
 
-    private func audioMetadata(for url: URL) -> (duration: TimeInterval, sampleRate: Double, channelCount: Int)? {
+    func audioMetadata(for url: URL) -> (duration: TimeInterval, sampleRate: Double, channelCount: Int)? {
         guard let audioFile = try? AVAudioFile(forReading: url) else { return nil }
         let sampleRate = audioFile.processingFormat.sampleRate
         guard sampleRate > 0 else { return nil }
