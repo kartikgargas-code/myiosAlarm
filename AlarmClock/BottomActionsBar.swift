@@ -22,25 +22,40 @@ struct BottomActionsBar: View {
     }
     
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // A plain HStack is required so the Spacer can push the trailing actions
+        // (Save/Done) to the right edge. Inside a horizontal ScrollView the Spacer
+        // collapses, which is what pushed the buttons to the centre. The scroll
+        // fallback is only used when the actions cannot fit on one line.
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                // Leading actions (Cancel, etc.)
-                ForEach(leadingActions.indices, id: \.self) { index in
-                    actionButton(leadingActions[index])
-                }
-                
-                Spacer(minLength: 0)
-                
-                // Trailing actions (Save, Done, etc.)
-                ForEach(trailingActions.indices, id: \.self) { index in
-                    actionButton(trailingActions[index])
+                leadingActionsView
+                Spacer(minLength: 12)
+                trailingActionsView
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    leadingActionsView
+                    trailingActionsView
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, padding)
         .padding(.vertical, 12)
         .background(backgroundColor)
+    }
+    
+    @ViewBuilder
+    private var leadingActionsView: some View {
+        ForEach(leadingActions.indices, id: \.self) { index in
+            actionButton(leadingActions[index])
+        }
+    }
+    
+    @ViewBuilder
+    private var trailingActionsView: some View {
+        ForEach(trailingActions.indices, id: \.self) { index in
+            actionButton(trailingActions[index])
+        }
     }
     
     private func actionButton(_ action: ActionButton) -> some View {
