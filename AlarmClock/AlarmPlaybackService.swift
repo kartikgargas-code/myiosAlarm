@@ -6,6 +6,7 @@ import os.log
 import AlarmKit
 import AlarmClockShared
 import UIKit
+import AudioToolbox
 @preconcurrency import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
@@ -55,6 +56,15 @@ final class AlarmPlaybackService: NSObject {
     // 1-second dedupe gates for remote commands
     private var lastStopCommandTime: Date?
     private var lastSnoozeCommandTime: Date?
+    
+    // TASK 4: Alarm behaviour options for in-app playback (applied from alarm record)
+    private var currentVibrate: Bool = true
+    private var currentFadeInEnabled: Bool = false
+    private var currentFadeInSeconds: Int = 10
+    private var currentSilenceAfterMinutes: Int? = nil
+    private var currentLoopSound: Bool = true
+    private var silenceAfterTask: Task<Void, Never>?
+    private var vibrateTimer: Timer?
     
     // Published state
     private(set) var isPlaying = false
@@ -151,6 +161,15 @@ final class AlarmPlaybackService: NSObject {
             currentOccurrence = occurrence
             currentTrackIndex = 0
             coordinator = AlarmCoordinator.sharedInstance // Will need access to coordinator for play history
+            
+            // TASK 4: Capture alarm behaviour options for in-app playback
+            currentVibrate = alarm.vibrate
+            currentFadeInEnabled = alarm.fadeInEnabled
+            currentFadeInSeconds = alarm.fadeInSeconds
+            currentSilenceAfterMinutes = alarm.silenceAfterMinutes
+            currentLoopSound = alarm.loopSound
+            
+            SmartWakeDebugLog.log("PLAYBACK: options vibrate=\(currentVibrate ? "on" : "off") fadeIn=\(currentFadeInEnabled ? "\(currentFadeInSeconds)s" : "off") silenceAfter=\(currentSilenceAfterMinutes?.description ?? "never") loop=\(currentLoopSound ? "on" : "off")")
             
             // Compute and store the backup alarm SystemScheduleID for remote commands to cancel
             let backupOccurrenceKey = "\(occurrence.occurrenceKey)-BACKUP"
@@ -486,8 +505,14 @@ final class AlarmPlaybackService: NSObject {
         do {
             let newPlayer = try AVAudioPlayer(contentsOf: localURL)
             newPlayer.numberOfLoops = 0 // Play once, we handle sequencing
-            let volume = currentLoudness?.gainFactor ?? 1.0
-            newPlayer.volume = volume
+            let targetVolume = currentLoudness?.gainFactor ?? 1.0
+            
+            // TASK 4: Fade In - start at 0 volume if enabled
+            if currentFadeInEnabled {
+                newPlayer.volume = 0.0
+            } else {
+                newPlayer.volume = targetVolume
+            }
             newPlayer.delegate = self
             newPlayer.prepareToPlay()
             
@@ -507,8 +532,23 @@ final class AlarmPlaybackService: NSObject {
             let displayTrackName = displayName(for: sound.name)
             
             os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d) volume=%{public}.2f (loudness %{public}d%%)", 
-                   displayTrackName, index + 1, selectedSoundIDs.count, volume, currentLoudness?.percentage ?? 100)
-            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(displayTrackName) volume=\(String(format: "%.2f", volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
+                   displayTrackName, index + 1, selectedSoundIDs.count, newPlayer.volume, currentLoudness?.percentage ?? 100)
+            SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(displayTrackName) volume=\(String(format: "%.2f", newPlayer.volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
+            
+            // TASK 4: Fade In - ramp volume from 0 to target over fadeInSeconds
+            if currentFadeInEnabled {
+                startFadeIn(targetVolume: targetVolume, duration: currentFadeInSeconds)
+            }
+            
+            // TASK 4: Vibrate - start repeating vibration if enabled
+            if currentVibrate {
+                startVibration()
+            }
+            
+            // TASK 4: Silence After - schedule stop after N minutes if set
+            if let silenceMinutes = currentSilenceAfterMinutes {
+                scheduleSilenceAfter(minutes: silenceMinutes)
+            }
             
             // Publish Now Playing info with stripped display name
             publishNowPlayingInfo(for: sound, player: newPlayer, displayName: displayTrackName)
@@ -930,6 +970,9 @@ final class AlarmPlaybackService: NSObject {
         isPlaying = false
         updateElapsedTime()
         
+        // Stop vibration during pause
+        stopVibration()
+        
         // PAUSE TRAP: Start silent loop to keep session active and app alive
         // Never deactivate the session on pause
         SmartWakeDebugLog.log("PAUSE TRAP: starting silent loop to keep session alive")
@@ -945,6 +988,11 @@ final class AlarmPlaybackService: NSObject {
         isPlaying = true
         updateElapsedTime()
         
+        // Resume vibration if enabled
+        if currentVibrate {
+            startVibration()
+        }
+        
         // Stop silent loop since we're playing again
         SmartWakeService.shared.stopSilentPlayerOnly(reason: "playback resumed from pause")
         
@@ -958,12 +1006,75 @@ final class AlarmPlaybackService: NSObject {
         updateElapsedTime()
         os_log(.info, log: log, "Seeked to %{public}.1f", time)
     }
+    
+    // MARK: - TASK 4: Alarm Behaviour Helpers
+    
+    /// Fade in volume from 0 to target over duration seconds
+    private func startFadeIn(targetVolume: Float, duration: Int) {
+        guard let player = player else { return }
+        let steps = max(duration * 10, 1) // 10 steps per second
+        let stepDuration = UInt64(Double(duration) * 1_000_000_000 / Double(steps))
+        let volumeStep = targetVolume / Float(steps)
+        
+        Task { @MainActor in
+            for i in 1...steps {
+                guard !Task.isCancelled, let p = player, p.isPlaying else { break }
+                p.volume = min(volumeStep * Float(i), targetVolume)
+                try? await Task.sleep(nanoseconds: stepDuration)
+            }
+            // Ensure exact final volume
+            if let p = player, p.isPlaying {
+                p.volume = targetVolume
+            }
+        }
+    }
+    
+    /// Start repeating vibration using system sound
+    private func startVibration() {
+        stopVibration() // Ensure no existing timer
+        SmartWakeDebugLog.log("PLAYBACK: vibrate=on")
+        
+        vibrateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isPlaying, self.currentVibrate {
+                AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+            } else {
+                self.stopVibration()
+            }
+        }
+    }
+    
+    /// Stop vibration timer
+    private func stopVibration() {
+        vibrateTimer?.invalidate()
+        vibrateTimer = nil
+        SmartWakeDebugLog.log("PLAYBACK: vibrate=off")
+    }
+    
+    /// Schedule stop after N minutes
+    private func scheduleSilenceAfter(minutes: Int) {
+        silenceAfterTask?.cancel()
+        SmartWakeDebugLog.log("PLAYBACK: silenceAfter=\(minutes)min")
+        
+        silenceAfterTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(minutes) * 60_000_000_000)
+            if !Task.isCancelled, isPlaying {
+                SmartWakeDebugLog.log("PLAYBACK: silenceAfter \(minutes)min elapsed, stopping")
+                stop(reason: "silenceAfter")
+            }
+        }
+    }
 
     /// Stop playback and clean up, restoring mixable audio session
     /// - Parameter reason: Reason for stopping (e.g., "user", "alarm disabled/deleted (tick)", "song-finish validation", "takeover transition")
     func stop(reason: String = "user") {
         os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
+        
+        // TASK 4: Clean up behaviour-specific state
+        stopVibration()
+        silenceAfterTask?.cancel()
+        silenceAfterTask = nil
         
         // Remove stop notification if we have alarm ID and occurrence key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
@@ -995,6 +1106,13 @@ final class AlarmPlaybackService: NSObject {
         selectedSoundIDs = []
         currentTrackIndex = 0
         
+        // Reset behaviour options
+        currentVibrate = true
+        currentFadeInEnabled = false
+        currentFadeInSeconds = 10
+        currentSilenceAfterMinutes = nil
+        currentLoopSound = true
+        
         // Restore mixable audio session (for Smart Wake silent loop if running)
         do {
             try restoreMixableAudioSession()
@@ -1014,10 +1132,18 @@ final class AlarmPlaybackService: NSObject {
         
         currentTrackIndex += 1
         if currentTrackIndex >= selectedSoundIDs.count {
-            // Completed full cycle - loop back
-            currentTrackIndex = 0
+            // TASK 4: Loop Sound - if false, stop after one pass; if true, loop back
+            if currentLoopSound {
+                currentTrackIndex = 0
+                playTrack(at: currentTrackIndex)
+            } else {
+                SmartWakeDebugLog.log("PLAYBACK: loopSound=false, stopping after one pass")
+                stop(reason: "loopSound=false")
+                return
+            }
+        } else {
+            playTrack(at: currentTrackIndex)
         }
-        playTrack(at: currentTrackIndex)
     }
 
     /// Record a completed song into play history via the app coordinator.
