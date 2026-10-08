@@ -585,6 +585,7 @@ final class AlarmEngineTests: XCTestCase {
     @MainActor
     func testAlarmRecordBackwardCompatibleDecoding() throws {
         // JSON without the new behaviour keys - should decode with defaults
+        // Using legacy format for systemDefault (just the string) which is supported by decodeLegacy
         let json = """
         {
             "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -595,7 +596,7 @@ final class AlarmEngineTests: XCTestCase {
             "isEnabled": true,
             "adjustmentStepMinutes": 10,
             "overrides": {},
-            "sound": { "systemDefault": true },
+            "sound": "systemDefault",
             "loudness": 50,
             "snoozeDurationMinutes": 10
         }
