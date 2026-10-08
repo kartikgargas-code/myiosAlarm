@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AlarmClockShared
 
 struct AlarmEditorView: View {
     @Environment(\.dismiss) private var dismiss
@@ -80,7 +81,6 @@ struct AlarmEditorView: View {
                 .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
-                .toolbar { editorToolbar }
         }
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
@@ -93,6 +93,18 @@ struct AlarmEditorView: View {
         .onDisappear {
             testAlarmTask?.cancel()
             stopLoudnessPreview()
+        }
+        .safeAreaInset(edge: .bottom) {
+            BottomActionsBar(
+                leadingActions: [
+                    .cancel("Cancel") { dismiss() }
+                ],
+                trailingActions: [
+                    .primary("Save") { saveAlarm() }
+                        .disabled(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))
+                ],
+                backgroundColor: ThemeManager.shared.colors.background
+            )
         }
     }
     private var editorForm: some View {
@@ -388,16 +400,6 @@ struct AlarmEditorView: View {
             }
         }
         .padding(.vertical, 4)
-    }
-    @ToolbarContentBuilder
-    private var editorToolbar: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") { dismiss() }
-        }
-        ToolbarItem(placement: .confirmationAction) {
-            Button("Save") { saveAlarm() }
-                .disabled(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))
-        }
     }
     private func saveAlarm() {
         guard !isSaving else { return }
