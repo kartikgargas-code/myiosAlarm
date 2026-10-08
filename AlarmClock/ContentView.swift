@@ -13,7 +13,6 @@ struct ContentView: View {
     @State private var controlsAlarm: AlarmRecord?
     @State private var showingDiagnostics = false
     @State private var showingAppearance = false
-    @State private var showingNextAlarmControl = false
     @State private var showingHistory = false
     @State private var showingSounds = false
     @State private var currentRingSongName: String? = nil
@@ -125,13 +124,6 @@ struct ContentView: View {
                             Image(systemName: "plus")
                         }
                     }
-                    ToolbarItem(placement: .secondaryAction) {
-                        Button {
-                            showingNextAlarmControl = true
-                        } label: {
-                            Label("Next Alarm", systemImage: "alarm.waves.left.and.right")
-                        }
-                    }
                 }
                 
                 // Now Ringing banner as pinned overlay (stable, not in List)
@@ -207,10 +199,6 @@ struct ContentView: View {
                     alarm: alarm,
                     coordinator: coordinator
                 )
-            }
-            .sheet(isPresented: $showingNextAlarmControl) {
-                NextAlarmControlView()
-                    .environmentObject(NextAlarmProvider(coordinator: coordinator))
             }
             .sheet(isPresented: $showingDiagnostics) {
                 diagnosticsView
