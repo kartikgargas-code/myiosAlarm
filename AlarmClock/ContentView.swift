@@ -67,10 +67,10 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(Color.white.opacity(0.08))
-                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                             .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
                     }
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
@@ -84,10 +84,10 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(Color.white.opacity(0.08))
-                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                             .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
@@ -546,7 +546,7 @@ struct SoundsView: View {
             .navigationTitle("Sounds")
             .safeAreaInset(edge: .bottom) {
                 HStack {
-                    // Sort Menu on the LEFT
+                    // Sort Menu on the LEFT - circle with solid style
                     Menu {
                         Picker("Sort by", selection: $sortOptionRaw) {
                             ForEach(SoundSortOption.allCases) { option in
@@ -558,26 +558,26 @@ struct SoundsView: View {
                             .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 44, height: 44)
-                            .background(Color.white.opacity(0.08))
-                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                             .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
                     }
                     
                     Spacer()
                     
-                    // Done on the RIGHT - capsule with ONE BUTTON STYLE
+                    // Done on the RIGHT - capsule with solid style
                     Button("Done") {
                         dismiss()
                     }
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(ThemeManager.shared.colors.accent)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.08))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                    .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                    .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                     .clipShape(Capsule())
-                    .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
+                    .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

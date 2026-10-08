@@ -78,10 +78,29 @@ struct AlarmEditorView: View {
 
     var body: some View {
         NavigationStack {
-            editorForm
-                .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
-                .scrollContentBackground(.hidden)
-                .background(ThemeManager.shared.colors.background)
+            Form {
+                scheduleFields
+                soundSection
+                loudnessSection
+                snoozeSection
+                alarmBehaviourSection
+                if existingAlarm != nil {
+                    testAlarmSection
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle(existingAlarm == nil ? "Add Alarm" : "Edit Alarm")
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") { dismiss() }
+                    ],
+                    trailingActions: [
+                        .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
+                    ]
+                )
+            }
         }
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
@@ -107,14 +126,14 @@ struct AlarmEditorView: View {
                         Button("Done") {
                             showingLoudnessSheet = false
                         }
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.08))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                        .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                        .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                         .clipShape(Capsule())
-                        .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
+                        .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -139,28 +158,6 @@ struct AlarmEditorView: View {
         .onDisappear {
             testAlarmTask?.cancel()
             stopLoudnessPreview()
-        }
-    }
-    private var editorForm: some View {
-        Form {
-            scheduleFields
-            soundSection
-            loudnessSection
-            snoozeSection
-            alarmBehaviourSection
-            if existingAlarm != nil {
-                testAlarmSection
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            BottomActionsBar(
-                leadingActions: [
-                    .cancel("Cancel") { dismiss() }
-                ],
-                trailingActions: [
-                    .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
-                ]
-            )
         }
     }
     @ViewBuilder
@@ -334,6 +331,7 @@ struct AlarmEditorView: View {
                         Text("\(minutes) min")
                             .font(.callout)
                             .foregroundStyle(snoozeDurationMinutes == minutes ? .white : ThemeManager.shared.colors.secondaryText)
+                            .underline(false)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                     }

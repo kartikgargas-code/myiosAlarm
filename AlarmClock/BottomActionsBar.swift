@@ -9,6 +9,9 @@ struct BottomActionsBar: View {
     let padding: CGFloat
     let backgroundColor: Color
     
+    // Dark charcoal fill for solid buttons
+    private let buttonFill = Color(red: 0.118, green: 0.133, blue: 0.153)  // #1E2227
+    
     init(
         leadingActions: [ActionButton] = [],
         trailingActions: [ActionButton] = [],
@@ -41,24 +44,28 @@ struct BottomActionsBar: View {
     }
     
     private func actionButton(_ action: ActionButton) -> some View {
-        Button(action: action.action) {
+        let isDestructive = action.foregroundColor == .red
+        let borderColor = isDestructive ? Color.red : ThemeManager.shared.colors.accent
+        let textColor = isDestructive ? Color.red : ThemeManager.shared.colors.accent
+        
+        return Button(action: action.action) {
             HStack(spacing: 8) {
                 if let systemImage = action.systemImage {
                     Image(systemName: systemImage)
                         .font(.system(size: 16, weight: .semibold))
                 }
                 Text(action.title)
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 17, weight: .bold))
             }
-            .foregroundStyle(action.foregroundColor ?? ThemeManager.shared.colors.accent)
+            .foregroundStyle(textColor)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(Color.white.opacity(0.08))  // ONE BUTTON STYLE: dark translucent fill for ALL
+            .background(buttonFill)  // Opaque dark charcoal
             .overlay(
-                Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1)  // Thin white border for ALL
+                Capsule().stroke(borderColor, lineWidth: 2)  // 2pt accent border
             )
             .clipShape(Capsule())
-            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)  // Accent halo
+            .shadow(color: borderColor.opacity(0.55), radius: 12)  // Accent glow
         }
         .disabled(!action.isEnabled)
     }
@@ -81,7 +88,7 @@ struct ActionButton {
     }
     
     static func primary(_ title: String, systemImage: String? = nil, isEnabled: Bool = true, action: @escaping () -> Void) -> ActionButton {
-        // Primary uses accent text per ONE BUTTON STYLE; use nil so actionButton resolves it at View build time
+        // Primary uses accent text per style; use nil so actionButton resolves it at View build time
         ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: nil, isEnabled: isEnabled)
     }
     
