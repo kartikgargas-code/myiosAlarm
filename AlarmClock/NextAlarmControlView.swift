@@ -33,8 +33,7 @@ struct NextAlarmControlView: View {
                     leadingActions: [],
                     trailingActions: [
                         .primary("Done") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .alert("Skip Next Occurrence?", isPresented: $showingSkipConfirmation) {

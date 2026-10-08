@@ -32,8 +32,7 @@ struct HistoryView: View {
                     ],
                     trailingActions: [
                         .primary("Done") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .confirmationDialog("Clear All History", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {

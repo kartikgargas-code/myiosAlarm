@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AlarmKit
 import AlarmClockShared
 
@@ -10,6 +11,8 @@ struct SettingsView: View {
     @State private var showingSounds = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
+    @State private var showingShareSheet = false
+    @State private var shareURL: URL?
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -38,6 +41,8 @@ struct SettingsView: View {
                             do {
                                 let url = try await BackupRestoreService.shared.exportArchive()
                                 exportURL = url
+                                shareURL = url
+                                showingShareSheet = true
                             } catch {
                                 coordinator.lastError = "Export failed: \(error.localizedDescription)"
                             }
@@ -82,8 +87,7 @@ struct SettingsView: View {
                     leadingActions: [],
                     trailingActions: [
                         .primary("Done") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .sheet(isPresented: $showingDiagnostics) {
@@ -97,22 +101,6 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingSounds) {
                 SoundsView(alarms: coordinator.alarms)
-            }
-            .fileExporter(
-                isPresented: Binding(
-                    get: { exportURL != nil },
-                    set: { if !$0 { exportURL = nil } }
-                ),
-                document: exportURL.map { ExportDocument(url: $0) } ?? ExportDocument(url: URL(fileURLWithPath: "")),
-                contentType: .json,
-                defaultFilename: "AlarmClock_Backup"
-            ) { result in
-                switch result {
-                case .success(let url):
-                    SmartWakeDebugLog.log("Backup exported to \(url.path)")
-                case .failure(let error):
-                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                }
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
@@ -131,6 +119,11 @@ struct SettingsView: View {
                     coordinator.lastError = "Import failed: \(error.localizedDescription)"
                 }
             }
+            .sheet(isPresented: $showingShareSheet) {
+                if let shareURL = shareURL {
+                    ShareSheet(activityItems: [shareURL])
+                }
+            }
         }
     }
     
@@ -141,4 +134,29 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView(coordinator: AlarmCoordinator())
+}
+
+/// SwiftUI wrapper for UIActivityViewController (system share sheet)
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities
+        )
+        // Exclude activities that don't make sense for a backup file
+        controller.excludedActivityTypes = [
+            .assignToContact,
+            .saveToCameraRoll,
+            .postToFlickr,
+            .postToVimeo,
+            .postToWeibo,
+            .postToTencentWeibo
+        ]
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -133,7 +133,7 @@ struct AlarmEditorView: View {
                         .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
                         .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
                         .clipShape(Capsule())
-                        .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 12)
+                        .shadow(color: ThemeManager.shared.colors.accent.opacity(0.55), radius: 6)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)

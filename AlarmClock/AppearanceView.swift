@@ -135,8 +135,7 @@ struct AppearanceView: View {
                     leadingActions: [],
                     trailingActions: [
                         .primary("Done") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .sheet(isPresented: $showingCustomColors) {
@@ -238,8 +237,7 @@ struct CustomColorPickerView: View {
                             onSave(customColors)
                             dismiss()
                         }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
         }
@@ -322,8 +320,7 @@ struct UserThemeEditorView: View {
                             }
                             dismiss()
                         }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .onAppear {

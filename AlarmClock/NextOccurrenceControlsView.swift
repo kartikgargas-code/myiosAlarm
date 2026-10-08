@@ -128,8 +128,7 @@ struct NextOccurrenceControlsView: View {
                     leadingActions: [],
                     trailingActions: [
                         .primary("Done") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .onAppear {

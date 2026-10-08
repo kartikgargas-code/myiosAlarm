@@ -78,8 +78,7 @@ struct DiagnosticsView: View {
                 ],
                 trailingActions: [
                     .primary("Done") { dismiss() }
-                ],
-                backgroundColor: ThemeManager.shared.colors.background
+                ]
             )
         }
         .onAppear {

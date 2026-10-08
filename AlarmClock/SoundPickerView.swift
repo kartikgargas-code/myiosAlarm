@@ -216,8 +216,7 @@ struct SoundPickerView: View {
                     ],
                     trailingActions: [
                         .primary("Save") { dismiss() }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
         }
@@ -495,8 +494,7 @@ struct PlaylistCreatorView: View {
                             onSave(trimmed, Array(selectedSoundIDs))
                             dismiss()
                         }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
         }
@@ -652,8 +650,7 @@ struct PlaylistEditorView: View {
                             SoundLibrary.shared.updatePlaylist(updatedPlaylist)
                             dismiss()
                         }
-                    ],
-                    backgroundColor: ThemeManager.shared.colors.background
+                    ]
                 )
             }
             .alert("Delete Playlist", isPresented: $showingDeleteConfirmation) {
