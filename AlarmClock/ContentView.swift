@@ -67,8 +67,8 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent.opacity(0.12))
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                            .background(Color.white.opacity(0.08))
+                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
                             .clipShape(Circle())
                             .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
                     }
@@ -84,8 +84,8 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent.opacity(0.12))
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                            .background(Color.white.opacity(0.08))
+                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
                             .clipShape(Circle())
                             .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
                     }
@@ -365,7 +365,7 @@ struct ContentView: View {
                         Task { await coordinator.skipNext(id: alarm.id) }
                     } label: {
                         Label("Skip Next", systemImage: "forward.end")
-                            .tint(.orange)
+                            .tint(Color(red: 1.0, green: 0.72, blue: 0.0))
                     }
                 }
             }
@@ -558,14 +558,15 @@ struct SoundsView: View {
                             .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 44, height: 44)
-                            .background(ThemeManager.shared.colors.accent.opacity(0.15))
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                            .background(Color.white.opacity(0.08))
+                            .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
                             .clipShape(Circle())
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
                     }
                     
                     Spacer()
                     
-                    // Done on the RIGHT - accent capsule
+                    // Done on the RIGHT - capsule with ONE BUTTON STYLE
                     Button("Done") {
                         dismiss()
                     }
@@ -573,13 +574,14 @@ struct SoundsView: View {
                     .foregroundStyle(ThemeManager.shared.colors.accent)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
-                    .background(ThemeManager.shared.colors.accent.opacity(0.15))
-                    .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                    .background(Color.white.opacity(0.08))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                     .clipShape(Capsule())
+                    .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(ThemeManager.shared.colors.background)
+                .background(.clear)
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,

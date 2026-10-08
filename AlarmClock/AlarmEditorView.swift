@@ -111,13 +111,14 @@ struct AlarmEditorView: View {
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background(ThemeManager.shared.colors.accent.opacity(0.15))
-                        .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                        .background(Color.white.opacity(0.08))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1))
                         .clipShape(Capsule())
+                        .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(ThemeManager.shared.colors.background)
+                    .background(.clear)
                 }
                 .onAppear {
                     // Start preview when sheet opens
@@ -139,17 +140,6 @@ struct AlarmEditorView: View {
             testAlarmTask?.cancel()
             stopLoudnessPreview()
         }
-        .safeAreaInset(edge: .bottom) {
-            BottomActionsBar(
-                leadingActions: [
-                    .cancel("Cancel") { dismiss() }
-                ],
-                trailingActions: [
-                    .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
-                ],
-                backgroundColor: ThemeManager.shared.colors.background
-            )
-        }
     }
     private var editorForm: some View {
         Form {
@@ -161,6 +151,16 @@ struct AlarmEditorView: View {
             if existingAlarm != nil {
                 testAlarmSection
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            BottomActionsBar(
+                leadingActions: [
+                    .cancel("Cancel") { dismiss() }
+                ],
+                trailingActions: [
+                    .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
+                ]
+            )
         }
     }
     @ViewBuilder

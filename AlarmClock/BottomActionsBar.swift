@@ -18,7 +18,7 @@ struct BottomActionsBar: View {
         self.leadingActions = leadingActions
         self.trailingActions = trailingActions
         self.padding = padding
-        self.backgroundColor = backgroundColor ?? .clear  // Changed to .clear so buttons float
+        self.backgroundColor = backgroundColor ?? .clear  // .clear so bar is not an opaque strip
     }
     
     var body: some View {
@@ -38,7 +38,6 @@ struct BottomActionsBar: View {
         .padding(.horizontal, padding)
         .padding(.vertical, 12)
         .background(backgroundColor)
-        // Removed shadow since buttons now float with their own translucent backgrounds
     }
     
     private func actionButton(_ action: ActionButton) -> some View {
@@ -54,16 +53,12 @@ struct BottomActionsBar: View {
             .foregroundStyle(action.foregroundColor ?? ThemeManager.shared.colors.accent)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(
-                action.isPrimary
-                    ? ThemeManager.shared.colors.accent.opacity(0.30)  // PRIMARY: translucent accent fill
-                    : ThemeManager.shared.colors.accent.opacity(0.15)  // SECONDARY: translucent accent fill
-            )
+            .background(Color.white.opacity(0.08))  // ONE BUTTON STYLE: dark translucent fill for ALL
             .overlay(
-                Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1)  // Thin border for both
+                Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1)  // Thin white border for ALL
             )
             .clipShape(Capsule())
-            // Removed shadow - buttons float with their own translucent backgrounds
+            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 10)  // Accent halo
         }
         .disabled(!action.isEnabled)
     }
@@ -86,7 +81,8 @@ struct ActionButton {
     }
     
     static func primary(_ title: String, systemImage: String? = nil, isEnabled: Bool = true, action: @escaping () -> Void) -> ActionButton {
-        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: .white, isEnabled: isEnabled)
+        // Primary now uses accent text (not white) per ONE BUTTON STYLE
+        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: ThemeManager.shared.colors.accent, isEnabled: isEnabled)
     }
     
     static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil, isEnabled: Bool = true) -> ActionButton {
