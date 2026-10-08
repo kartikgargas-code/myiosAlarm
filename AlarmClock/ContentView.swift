@@ -395,6 +395,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -412,7 +413,6 @@ struct ContentView: View {
             .labelsHidden()
             .toggleStyle(.switch)
         }
-        .contentShape(Rectangle())
         .contextMenu {
             // Secondary actions
             if let occurrence {
