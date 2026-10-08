@@ -163,7 +163,7 @@ struct AlarmEditorView: View {
                     Spacer()
                     Text(selectedLoudness.displayName)
                         .monospacedDigit()
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
         }
