@@ -286,14 +286,29 @@ struct AlarmEditorView: View {
     
     private var snoozeSection: some View {
         Section("Snooze Duration") {
-            Picker("Snooze Duration", selection: $snoozeDurationMinutes) {
-                Text("5 min").tag(5)
-                Text("10 min").tag(10)
-                Text("15 min").tag(15)
+            HStack(spacing: 8) {
+                ForEach([5, 10, 15], id: \.self) { minutes in
+                    Button {
+                        snoozeDurationMinutes = minutes
+                    } label: {
+                        Text("\(minutes) min")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(snoozeDurationMinutes == minutes ? .white : ThemeManager.shared.colors.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
+                    .background(
+                        snoozeDurationMinutes == minutes
+                            ? ThemeManager.shared.colors.accent
+                            : ThemeManager.shared.colors.accent.opacity(0.15)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(ThemeManager.shared.colors.accent.opacity(0.5), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
-            .pickerStyle(.segmented)
-            .tint(ThemeManager.shared.colors.accent)
-            .font(.body)
         }
     }
     
