@@ -167,6 +167,7 @@ struct AppearanceView: View {
                         Text("Extra Large").tag(DynamicTypeSize.xxxLarge)
                     }
                     .pickerStyle(.segmented)
+                    .tint(ThemeManager.shared.colors.accent)
                     Text("Changes the text size across the entire app (sheets included). Requires supported semantic font styles.")
                         .font(.footnote)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
