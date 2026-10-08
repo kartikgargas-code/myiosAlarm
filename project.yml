@@ -62,7 +62,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.alarmclock
         PRODUCT_NAME: AlarmClock
-        APP_DISPLAY_NAME: myNextalarm
+        APP_DISPLAY_NAME: myNextAlarm
         APP_GROUP_IDENTIFIER: group.com.example.alarmclock
         WIDGET_KIND: com.example.alarmclock.next-alarm-widget
         CONTROL_KIND: com.example.alarmclock.next-alarm-control

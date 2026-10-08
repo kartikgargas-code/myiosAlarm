@@ -116,7 +116,7 @@ struct ContentView: View {
                 }
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
-                .navigationTitle("Alarm Clock")
+                .navigationTitle("myNextAlarm")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {

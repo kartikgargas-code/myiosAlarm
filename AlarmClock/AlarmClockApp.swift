@@ -9,6 +9,9 @@ struct AlarmClockApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {
+        // Shrink large title font from ~34 to 28
+        UINavigationBar.appearance().largeTitleTextAttributes = [.font: UIFont.systemFont(ofSize: 28, weight: .bold)]
+        
         // Register the Live Activity alarm service for the main app
         // App @main entry points already run on the main thread
         MainActor.assumeIsolated {

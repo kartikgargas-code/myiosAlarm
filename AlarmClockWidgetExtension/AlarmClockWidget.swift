@@ -726,7 +726,7 @@ private func postDarwinNotification(_ name: String) {
 @MainActor
 private func postCCFeedbackFromExtension(_ text: String, token: String) async {
     let content = UNMutableNotificationContent()
-    content.title = "Alarm Clock"
+    content.title = "myNextAlarm"
     content.body = text
     content.sound = nil
     content.threadIdentifier = "cc-feedback-extension"
