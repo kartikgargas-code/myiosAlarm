@@ -86,6 +86,7 @@ struct DiagnosticsView: View {
             loadBuildFingerprint()
             loadCacheStats()
         }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
     
     // MARK: - Section 0: Build Fingerprint
