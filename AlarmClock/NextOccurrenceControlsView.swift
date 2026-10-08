@@ -1,4 +1,5 @@
 import SwiftUI
+import AlarmClockShared
 
 struct NextOccurrenceControlsView: View {
     let alarm: AlarmRecord
@@ -122,10 +123,14 @@ struct NextOccurrenceControlsView: View {
             .navigationTitle(alarm.label.isEmpty ? "Alarm" : alarm.label)
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [],
+                    trailingActions: [
+                        .primary("Done") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .onAppear {
                 if let occurrence {

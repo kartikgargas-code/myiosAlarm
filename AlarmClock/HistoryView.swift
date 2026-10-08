@@ -23,18 +23,19 @@ struct HistoryView: View {
             .navigationTitle("Play History")
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-                if !coordinator.playHistory.isEmpty {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Clear All") {
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .custom("Clear All") {
                             showingClearAllConfirmation = true
                         }
                         .foregroundStyle(ThemeManager.shared.colors.destructive)
-                    }
-                }
+                    ],
+                    trailingActions: [
+                        .primary("Done") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .confirmationDialog("Clear All History", isPresented: $showingClearAllConfirmation, titleVisibility: .visible) {
                 Button("Clear All", role: .destructive) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import AlarmClockShared
 
 /// Dedicated Next Alarm control screen for Lock Screen widget and control navigation.
 /// Reuses the existing alarm-management implementation without duplicating scheduling logic.
@@ -27,10 +28,14 @@ struct NextAlarmControlView: View {
             .navigationTitle("Next Alarm")
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [],
+                    trailingActions: [
+                        .primary("Done") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .alert("Skip Next Occurrence?", isPresented: $showingSkipConfirmation) {
                 Button("Cancel", role: .cancel) { }
