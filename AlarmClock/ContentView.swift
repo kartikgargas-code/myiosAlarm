@@ -4,6 +4,7 @@ import AlarmKit
 import AlarmClockShared
 import UniformTypeIdentifiers
 import os.log
+import UserNotifications
 
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
@@ -280,6 +281,10 @@ struct ContentView: View {
                     // app was closed/backgrounded (app is the sole AlarmKit party).
                     Task {
                         await coordinator.applyPendingWidgetActions()
+                        
+                        // Purge CC feedback notifications from Notification Center on foreground
+                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["cc-feedback-extension", "cc-feedback"])
+                        SmartWakeDebugLog.log("CC FEEDBACK: cleared delivered cc-feedback notifications on foreground")
                     }
                     checkForActiveRing()
                 } else if newPhase == .background {
