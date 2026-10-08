@@ -395,6 +395,13 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
     public var sound: AlarmSound
     public var loudness: AlarmLoudness
     public var snoozeDurationMinutes: Int?
+    
+    // TASK 2: Alarm behaviour options (backward-compatible defaults)
+    public var vibrate: Bool = true
+    public var fadeInEnabled: Bool = false
+    public var fadeInSeconds: Int = 10
+    public var silenceAfterMinutes: Int? = nil   // nil = never
+    public var loopSound: Bool = true
 
     public init(
         id: UUID = UUID(),
@@ -407,7 +414,12 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         overrides: [String: AlarmOccurrenceOverride] = [:],
         sound: AlarmSound = .systemDefault,
         loudness: AlarmLoudness = .defaultValue,
-        snoozeDurationMinutes: Int? = 10
+        snoozeDurationMinutes: Int? = 10,
+        vibrate: Bool = true,
+        fadeInEnabled: Bool = false,
+        fadeInSeconds: Int = 10,
+        silenceAfterMinutes: Int? = nil,
+        loopSound: Bool = true
     ) {
         self.id = id
         self.label = label
@@ -420,10 +432,15 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         self.sound = sound
         self.loudness = loudness
         self.snoozeDurationMinutes = snoozeDurationMinutes
+        self.vibrate = vibrate
+        self.fadeInEnabled = fadeInEnabled
+        self.fadeInSeconds = fadeInSeconds
+        self.silenceAfterMinutes = silenceAfterMinutes
+        self.loopSound = loopSound
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, label, time, repeatRule, oneTimeDate, isEnabled, adjustmentStepMinutes, overrides, sound, loudness, snoozeDurationMinutes
+        case id, label, time, repeatRule, oneTimeDate, isEnabled, adjustmentStepMinutes, overrides, sound, loudness, snoozeDurationMinutes, vibrate, fadeInEnabled, fadeInSeconds, silenceAfterMinutes, loopSound
     }
 
     public init(from decoder: Decoder) throws {
@@ -439,6 +456,11 @@ public struct AlarmRecord: Codable, Identifiable, Equatable {
         sound = try container.decode(AlarmSound.self, forKey: .sound)
         loudness = try container.decode(AlarmLoudness.self, forKey: .loudness)
         snoozeDurationMinutes = try container.decodeIfPresent(Int.self, forKey: .snoozeDurationMinutes) ?? 10
+        vibrate = try container.decodeIfPresent(Bool.self, forKey: .vibrate) ?? true
+        fadeInEnabled = try container.decodeIfPresent(Bool.self, forKey: .fadeInEnabled) ?? false
+        fadeInSeconds = try container.decodeIfPresent(Int.self, forKey: .fadeInSeconds) ?? 10
+        silenceAfterMinutes = try container.decodeIfPresent(Int.self, forKey: .silenceAfterMinutes)
+        loopSound = try container.decodeIfPresent(Bool.self, forKey: .loopSound) ?? true
     }
 }
 

@@ -581,6 +581,35 @@ final class AlarmEngineTests: XCTestCase {
             XCTAssertNotNil(dateIndicator)
         }
     }
+
+    @MainActor
+    func testAlarmRecordBackwardCompatibleDecoding() throws {
+        // JSON without the new behaviour keys - should decode with defaults
+        let json = """
+        {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "label": "Test Alarm",
+            "time": { "hour": 7, "minute": 0 },
+            "repeatRule": "daily",
+            "oneTimeDate": null,
+            "isEnabled": true,
+            "adjustmentStepMinutes": 10,
+            "overrides": {},
+            "sound": { "systemDefault": true },
+            "loudness": 50,
+            "snoozeDurationMinutes": 10
+        }
+        """.data(using: .utf8)!
+
+        let alarm = try JSONDecoder().decode(AlarmRecord.self, from: json)
+
+        // Assert defaults for new fields
+        XCTAssertEqual(alarm.vibrate, true)
+        XCTAssertEqual(alarm.fadeInEnabled, false)
+        XCTAssertEqual(alarm.fadeInSeconds, 10)
+        XCTAssertNil(alarm.silenceAfterMinutes)
+        XCTAssertEqual(alarm.loopSound, true)
+    }
 }
 
 @MainActor
