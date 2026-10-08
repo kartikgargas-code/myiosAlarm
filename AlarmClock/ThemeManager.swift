@@ -14,6 +14,11 @@ final class ThemeManager {
     private let compactModeKey = "compactModeEnabled"
     private let buttonGlowRadiusKey = "buttonGlowRadius"
     private let buttonGlowOpacityKey = "buttonGlowOpacity"
+    private let buttonOutlineWidthKey = "buttonOutlineWidth"
+    private let buttonGlowSpreadKey = "buttonGlowSpread"
+    private let buttonOuterRingKey = "buttonOuterRing"
+    private let buttonTextOutlineKey = "buttonTextOutline"
+    private let interfaceTextSizeKey = "interfaceTextSize"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
@@ -26,6 +31,13 @@ final class ThemeManager {
     // Button glow settings
     var buttonGlowRadius: Double = 6.0
     var buttonGlowOpacity: Double = 0.45
+    var buttonGlowSpread: Double = 0.0
+    var buttonOuterRing: Double = 0.0
+    var buttonTextOutline: Double = 0.0
+    var buttonOutlineWidth: Double = 2.0
+    
+    // Interface text size
+    var interfaceTextSize: DynamicTypeSize = .xLarge  // default .xLarge (matches previous .system(size: 17))
 
     func setCompactMode(_ enabled: Bool) {
         isCompactModeEnabled = enabled
@@ -43,11 +55,50 @@ final class ThemeManager {
         buttonGlowOpacity = clamped
         defaults.set(clamped, forKey: buttonGlowOpacityKey)
     }
+    
+    func setButtonGlow(spread: Double) {
+        let clamped = max(0.0, min(20.0, spread))
+        buttonGlowSpread = clamped
+        defaults.set(clamped, forKey: buttonGlowSpreadKey)
+    }
+    
+    func setButtonOuterRing(_ width: Double) {
+        let clamped = max(0.0, min(6.0, width))
+        buttonOuterRing = clamped
+        defaults.set(clamped, forKey: buttonOuterRingKey)
+    }
+    
+    func setButtonTextOutline(_ width: Double) {
+        let clamped = max(0.0, min(3.0, width))
+        buttonTextOutline = clamped
+        defaults.set(clamped, forKey: buttonTextOutlineKey)
+    }
+    
+    func setButtonOutlineWidth(_ width: Double) {
+        let clamped = max(0.0, min(6.0, width))
+        buttonOutlineWidth = clamped
+        defaults.set(clamped, forKey: buttonOutlineWidthKey)
+    }
+    
+    func setInterfaceTextSize(_ size: DynamicTypeSize) {
+        interfaceTextSize = size
+        defaults.set(size.rawValue, forKey: interfaceTextSizeKey)
+    }
 
     private init() {
         isCompactModeEnabled = defaults.bool(forKey: compactModeKey)
         buttonGlowRadius = defaults.object(forKey: buttonGlowRadiusKey) as? Double ?? 6.0
         buttonGlowOpacity = defaults.object(forKey: buttonGlowOpacityKey) as? Double ?? 0.45
+        buttonGlowSpread = defaults.object(forKey: buttonGlowSpreadKey) as? Double ?? 0.0
+        buttonOuterRing = defaults.object(forKey: buttonOuterRingKey) as? Double ?? 0.0
+        buttonTextOutline = defaults.object(forKey: buttonTextOutlineKey) as? Double ?? 0.0
+        buttonOutlineWidth = defaults.object(forKey: buttonOutlineWidthKey) as? Double ?? 2.0
+        if let raw = defaults.object(forKey: interfaceTextSizeKey) as? Int,
+           let size = DynamicTypeSize(rawValue: raw) {
+            interfaceTextSize = size
+        } else {
+            interfaceTextSize = .xLarge
+        }
         loadUserThemes()
         loadTheme()
     }

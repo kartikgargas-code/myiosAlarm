@@ -126,14 +126,7 @@ struct AlarmEditorView: View {
                         Button("Done") {
                             showingLoudnessSheet = false
                         }
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                        .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                        .clipShape(Capsule())
-                        .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                        .appButtonChrome(shape: .capsule)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)

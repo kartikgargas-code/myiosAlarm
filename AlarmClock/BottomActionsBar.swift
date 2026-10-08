@@ -9,9 +9,6 @@ struct BottomActionsBar: View {
     let padding: CGFloat
     let backgroundColor: Color
     
-    // Dark charcoal fill for solid buttons
-    private let buttonFill = Color(red: 0.118, green: 0.133, blue: 0.153)  // #1E2227
-    
     init(
         leadingActions: [ActionButton] = [],
         trailingActions: [ActionButton] = [],
@@ -45,8 +42,7 @@ struct BottomActionsBar: View {
     
     private func actionButton(_ action: ActionButton) -> some View {
         let isDestructive = action.foregroundColor == .red
-        let borderColor = isDestructive ? Color.red : ThemeManager.shared.colors.accent
-        let textColor = isDestructive ? Color.red : ThemeManager.shared.colors.accent
+        let accent = isDestructive ? Color.red : ThemeManager.shared.colors.accent
         
         return Button(action: action.action) {
             HStack(spacing: 8) {
@@ -55,17 +51,9 @@ struct BottomActionsBar: View {
                         .font(.system(size: 16, weight: .semibold))
                 }
                 Text(action.title)
-                    .font(.system(size: 17, weight: .bold))
             }
-            .foregroundStyle(textColor)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(buttonFill)  // Opaque dark charcoal
-            .overlay(
-                Capsule().stroke(borderColor, lineWidth: 2)  // 2pt accent border
-            )
-            .clipShape(Capsule())
-            .shadow(color: borderColor.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)  // Accent glow
+            .foregroundStyle(accent)
+            .appButtonChrome(shape: .capsule)
         }
         .disabled(!action.isEnabled)
     }

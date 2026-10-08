@@ -67,10 +67,7 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                            .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                            .appButtonChrome(shape: .circle)
                     }
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
@@ -84,10 +81,7 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                            .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                            .appButtonChrome(shape: .circle)
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
@@ -546,7 +540,7 @@ struct SoundsView: View {
             .navigationTitle("Sounds")
             .safeAreaInset(edge: .bottom) {
                 HStack {
-                    // Sort Menu on the LEFT - circle with solid style
+                    // Sort Menu on the LEFT - circle with chrome
                     Menu {
                         Picker("Sort by", selection: $sortOptionRaw) {
                             ForEach(SoundSortOption.allCases) { option in
@@ -558,26 +552,16 @@ struct SoundsView: View {
                             .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 44, height: 44)
-                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                            .clipShape(Circle())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                            .appButtonChrome(shape: .circle)
                     }
                     
                     Spacer()
                     
-                    // Done on the RIGHT - capsule with solid style
+                    // Done on the RIGHT - capsule with chrome
                     Button("Done") {
                         dismiss()
                     }
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                    .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                    .clipShape(Capsule())
-                    .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                    .appButtonChrome(shape: .capsule)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
