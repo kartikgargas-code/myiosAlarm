@@ -1,4 +1,5 @@
 import SwiftUI
+import AlarmClockShared
 
 struct AppearanceView: View {
     @Environment(\.dismiss) private var dismiss
@@ -129,10 +130,14 @@ struct AppearanceView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Appearance")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [],
+                    trailingActions: [
+                        .primary("Done") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .sheet(isPresented: $showingCustomColors) {
                 CustomColorPickerView(customColors: $customColors) { updated in
@@ -223,16 +228,19 @@ struct CustomColorPickerView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Custom Colors")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(customColors)
-                        dismiss()
-                    }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") { dismiss() }
+                    ],
+                    trailingActions: [
+                        .primary("Save") {
+                            onSave(customColors)
+                            dismiss()
+                        }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
         }
     }
@@ -300,21 +308,24 @@ struct UserThemeEditorView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle(editingTheme == nil ? "New Theme" : "Edit Theme")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        if let editingTheme {
-                            ThemeManager.shared.updateUserTheme(id: editingTheme.id, name: name, colors: colors)
-                        } else {
-                            ThemeManager.shared.createUserTheme(name: name, colors: colors)
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") { dismiss() }
+                    ],
+                    trailingActions: [
+                        .primary("Save") {
+                            if let editingTheme {
+                                ThemeManager.shared.updateUserTheme(id: editingTheme.id, name: name, colors: colors)
+                            } else {
+                                ThemeManager.shared.createUserTheme(name: name, colors: colors)
+                            }
+                            dismiss()
                         }
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .onAppear {
                 if let editingTheme {
