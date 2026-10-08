@@ -17,6 +17,12 @@ struct AlarmEditorView: View {
     @State private var selectedSound: AlarmSound
     @State private var selectedLoudness: AlarmLoudness
     @State private var snoozeDurationMinutes: Int
+    // TASK 3: Alarm behaviour options
+    @State private var vibrate: Bool = true
+    @State private var fadeInEnabled: Bool = false
+    @State private var fadeInSeconds: Int = 10
+    @State private var silenceAfterMinutes: Int? = nil
+    @State private var loopSound: Bool = true
     @State private var showingSoundPicker = false
     @State private var isSaving = false
     @State private var draftID = UUID()
@@ -60,6 +66,12 @@ struct AlarmEditorView: View {
         _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
         _selectedLoudness = State(initialValue: existingAlarm?.loudness ?? .defaultValue)
         _snoozeDurationMinutes = State(initialValue: existingAlarm?.snoozeDurationMinutes ?? 10)
+        // TASK 3: Initialize alarm behaviour options from existingAlarm
+        _vibrate = State(initialValue: existingAlarm?.vibrate ?? true)
+        _fadeInEnabled = State(initialValue: existingAlarm?.fadeInEnabled ?? false)
+        _fadeInSeconds = State(initialValue: existingAlarm?.fadeInSeconds ?? 10)
+        _silenceAfterMinutes = State(initialValue: existingAlarm?.silenceAfterMinutes)
+        _loopSound = State(initialValue: existingAlarm?.loopSound ?? true)
     }
 
     var body: some View {
@@ -74,6 +86,10 @@ struct AlarmEditorView: View {
         .sheet(isPresented: $showingSoundPicker) {
             SoundPickerView(selectedSound: $selectedSound, alarms: alarms)
         }
+        .onChange(of: selectedLoudness) { _, newValue in
+            // Start preview when loudness changes via wheel picker
+            startLoudnessPreview()
+        }
         .onDisappear {
             testAlarmTask?.cancel()
             stopLoudnessPreview()
@@ -85,6 +101,7 @@ struct AlarmEditorView: View {
             soundSection
             loudnessSection
             snoozeSection
+            alarmBehaviourSection
             if existingAlarm != nil {
                 testAlarmSection
             }
@@ -133,25 +150,22 @@ struct AlarmEditorView: View {
     }
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
-            HStack {
-                Text("Loudness")
-                Spacer()
-                Text(selectedLoudness.displayName)
-                    .monospacedDigit()
-                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-            }
-            Slider(
-                value: loudnessBinding,
-                in: 0...100,
-                step: 1,
-                onEditingChanged: { editing in
-                    if editing {
-                        startLoudnessPreview()
-                    } else {
-                        stopLoudnessPreview()
+            DisclosureGroup {
+                Picker("Loudness", selection: loudnessBinding) {
+                    ForEach(Array(stride(from: 0, through: 100, by: 5)), id: \.self) { v in
+                        Text("\(v)%").tag(Double(v))
                     }
                 }
-            )
+                .pickerStyle(.wheel)
+            } label: {
+                HStack {
+                    Text("Loudness")
+                    Spacer()
+                    Text(selectedLoudness.displayName)
+                        .monospacedDigit()
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+            }
         }
     }
 
@@ -165,6 +179,7 @@ struct AlarmEditorView: View {
     @State private var loudnessPreviewTask: Task<Void, Never>?
     @State private var loudnessPreviewURL: URL?
     @State private var loudnessPreviewSoundID: String?
+    @State private var loudnessChangeDebounceTask: Task<Void, Never>?
     
     private func startLoudnessPreview() {
         // Get the sound URL for the selected sound
@@ -178,13 +193,14 @@ struct AlarmEditorView: View {
         SoundPreviewService.shared.play(url: url, id: soundID ?? "loudness-preview")
         updatePreviewVolume()
         
-        // Update volume continuously while slider is being dragged
-        loudnessPreviewTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                if !Task.isCancelled {
-                    updatePreviewVolume()
-                }
+        // Cancel any existing debounce task
+        loudnessChangeDebounceTask?.cancel()
+        
+        // Schedule stop after ~2 seconds of no change
+        loudnessChangeDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            if !Task.isCancelled {
+                stopLoudnessPreview()
             }
         }
     }
@@ -192,6 +208,8 @@ struct AlarmEditorView: View {
     private func stopLoudnessPreview() {
         loudnessPreviewTask?.cancel()
         loudnessPreviewTask = nil
+        loudnessChangeDebounceTask?.cancel()
+        loudnessChangeDebounceTask = nil
         SoundPreviewService.shared.stop()
         loudnessPreviewURL = nil
         loudnessPreviewSoundID = nil
@@ -262,6 +280,40 @@ struct AlarmEditorView: View {
                 Text("15 min").tag(15)
             }
             .pickerStyle(.segmented)
+        }
+    }
+    
+    private var alarmBehaviourSection: some View {
+        Section("Alarm Behaviour") {
+            Toggle("Vibrate", isOn: $vibrate)
+            
+            Toggle("Fade In", isOn: $fadeInEnabled)
+            if fadeInEnabled {
+                Picker("Fade In Duration", selection: $fadeInSeconds) {
+                    Text("5 s").tag(5)
+                    Text("10 s").tag(10)
+                    Text("15 s").tag(15)
+                    Text("30 s").tag(30)
+                    Text("60 s").tag(60)
+                }
+                .pickerStyle(.menu)
+            }
+            
+            Picker("Silence After", selection: Binding(
+                get: { silenceAfterMinutes ?? -1 },
+                set: { silenceAfterMinutes = $0 == -1 ? nil : $0 }
+            )) {
+                Text("Never").tag(-1)
+                Text("1 min").tag(1)
+                Text("2 min").tag(2)
+                Text("5 min").tag(5)
+                Text("10 min").tag(10)
+                Text("15 min").tag(15)
+                Text("30 min").tag(30)
+            }
+            .pickerStyle(.menu)
+            
+            Toggle("Loop Sound", isOn: $loopSound)
         }
     }
     
@@ -377,7 +429,12 @@ struct AlarmEditorView: View {
             overrides: existingAlarm?.overrides ?? [:],
             sound: selectedSound,
             loudness: selectedLoudness,
-            snoozeDurationMinutes: snoozeDurationMinutes
+            snoozeDurationMinutes: snoozeDurationMinutes,
+            vibrate: vibrate,
+            fadeInEnabled: fadeInEnabled,
+            fadeInSeconds: fadeInSeconds,
+            silenceAfterMinutes: silenceAfterMinutes,
+            loopSound: loopSound
         )
         return alarm
     }
