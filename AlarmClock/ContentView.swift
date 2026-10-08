@@ -363,7 +363,7 @@ struct ContentView: View {
                         Task { await coordinator.skipNext(id: alarm.id) }
                     } label: {
                         Label("Skip Next", systemImage: "forward.end")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .tint(.orange)
                     }
                 }
             }
@@ -374,7 +374,7 @@ struct ContentView: View {
                 Task { await coordinator.duplicate(id: alarm.id) }
             } label: {
                 Label("Duplicate", systemImage: "doc.on.doc")
-                    .foregroundStyle(.yellow)
+                    .tint(.yellow)
             }
             
             Divider()
