@@ -142,12 +142,15 @@ struct AppearanceView: View {
                             )
                         }
                         
-                        // Live preview button using AppButtonChrome
+                        // Live preview using the real BottomActionsBar so it cannot drift
                         Text("Live Preview")
                             .font(.footnote)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Button("Save") {}
-                            .appButtonChrome(shape: .capsule)
+                        BottomActionsBar(
+                            leadingActions: [],
+                            trailingActions: [.primary("Test") {}]
+                        )
+                        .listRowBackground(Color.clear)
                     }
                     .padding(.vertical, 4)
                 }
