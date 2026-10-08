@@ -200,50 +200,8 @@ struct ContentView: View {
                     coordinator: coordinator
                 )
             }
-            .sheet(isPresented: $showingDiagnostics) {
-                diagnosticsView
-            }
-            .sheet(isPresented: $showingAppearance) {
-                AppearanceView()
-            }
-            .sheet(isPresented: $showingHistory) {
-                HistoryView(coordinator: coordinator)
-            }
-            .sheet(isPresented: $showingSounds) {
-                SoundsView(alarms: coordinator.alarms)
-            }
-            .fileExporter(
-                isPresented: Binding(
-                    get: { exportURL != nil },
-                    set: { if !$0 { exportURL = nil } }
-                ),
-                document: exportURL.map { ExportDocument(url: $0) } ?? ExportDocument(url: URL(fileURLWithPath: "")),
-                contentType: .json,
-                defaultFilename: "AlarmClock_Backup"
-            ) { result in
-                switch result {
-                case .success(let url):
-                    SmartWakeDebugLog.log("Backup exported to \(url.path)")
-                case .failure(let error):
-                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                }
-            }
-            .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first {
-                        Task {
-                            do {
-                                try await BackupRestoreService.shared.importArchive(from: url)
-                                coordinator.lastError = nil
-                            } catch {
-                                coordinator.lastError = "Import failed: \(error.localizedDescription)"
-                            }
-                        }
-                    }
-                case .failure(let error):
-                    coordinator.lastError = "Import failed: \(error.localizedDescription)"
-                }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
             }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {
