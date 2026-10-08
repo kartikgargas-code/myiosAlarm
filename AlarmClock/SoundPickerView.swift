@@ -220,6 +220,7 @@ struct SoundPickerView: View {
                 )
             }
         }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
         .fileImporter(
             isPresented: $showingDocumentPicker,
             allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
@@ -498,6 +499,7 @@ struct PlaylistCreatorView: View {
                 )
             }
         }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
 }
 
@@ -672,6 +674,7 @@ struct PlaylistEditorView: View {
                 Text(deleteError ?? "")
             }
         }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
 }
 
