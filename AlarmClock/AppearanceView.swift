@@ -16,7 +16,6 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
-            }.dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 Section("Alarm List") {
                     Toggle("Compact Mode", isOn: Binding(
                         get: { ThemeManager.shared.isCompactModeEnabled },
