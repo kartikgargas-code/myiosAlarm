@@ -12,6 +12,8 @@ final class ThemeManager {
     private let userThemesKey = "userThemes"
     private let activeUserThemeKey = "activeUserThemeID"
     private let compactModeKey = "compactModeEnabled"
+    private let buttonGlowRadiusKey = "buttonGlowRadius"
+    private let buttonGlowOpacityKey = "buttonGlowOpacity"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
@@ -20,14 +22,32 @@ final class ThemeManager {
     
     /// Stored (observable) so toggling redraws SwiftUI immediately; persisted on write.
     var isCompactModeEnabled: Bool = false
+    
+    // Button glow settings
+    var buttonGlowRadius: Double = 6.0
+    var buttonGlowOpacity: Double = 0.45
 
     func setCompactMode(_ enabled: Bool) {
         isCompactModeEnabled = enabled
         defaults.set(enabled, forKey: compactModeKey)
     }
+    
+    func setButtonGlow(radius: Double) {
+        let clamped = max(0.0, min(20.0, radius))
+        buttonGlowRadius = clamped
+        defaults.set(clamped, forKey: buttonGlowRadiusKey)
+    }
+    
+    func setButtonGlow(opacity: Double) {
+        let clamped = max(0.0, min(1.0, opacity))
+        buttonGlowOpacity = clamped
+        defaults.set(clamped, forKey: buttonGlowOpacityKey)
+    }
 
     private init() {
         isCompactModeEnabled = defaults.bool(forKey: compactModeKey)
+        buttonGlowRadius = defaults.object(forKey: buttonGlowRadiusKey) as? Double ?? 6.0
+        buttonGlowOpacity = defaults.object(forKey: buttonGlowOpacityKey) as? Double ?? 0.45
         loadUserThemes()
         loadTheme()
     }

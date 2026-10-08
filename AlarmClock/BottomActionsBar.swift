@@ -65,7 +65,7 @@ struct BottomActionsBar: View {
                 Capsule().stroke(borderColor, lineWidth: 2)  // 2pt accent border
             )
             .clipShape(Capsule())
-            .shadow(color: borderColor.opacity(0.55), radius: 6)  // Accent glow
+            .shadow(color: borderColor.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)  // Accent glow
         }
         .disabled(!action.isEnabled)
     }

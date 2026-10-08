@@ -26,6 +26,68 @@ struct AppearanceView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
 
+                Section("Buttons") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Glow Size slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Glow Size")
+                                Spacer()
+                                Text("\(Int(ThemeManager.shared.buttonGlowRadius))")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonGlowRadius },
+                                    set: { ThemeManager.shared.setButtonGlow(radius: $0) }
+                                ),
+                                in: 0...20,
+                                step: 1
+                            )
+                        }
+                        
+                        // Glow Brightness slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Glow Brightness")
+                                Spacer()
+                                Text("\(Int(ThemeManager.shared.buttonGlowOpacity * 100))%")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonGlowOpacity },
+                                    set: { ThemeManager.shared.setButtonGlow(opacity: $0) }
+                                ),
+                                in: 0...1,
+                                step: 0.05
+                            )
+                        }
+                        
+                        // Live preview button
+                        Text("Live Preview")
+                            .font(.footnote)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        Button("Save") {}
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
+                            .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
+                            .clipShape(Capsule())
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                Text("Glow applies to the bottom buttons and the floating + / gear.")
+                    .font(.footnote)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+
                 Section("My Themes") {
                     ForEach(ThemeManager.shared.userThemes) { userTheme in
                         Button {
