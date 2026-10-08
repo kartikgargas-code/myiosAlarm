@@ -161,10 +161,10 @@ struct AppearanceView: View {
                         get: { ThemeManager.shared.interfaceTextSize },
                         set: { ThemeManager.shared.setInterfaceTextSize($0) }
                     )) {
-                        Text("Small").tag(DynamicTypeSize.small)
-                        Text("Default").tag(DynamicTypeSize.large)
-                        Text("Large").tag(DynamicTypeSize.xLarge)
-                        Text("Extra Large").tag(DynamicTypeSize.xxLarge)
+                        Text("Small").tag(DynamicTypeSize.medium)
+                        Text("Default").tag(DynamicTypeSize.xLarge)
+                        Text("Large").tag(DynamicTypeSize.xxLarge)
+                        Text("Extra Large").tag(DynamicTypeSize.xxxLarge)
                     }
                     .pickerStyle(.segmented)
                     Text("Changes the text size across the entire app (sheets included). Requires supported semantic font styles.")
