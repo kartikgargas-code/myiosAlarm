@@ -190,17 +190,6 @@ struct DiagnosticsView: View {
         }
         text += "\n"
         
-        // AlarmKit managed alarms
-        text += "=== ALARM KIT MANAGED ALARMS ===\n"
-        if coordinator.alarmKitManagedAlarms.isEmpty {
-            text += "NONE\n"
-        } else {
-            for id in coordinator.alarmKitManagedAlarms {
-                text += "\(id.uuidString)\n"
-            }
-        }
-        text += "\n"
-        
         // All alarms in engine
         text += "=== ENGINE ALARMS ===\n"
         if coordinator.alarms.isEmpty {
