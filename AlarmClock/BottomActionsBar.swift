@@ -81,8 +81,8 @@ struct ActionButton {
     }
     
     static func primary(_ title: String, systemImage: String? = nil, isEnabled: Bool = true, action: @escaping () -> Void) -> ActionButton {
-        // Primary now uses accent text (not white) per ONE BUTTON STYLE
-        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: ThemeManager.shared.colors.accent, isEnabled: isEnabled)
+        // Primary uses accent text per ONE BUTTON STYLE; use nil so actionButton resolves it at View build time
+        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: nil, isEnabled: isEnabled)
     }
     
     static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil, isEnabled: Bool = true) -> ActionButton {
