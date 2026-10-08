@@ -8,21 +8,48 @@ struct AppearanceView: View {
     @State private var showingThemeEditor = false
     @State private var editingThemeID: UUID?
 
-    // Local slider values for debounced writes
-    @State private var glowRadiusLocal: Double = ThemeManager.shared.buttonGlowRadius
-    @State private var glowOpacityLocal: Double = ThemeManager.shared.buttonGlowOpacity
-    @State private var glowSpreadLocal: Double = ThemeManager.shared.buttonGlowSpread
-    @State private var outlineWidthLocal: Double = ThemeManager.shared.buttonOutlineWidth
-    @State private var outerRingLocal: Double = ThemeManager.shared.buttonOuterRing
-    @State private var textOutlineLocal: Double = ThemeManager.shared.buttonTextOutline
-    @State private var debounceTask: Task<Void, Never>?
+    // Button chrome settings bind straight to ThemeManager. Wheel pickers emit
+    // discrete changes, so no local mirror / debounce is needed.
+    private var glowRadiusBinding: Binding<Int> {
+        Binding(
+            get: { Int(ThemeManager.shared.buttonGlowRadius.rounded()) },
+            set: { ThemeManager.shared.setButtonGlow(radius: Double($0)) }
+        )
+    }
 
-    private func pushDebounced(_ action: @escaping () -> Void) {
-        debounceTask?.cancel()
-        debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            if !Task.isCancelled { action() }
-        }
+    private var glowOpacityBinding: Binding<Int> {
+        Binding(
+            get: { Int(((ThemeManager.shared.buttonGlowOpacity * 100) / 5).rounded()) * 5 },
+            set: { ThemeManager.shared.setButtonGlow(opacity: Double($0) / 100) }
+        )
+    }
+
+    private var glowSpreadBinding: Binding<Int> {
+        Binding(
+            get: { Int(ThemeManager.shared.buttonGlowSpread.rounded()) },
+            set: { ThemeManager.shared.setButtonGlow(spread: Double($0)) }
+        )
+    }
+
+    private var outlineWidthBinding: Binding<Int> {
+        Binding(
+            get: { Int((ThemeManager.shared.buttonOutlineWidth * 2).rounded()) },
+            set: { ThemeManager.shared.setButtonOutlineWidth(Double($0) / 2) }
+        )
+    }
+
+    private var outerRingBinding: Binding<Int> {
+        Binding(
+            get: { Int((ThemeManager.shared.buttonOuterRing * 2).rounded()) },
+            set: { ThemeManager.shared.setButtonOuterRing(Double($0) / 2) }
+        )
+    }
+
+    private var textOutlineBinding: Binding<Int> {
+        Binding(
+            get: { Int((ThemeManager.shared.buttonTextOutline * 2).rounded()) },
+            set: { ThemeManager.shared.setButtonTextOutline(Double($0) / 2) }
+        )
     }
 
     private var editingTheme: UserTheme? {
@@ -44,186 +71,51 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        // Glow Size slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Glow Size")
-                                Spacer()
-                                Text("\(Int(glowRadiusLocal))")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { glowRadiusLocal },
-                                    set: { newValue in
-                                        glowRadiusLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonGlow(radius: newValue) }
-                                    }
-                                ),
-                                in: 0...20,
-                                step: 1,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonGlow(radius: glowRadiusLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Glow Brightness slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Glow Brightness")
-                                Spacer()
-                                Text("\(Int(glowOpacityLocal * 100))%")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { glowOpacityLocal },
-                                    set: { newValue in
-                                        glowOpacityLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonGlow(opacity: newValue) }
-                                    }
-                                ),
-                                in: 0...1,
-                                step: 0.05,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonGlow(opacity: glowOpacityLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Outer Spread slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Outer Spread")
-                                Spacer()
-                                Text("\(Int(glowSpreadLocal))")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { glowSpreadLocal },
-                                    set: { newValue in
-                                        glowSpreadLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonGlow(spread: newValue) }
-                                    }
-                                ),
-                                in: 0...20,
-                                step: 1,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonGlow(spread: glowSpreadLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Outline slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Outline")
-                                Spacer()
-                                Text("\(outlineWidthLocal, specifier: "%.1f")")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { outlineWidthLocal },
-                                    set: { newValue in
-                                        outlineWidthLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonOutlineWidth(newValue) }
-                                    }
-                                ),
-                                in: 0...6,
-                                step: 0.5,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonOutlineWidth(outlineWidthLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Outer Ring slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Outer Ring")
-                                Spacer()
-                                Text("\(outerRingLocal, specifier: "%.1f")")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { outerRingLocal },
-                                    set: { newValue in
-                                        outerRingLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonOuterRing(newValue) }
-                                    }
-                                ),
-                                in: 0...6,
-                                step: 0.5,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonOuterRing(outerRingLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Text Outline slider
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Text Outline")
-                                Spacer()
-                                Text("\(textOutlineLocal, specifier: "%.1f")")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Slider(
-                                value: Binding(
-                                    get: { textOutlineLocal },
-                                    set: { newValue in
-                                        textOutlineLocal = newValue
-                                        pushDebounced { ThemeManager.shared.setButtonTextOutline(newValue) }
-                                    }
-                                ),
-                                in: 0...3,
-                                step: 0.5,
-                                onEditingChanged: { editing in
-                                    if !editing {
-                                        debounceTask?.cancel()
-                                        ThemeManager.shared.setButtonTextOutline(textOutlineLocal)
-                                    }
-                                }
-                            )
-                        }
-                        
-                        // Live preview using the real BottomActionsBar so it cannot drift
-                        Text("Live Preview")
-                            .font(.footnote)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        BottomActionsBar(
-                            leadingActions: [],
-                            trailingActions: [.primary("Test") {}]
-                        )
-                        .listRowBackground(Color.clear)
-                    }
-                    .padding(.vertical, 4)
+                    WheelSettingRow(
+                        title: "Glow Size",
+                        selection: glowRadiusBinding,
+                        values: Array(0...20),
+                        display: { "\($0)" }
+                    )
+                    WheelSettingRow(
+                        title: "Glow Brightness",
+                        selection: glowOpacityBinding,
+                        values: Array(stride(from: 0, through: 100, by: 5)),
+                        display: { "\($0)%" }
+                    )
+                    WheelSettingRow(
+                        title: "Outer Spread",
+                        selection: glowSpreadBinding,
+                        values: Array(0...20),
+                        display: { "\($0)" }
+                    )
+                    WheelSettingRow(
+                        title: "Outline",
+                        selection: outlineWidthBinding,
+                        values: Array(0...12),
+                        display: { String(format: "%.1f", Double($0) / 2) }
+                    )
+                    WheelSettingRow(
+                        title: "Outer Ring",
+                        selection: outerRingBinding,
+                        values: Array(0...12),
+                        display: { String(format: "%.1f", Double($0) / 2) }
+                    )
+                    WheelSettingRow(
+                        title: "Text Outline",
+                        selection: textOutlineBinding,
+                        values: Array(0...6),
+                        display: { String(format: "%.1f", Double($0) / 2) }
+                    )
+
+                    Text("Live Preview")
+                        .font(.footnote)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    BottomActionsBar(
+                        leadingActions: [],
+                        trailingActions: [.primary("Test") {}]
+                    )
+                    .listRowBackground(Color.clear)
                 }
                 
                 Text("Glow applies to the bottom buttons and the floating + / gear.")
@@ -350,6 +242,7 @@ struct AppearanceView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .navigationTitle("Appearance")
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
@@ -560,5 +453,36 @@ struct UserThemeEditorView: View {
             get: { colors.color(for: role) },
             set: { colors.update(color: $0, for: role) }
         )
+    }
+}
+
+/// One button-chrome setting: a title + value readout above a wheel picker.
+/// Kept as its own view so spinning a wheel only re-renders this row.
+private struct WheelSettingRow: View {
+    let title: String
+    let selection: Binding<Int>
+    let values: [Int]
+    let display: (Int) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(display(selection.wrappedValue))
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            }
+            Picker(title, selection: selection) {
+                ForEach(values, id: \.self) { value in
+                    Text(display(value)).tag(value)
+                }
+            }
+            .pickerStyle(.wheel)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .frame(height: 120)
+            .clipped()
+        }
     }
 }
