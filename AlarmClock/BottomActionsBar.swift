@@ -18,7 +18,7 @@ struct BottomActionsBar: View {
         self.leadingActions = leadingActions
         self.trailingActions = trailingActions
         self.padding = padding
-        self.backgroundColor = backgroundColor ?? ThemeManager.shared.colors.background
+        self.backgroundColor = backgroundColor ?? .clear  // Changed to .clear so buttons float
     }
     
     var body: some View {
@@ -38,7 +38,7 @@ struct BottomActionsBar: View {
         .padding(.horizontal, padding)
         .padding(.vertical, 12)
         .background(backgroundColor)
-        .shadow(color: .black.opacity(0.1), radius: 2, y: -2)
+        // Removed shadow since buttons now float with their own translucent backgrounds
     }
     
     private func actionButton(_ action: ActionButton) -> some View {
@@ -55,17 +55,15 @@ struct BottomActionsBar: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .background(
-                action.isPrimary 
-                    ? ThemeManager.shared.colors.accent 
-                    : ThemeManager.shared.colors.accent.opacity(0.15)
+                action.isPrimary
+                    ? ThemeManager.shared.colors.accent.opacity(0.30)  // PRIMARY: translucent accent fill
+                    : ThemeManager.shared.colors.accent.opacity(0.15)  // SECONDARY: translucent accent fill
             )
             .overlay(
-                action.isPrimary 
-                    ? nil 
-                    : Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.5), lineWidth: 1)
+                Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1)  // Thin border for both
             )
             .clipShape(Capsule())
-            .shadow(radius: action.isPrimary ? 4 : 0)
+            // Removed shadow - buttons float with their own translucent backgrounds
         }
         .disabled(!action.isEnabled)
     }

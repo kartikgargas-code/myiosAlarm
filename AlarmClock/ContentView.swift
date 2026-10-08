@@ -67,10 +67,10 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent.opacity(0.22))
+                            .background(ThemeManager.shared.colors.accent.opacity(0.12))
                             .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
                             .clipShape(Circle())
-                            .shadow(radius: 4)
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
                     }
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
@@ -84,10 +84,10 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent.opacity(0.22))
+                            .background(ThemeManager.shared.colors.accent.opacity(0.12))
                             .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
                             .clipShape(Circle())
-                            .shadow(radius: 4)
+                            .shadow(color: ThemeManager.shared.colors.accent.opacity(0.35), radius: 12)
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
@@ -544,11 +544,9 @@ struct SoundsView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    // Sort Menu on the LEFT
                     Menu {
                         Picker("Sort by", selection: $sortOptionRaw) {
                             ForEach(SoundSortOption.allCases) { option in
@@ -557,9 +555,31 @@ struct SoundsView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
+                            .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .frame(width: 44, height: 44)
+                            .background(ThemeManager.shared.colors.accent.opacity(0.15))
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                            .clipShape(Circle())
                     }
+                    
+                    Spacer()
+                    
+                    // Done on the RIGHT - accent capsule
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(ThemeManager.shared.colors.accent.opacity(0.15))
+                    .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                    .clipShape(Capsule())
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(ThemeManager.shared.colors.background)
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,

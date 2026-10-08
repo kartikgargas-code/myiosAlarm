@@ -101,12 +101,23 @@ struct AlarmEditorView: View {
                 }
                 .navigationTitle("Loudness")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                .safeAreaInset(edge: .bottom) {
+                    HStack {
+                        Spacer()
                         Button("Done") {
                             showingLoudnessSheet = false
                         }
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(ThemeManager.shared.colors.accent.opacity(0.15))
+                        .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
+                        .clipShape(Capsule())
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(ThemeManager.shared.colors.background)
                 }
                 .onAppear {
                     // Start preview when sheet opens
@@ -321,11 +332,12 @@ struct AlarmEditorView: View {
                         snoozeDurationMinutes = minutes
                     } label: {
                         Text("\(minutes) min")
-                            .font(.callout.weight(.semibold))
+                            .font(.callout)
                             .foregroundStyle(snoozeDurationMinutes == minutes ? .white : ThemeManager.shared.colors.secondaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                     }
+                    .buttonStyle(.borderless)
                     .background(
                         snoozeDurationMinutes == minutes
                             ? ThemeManager.shared.colors.accent
