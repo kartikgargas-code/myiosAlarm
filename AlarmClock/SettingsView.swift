@@ -77,10 +77,14 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [],
+                    trailingActions: [
+                        .primary("Done") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .sheet(isPresented: $showingDiagnostics) {
                 DiagnosticsView(coordinator: coordinator)
