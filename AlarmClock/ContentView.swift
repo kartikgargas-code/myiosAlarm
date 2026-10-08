@@ -184,29 +184,7 @@ struct ContentView: View {
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
                 }
                 
-                // Control Center action feedback toast - ONLY when app is in foreground
-                if let feedback = coordinator.ccActionFeedback, isAppInForeground {
-                    VStack {
-                        HStack {
-                            Image(systemName: "bell.badge")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text(feedback)
-                                .font(.subheadline)
-                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(ThemeManager.shared.colors.background.opacity(0.95))
-                        .cornerRadius(12)
-                        .shadow(radius: 4)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        Spacer()
-                    }
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: coordinator.ccActionFeedback)
-                }
+                
             }
             .sheet(item: $editorPresentation) { presentation in
                 AlarmEditorView(
