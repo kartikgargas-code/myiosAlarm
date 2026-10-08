@@ -59,18 +59,15 @@ struct AppButtonChrome<Content: View>: View {
         CGFloat(theme.buttonTextOutline)
     }
     
+    /// Dark ring drawn OUTSIDE the button edge. It must be applied as a background
+    /// AFTER the shape is clipped, otherwise `clipShape` trims the negatively
+    /// padded ring away (which made the Outer Ring setting appear to do nothing).
     @ViewBuilder
-    private var backgroundView: some View {
-        ZStack {
-            // Dark outer ring (behind everything)
-            if outerRingWidth > 0 {
-                shapeView
-                    .fill(Color.black.opacity(0.85))
-                    .padding(-outerRingWidth)
-            }
-            // Opaque fill
+    private var outerRingView: some View {
+        if outerRingWidth > 0 {
             shapeView
-                .fill(Color(red: 0.118, green: 0.133, blue: 0.153))
+                .fill(Color.black.opacity(0.85))
+                .padding(-outerRingWidth)
         }
     }
     
@@ -84,12 +81,16 @@ struct AppButtonChrome<Content: View>: View {
             .padding(.horizontal, shape == .capsule ? 20 : 0)
             .padding(.vertical, shape == .capsule ? 12 : 0)
             .frame(width: shape == .circle ? size : nil, height: shape == .circle ? size : nil)
-            .background(backgroundView)
+            .background(
+                shapeView
+                    .fill(Color(red: 0.118, green: 0.133, blue: 0.153))
+            )
             .overlay(
                 shapeView
                     .stroke(colors.accent, lineWidth: outlineWidth)
             )
             .clipShape(shapeView)
+            .background(outerRingView)
             .shadow(
                 color: colors.accent.opacity(glowOpacity),
                 radius: glowRadius
