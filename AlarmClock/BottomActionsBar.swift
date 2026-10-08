@@ -87,8 +87,8 @@ struct ActionButton {
         ActionButton(title: title, action: action, isPrimary: false, foregroundColor: .red)
     }
     
-    static func primary(_ title: String, action: @escaping () -> Void, systemImage: String? = nil) -> ActionButton {
-        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: .white)
+    static func primary(_ title: String, systemImage: String? = nil, isEnabled: Bool = true, action: @escaping () -> Void) -> ActionButton {
+        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: .white, isEnabled: isEnabled)
     }
     
     static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil, isEnabled: Bool = true) -> ActionButton {

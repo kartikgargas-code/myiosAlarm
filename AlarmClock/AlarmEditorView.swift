@@ -100,8 +100,7 @@ struct AlarmEditorView: View {
                     .cancel("Cancel") { dismiss() }
                 ],
                 trailingActions: [
-                    .primary("Save") { saveAlarm() }
-                        .disabled(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))
+                    .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
                 ],
                 backgroundColor: ThemeManager.shared.colors.background
             )

@@ -314,7 +314,7 @@ struct UserThemeEditorView: View {
                         .cancel("Cancel") { dismiss() }
                     ],
                     trailingActions: [
-                        .primary("Save") {
+                        .primary("Save", isEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                             if let editingTheme {
                                 ThemeManager.shared.updateUserTheme(id: editingTheme.id, name: name, colors: colors)
                             } else {
@@ -322,7 +322,6 @@ struct UserThemeEditorView: View {
                             }
                             dismiss()
                         }
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     ],
                     backgroundColor: ThemeManager.shared.colors.background
                 )
