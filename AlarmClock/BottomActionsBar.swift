@@ -67,7 +67,7 @@ struct BottomActionsBar: View {
             .clipShape(Capsule())
             .shadow(radius: action.isPrimary ? 4 : 0)
         }
-    }
+        .disabled(!action.isEnabled)
 }
 
 struct ActionButton {
@@ -76,6 +76,7 @@ struct ActionButton {
     var systemImage: String? = nil
     var isPrimary: Bool = false
     var foregroundColor: Color? = nil
+    var isEnabled: Bool = true
     
     static func cancel(_ title: String = "Cancel", action: @escaping () -> Void) -> ActionButton {
         ActionButton(title: title, action: action, isPrimary: false)
@@ -89,8 +90,8 @@ struct ActionButton {
         ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: true, foregroundColor: .white)
     }
     
-    static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil) -> ActionButton {
-        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: isPrimary, foregroundColor: foregroundColor)
+    static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil, isEnabled: Bool = true) -> ActionButton {
+        ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: isPrimary, foregroundColor: foregroundColor, isEnabled: isEnabled)
     }
 }
 
