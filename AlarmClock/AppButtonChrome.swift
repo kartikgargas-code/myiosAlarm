@@ -16,20 +16,22 @@ enum ButtonChromeShape {
 struct AppButtonChrome<Content: View>: View {
     let content: Content
     let shape: ButtonChromeShape
+    let size: CGFloat
     
     @Environment(\.colorScheme) private var colorScheme
     private var theme: ThemeManager { ThemeManager.shared }
     private var colors: ThemeColors { theme.colors }
     
-    init(shape: ButtonChromeShape, @ViewBuilder content: () -> Content) {
+    init(shape: ButtonChromeShape, size: CGFloat = 44, @ViewBuilder content: () -> Content) {
         self.shape = shape
+        self.size = size
         self.content = content()
     }
     
-    private var shapeView: some Shape {
+    private var shapeView: AnyShape {
         switch shape {
-        case .capsule: return Capsule()
-        case .circle: return Circle()
+        case .capsule: return AnyShape(Capsule())
+        case .circle: return AnyShape(Circle())
         }
     }
     
@@ -79,7 +81,7 @@ struct AppButtonChrome<Content: View>: View {
             .modifier(TextOutlineModifier(width: textOutlineWidth))
             .padding(.horizontal, shape == .capsule ? 20 : 0)
             .padding(.vertical, shape == .capsule ? 12 : 0)
-            .frame(width: shape == .circle ? 44 : nil, height: shape == .circle ? 44 : nil)
+            .frame(width: shape == .circle ? size : nil, height: shape == .circle ? size : nil)
             .background(backgroundView)
             .overlay(
                 shapeView
@@ -119,7 +121,7 @@ struct TextOutlineModifier: ViewModifier {
 }
 
 extension View {
-    func appButtonChrome(shape: ButtonChromeShape) -> some View {
-        AppButtonChrome(shape: shape) { self }
+    func appButtonChrome(shape: ButtonChromeShape, size: CGFloat = 44) -> some View {
+        AppButtonChrome(shape: shape, size: size) { self }
     }
 }

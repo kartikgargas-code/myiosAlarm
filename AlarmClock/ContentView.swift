@@ -68,7 +68,7 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .appButtonChrome(shape: .circle)
+                            .appButtonChrome(shape: .circle, size: 56)
                     }
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
@@ -82,7 +82,7 @@ struct ContentView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .appButtonChrome(shape: .circle)
+                            .appButtonChrome(shape: .circle, size: 56)
                     }
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
