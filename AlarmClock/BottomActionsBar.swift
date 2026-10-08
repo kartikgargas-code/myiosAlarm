@@ -13,12 +13,12 @@ struct BottomActionsBar: View {
         leadingActions: [ActionButton] = [],
         trailingActions: [ActionButton] = [],
         padding: CGFloat = 16,
-        backgroundColor: Color = ThemeManager.shared.colors.background
+        backgroundColor: Color? = nil
     ) {
         self.leadingActions = leadingActions
         self.trailingActions = trailingActions
         self.padding = padding
-        self.backgroundColor = backgroundColor
+        self.backgroundColor = backgroundColor ?? ThemeManager.shared.colors.background
     }
     
     var body: some View {
