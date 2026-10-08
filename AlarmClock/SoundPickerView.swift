@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
+import AlarmClockShared
 
 struct SoundPickerView: View {
     @Environment(\.dismiss) private var dismiss
@@ -205,17 +206,19 @@ struct SoundPickerView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Alarm Sound")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        selectedSound = initialSelection
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { dismiss() }
-                    .disabled(false)
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") {
+                            selectedSound = initialSelection
+                            dismiss()
+                        }
+                    ],
+                    trailingActions: [
+                        .primary("Save") { dismiss() }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
         }
         .fileImporter(
@@ -480,19 +483,21 @@ struct PlaylistCreatorView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Create Playlist")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let trimmed = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty, !selectedSoundIDs.isEmpty else { return }
-                        onSave(trimmed, Array(selectedSoundIDs))
-                        dismiss()
-                    }
-                    .disabled(playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedSoundIDs.isEmpty)
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") { dismiss() }
+                    ],
+                    trailingActions: [
+                        .primary("Save") {
+                            let trimmed = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty, !selectedSoundIDs.isEmpty else { return }
+                            onSave(trimmed, Array(selectedSoundIDs))
+                            dismiss()
+                        }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
         }
     }
@@ -630,23 +635,26 @@ struct PlaylistEditorView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Edit Playlist")
             .onDisappear { previewService.stop() }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        selectedSoundIDs = initialSelectedSoundIDs
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        var updatedPlaylist = playlist
-                        updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
-                        updatedPlaylist.sortOption = sortOption
-                        updatedPlaylist.playOrder = playOrder
-                        SoundLibrary.shared.updatePlaylist(updatedPlaylist)
-                        dismiss()
-                    }
-                }
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .cancel("Cancel") {
+                            selectedSoundIDs = initialSelectedSoundIDs
+                            dismiss()
+                        }
+                    ],
+                    trailingActions: [
+                        .primary("Save") {
+                            var updatedPlaylist = playlist
+                            updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
+                            updatedPlaylist.sortOption = sortOption
+                            updatedPlaylist.playOrder = playOrder
+                            SoundLibrary.shared.updatePlaylist(updatedPlaylist)
+                            dismiss()
+                        }
+                    ],
+                    backgroundColor: ThemeManager.shared.colors.background
+                )
             }
             .alert("Delete Playlist", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
