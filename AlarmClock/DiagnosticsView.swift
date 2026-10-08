@@ -69,25 +69,18 @@ struct DiagnosticsView: View {
             .padding()
         }
         .navigationTitle("Diagnostics")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Copy (40 lines)") {
-                    copyFilteredLog()
-                }
-                .disabled(logLines.isEmpty)
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                HStack(spacing: 8) {
-                    Button("Clear") {
-                        clearLog()
-                    }
-                    .disabled(logLines.isEmpty)
-                    Button("Refresh") {
-                        loadLog()
-                    }
-                    .disabled(isLoading)
-                }
-            }
+        .safeAreaInset(edge: .bottom) {
+            BottomActionsBar(
+                leadingActions: [
+                    .custom("Copy (40 lines)") { copyFilteredLog() },
+                    .custom("Clear") { clearLog() },
+                    .custom("Refresh") { loadLog() }
+                ],
+                trailingActions: [
+                    .primary("Done") { dismiss() }
+                ],
+                backgroundColor: ThemeManager.shared.colors.background
+            )
         }
         .onAppear {
             loadLog()
