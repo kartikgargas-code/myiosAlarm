@@ -435,16 +435,22 @@ struct ContentView: View {
                         Task { await coordinator.undoSkip(id: alarm.id) }
                     }
                 } else {
-                    Button("Skip Next", role: .destructive) {
+                    Button {
                         Task { await coordinator.skipNext(id: alarm.id) }
+                    } label: {
+                        Label("Skip Next", systemImage: "forward.end")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
                     }
                 }
             }
             
             Divider()
             
-            Button("Duplicate") {
+            Button {
                 Task { await coordinator.duplicate(id: alarm.id) }
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+                    .foregroundStyle(.yellow)
             }
             
             Divider()
