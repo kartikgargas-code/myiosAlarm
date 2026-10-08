@@ -62,12 +62,13 @@ struct BottomActionsBar: View {
             .overlay(
                 action.isPrimary 
                     ? nil 
-                    : Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.5), lineWidth: 1)
+                    : Capsule().stroke(ThemeManager.shared.colors.accent.opacity(0.5), lineWidth: 1)
             )
             .clipShape(Capsule())
             .shadow(radius: action.isPrimary ? 4 : 0)
         }
         .disabled(!action.isEnabled)
+    }
 }
 
 struct ActionButton {
