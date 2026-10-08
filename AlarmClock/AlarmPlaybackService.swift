@@ -1018,13 +1018,13 @@ final class AlarmPlaybackService: NSObject {
         
         Task { @MainActor in
             for i in 1...steps {
-                guard !Task.isCancelled, let p = player, p.isPlaying else { break }
-                p.volume = min(volumeStep * Float(i), targetVolume)
+                guard !Task.isCancelled, player.isPlaying else { break }
+                player.volume = min(volumeStep * Float(i), targetVolume)
                 try? await Task.sleep(nanoseconds: stepDuration)
             }
             // Ensure exact final volume
-            if let p = player, p.isPlaying {
-                p.volume = targetVolume
+            if player.isPlaying {
+                player.volume = targetVolume
             }
         }
     }
