@@ -280,6 +280,8 @@ struct AlarmEditorView: View {
                 Text("15 min").tag(15)
             }
             .pickerStyle(.segmented)
+            .tint(ThemeManager.shared.colors.accent)
+            .font(.body)
         }
     }
     
