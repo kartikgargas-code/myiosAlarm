@@ -22,18 +22,21 @@ struct BottomActionsBar: View {
     }
     
     var body: some View {
-        HStack(spacing: 12) {
-            // Leading actions (Cancel, etc.)
-            ForEach(leadingActions.indices, id: \.self) { index in
-                actionButton(leadingActions[index])
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                // Leading actions (Cancel, etc.)
+                ForEach(leadingActions.indices, id: \.self) { index in
+                    actionButton(leadingActions[index])
+                }
+                
+                Spacer(minLength: 0)
+                
+                // Trailing actions (Save, Done, etc.)
+                ForEach(trailingActions.indices, id: \.self) { index in
+                    actionButton(trailingActions[index])
+                }
             }
-            
-            Spacer()
-            
-            // Trailing actions (Save, Done, etc.)
-            ForEach(trailingActions.indices, id: \.self) { index in
-                actionButton(trailingActions[index])
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, padding)
         .padding(.vertical, 12)

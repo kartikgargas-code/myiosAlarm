@@ -78,6 +78,8 @@ struct AppButtonChrome<Content: View>: View {
         content
             .font(.body.weight(.bold))
             .foregroundStyle(colors.accent)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .modifier(TextOutlineModifier(width: textOutlineWidth))
             .padding(.horizontal, shape == .capsule ? 20 : 0)
             .padding(.vertical, shape == .capsule ? 12 : 0)
