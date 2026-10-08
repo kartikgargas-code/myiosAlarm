@@ -59,7 +59,6 @@ struct ContentView: View {
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
                 .navigationTitle("myNextAlarm")
-                .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 .overlay(alignment: .bottomLeading) {
                     Button {
                         editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
@@ -145,6 +144,7 @@ struct ContentView: View {
                 
                 
             }
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .sheet(item: $editorPresentation) { presentation in
                 AlarmEditorView(
                     existingAlarm: presentation.alarm,
@@ -540,8 +540,10 @@ struct SoundsView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
             .safeAreaInset(edge: .bottom) {
-                HStack {
-                    // Sort Menu on the LEFT - circle with chrome
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    
+                    // Sort Menu grouped with Done on the right
                     Menu {
                         Picker("Sort by", selection: $sortOptionRaw) {
                             ForEach(SoundSortOption.allCases) { option in
@@ -555,8 +557,6 @@ struct SoundsView: View {
                             .appButtonChrome(shape: .circle)
                     }
                     .menuStyle(.borderlessButton)
-                    
-                    Spacer()
                     
                     // Done on the RIGHT - capsule with chrome
                     Button("Done") {
