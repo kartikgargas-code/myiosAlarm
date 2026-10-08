@@ -26,10 +26,9 @@ struct HistoryView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .custom("Clear All") {
+                        .custom("Clear All", action: {
                             showingClearAllConfirmation = true
-                        }
-                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                        }, foregroundColor: ThemeManager.shared.colors.destructive)
                     ],
                     trailingActions: [
                         .primary("Done") { dismiss() }
