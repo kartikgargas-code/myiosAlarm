@@ -550,11 +550,11 @@ struct SoundsView: View {
                         }
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.title3)
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 44, height: 44)
                             .appButtonChrome(shape: .circle)
                     }
+                    .menuStyle(.borderlessButton)
                     
                     Spacer()
                     
