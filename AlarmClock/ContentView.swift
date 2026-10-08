@@ -31,6 +31,8 @@ struct ContentView: View {
     // Static property accessible from AlarmCoordinator
     static var isAppInForegroundStatic: Bool = true
 
+    @State private var showingSettings = false
+    
     var body: some View {
         NavigationStack {
             ZStack {
