@@ -42,7 +42,10 @@ struct ContentView: View {
 
                     Section("Alarms") {
                         if coordinator.alarms.isEmpty {
-                            ContentUnavailableView("No Alarms", systemImage: "alarm", description: Text("Tap + to create one."))
+                            Color.clear
+                                .frame(maxWidth: .infinity, minHeight: 160)
+                                .contentShape(Rectangle())
+                                .onTapGesture { editorPresentation = EditorPresentation(id: UUID(), alarm: nil) }
                         }
                         ForEach(coordinator.alarms) { alarm in
                             alarmRow(alarm)
