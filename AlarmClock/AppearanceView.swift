@@ -8,6 +8,23 @@ struct AppearanceView: View {
     @State private var showingThemeEditor = false
     @State private var editingThemeID: UUID?
 
+    // Local slider values for debounced writes
+    @State private var glowRadiusLocal: Double = ThemeManager.shared.buttonGlowRadius
+    @State private var glowOpacityLocal: Double = ThemeManager.shared.buttonGlowOpacity
+    @State private var glowSpreadLocal: Double = ThemeManager.shared.buttonGlowSpread
+    @State private var outlineWidthLocal: Double = ThemeManager.shared.buttonOutlineWidth
+    @State private var outerRingLocal: Double = ThemeManager.shared.buttonOuterRing
+    @State private var textOutlineLocal: Double = ThemeManager.shared.buttonTextOutline
+    @State private var debounceTask: Task<Void, Never>?
+
+    private func pushDebounced(_ action: @escaping () -> Void) {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if !Task.isCancelled { action() }
+        }
+    }
+
     private var editingTheme: UserTheme? {
         guard let editingThemeID else { return nil }
         return ThemeManager.shared.userThemes.first { $0.id == editingThemeID }
@@ -33,17 +50,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Glow Size")
                                 Spacer()
-                                Text("\(Int(ThemeManager.shared.buttonGlowRadius))")
+                                Text("\(Int(glowRadiusLocal))")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonGlowRadius },
-                                    set: { ThemeManager.shared.setButtonGlow(radius: $0) }
+                                    get: { glowRadiusLocal },
+                                    set: { newValue in
+                                        glowRadiusLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonGlow(radius: newValue) }
+                                    }
                                 ),
                                 in: 0...20,
-                                step: 1
+                                step: 1,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonGlow(radius: glowRadiusLocal)
+                                    }
+                                }
                             )
                         }
                         
@@ -52,17 +78,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Glow Brightness")
                                 Spacer()
-                                Text("\(Int(ThemeManager.shared.buttonGlowOpacity * 100))%")
+                                Text("\(Int(glowOpacityLocal * 100))%")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonGlowOpacity },
-                                    set: { ThemeManager.shared.setButtonGlow(opacity: $0) }
+                                    get: { glowOpacityLocal },
+                                    set: { newValue in
+                                        glowOpacityLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonGlow(opacity: newValue) }
+                                    }
                                 ),
                                 in: 0...1,
-                                step: 0.05
+                                step: 0.05,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonGlow(opacity: glowOpacityLocal)
+                                    }
+                                }
                             )
                         }
                         
@@ -71,17 +106,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Outer Spread")
                                 Spacer()
-                                Text("\(Int(ThemeManager.shared.buttonGlowSpread))")
+                                Text("\(Int(glowSpreadLocal))")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonGlowSpread },
-                                    set: { ThemeManager.shared.setButtonGlow(spread: $0) }
+                                    get: { glowSpreadLocal },
+                                    set: { newValue in
+                                        glowSpreadLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonGlow(spread: newValue) }
+                                    }
                                 ),
                                 in: 0...20,
-                                step: 1
+                                step: 1,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonGlow(spread: glowSpreadLocal)
+                                    }
+                                }
                             )
                         }
                         
@@ -90,17 +134,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Outline")
                                 Spacer()
-                                Text("\(ThemeManager.shared.buttonOutlineWidth, specifier: "%.1f")")
+                                Text("\(outlineWidthLocal, specifier: "%.1f")")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonOutlineWidth },
-                                    set: { ThemeManager.shared.setButtonOutlineWidth($0) }
+                                    get: { outlineWidthLocal },
+                                    set: { newValue in
+                                        outlineWidthLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonOutlineWidth(newValue) }
+                                    }
                                 ),
                                 in: 0...6,
-                                step: 0.5
+                                step: 0.5,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonOutlineWidth(outlineWidthLocal)
+                                    }
+                                }
                             )
                         }
                         
@@ -109,17 +162,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Outer Ring")
                                 Spacer()
-                                Text("\(ThemeManager.shared.buttonOuterRing, specifier: "%.1f")")
+                                Text("\(outerRingLocal, specifier: "%.1f")")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonOuterRing },
-                                    set: { ThemeManager.shared.setButtonOuterRing($0) }
+                                    get: { outerRingLocal },
+                                    set: { newValue in
+                                        outerRingLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonOuterRing(newValue) }
+                                    }
                                 ),
                                 in: 0...6,
-                                step: 0.5
+                                step: 0.5,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonOuterRing(outerRingLocal)
+                                    }
+                                }
                             )
                         }
                         
@@ -128,17 +190,26 @@ struct AppearanceView: View {
                             HStack {
                                 Text("Text Outline")
                                 Spacer()
-                                Text("\(ThemeManager.shared.buttonTextOutline, specifier: "%.1f")")
+                                Text("\(textOutlineLocal, specifier: "%.1f")")
                                     .font(.body.monospacedDigit())
                                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             }
                             Slider(
                                 value: Binding(
-                                    get: { ThemeManager.shared.buttonTextOutline },
-                                    set: { ThemeManager.shared.setButtonTextOutline($0) }
+                                    get: { textOutlineLocal },
+                                    set: { newValue in
+                                        textOutlineLocal = newValue
+                                        pushDebounced { ThemeManager.shared.setButtonTextOutline(newValue) }
+                                    }
                                 ),
                                 in: 0...3,
-                                step: 0.5
+                                step: 0.5,
+                                onEditingChanged: { editing in
+                                    if !editing {
+                                        debounceTask?.cancel()
+                                        ThemeManager.shared.setButtonTextOutline(textOutlineLocal)
+                                    }
+                                }
                             )
                         }
                         
