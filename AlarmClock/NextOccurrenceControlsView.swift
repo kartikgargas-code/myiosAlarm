@@ -123,6 +123,7 @@ struct NextOccurrenceControlsView: View {
             .navigationTitle(alarm.label.isEmpty ? "Alarm" : alarm.label)
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [],

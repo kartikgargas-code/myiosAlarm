@@ -25,9 +25,7 @@ struct NextAlarmControlView: View {
                     emptyState
                 }
             }
-            .navigationTitle("Next Alarm")
-            .scrollContentBackground(.hidden)
-            .background(ThemeManager.shared.colors.background)
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [],

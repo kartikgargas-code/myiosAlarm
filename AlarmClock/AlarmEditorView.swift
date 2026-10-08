@@ -102,6 +102,7 @@ struct AlarmEditorView: View {
                 )
             }
         }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
             SoundPickerView(selectedSound: $selectedSound, alarms: alarms)
@@ -120,6 +121,7 @@ struct AlarmEditorView: View {
                 }
                 .navigationTitle("Loudness")
                 .navigationBarTitleDisplayMode(.inline)
+                .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 .safeAreaInset(edge: .bottom) {
                     HStack {
                         Spacer()

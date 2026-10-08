@@ -82,7 +82,8 @@ final class ThemeManager {
     
     func setInterfaceTextSize(_ size: DynamicTypeSize) {
         interfaceTextSize = size
-        defaults.set(size.rawValue, forKey: interfaceTextSizeKey)
+        // DynamicTypeSize doesn't have rawValue; store as String
+        defaults.set(String(describing: size), forKey: interfaceTextSizeKey)
     }
 
     private init() {
@@ -93,8 +94,8 @@ final class ThemeManager {
         buttonOuterRing = defaults.object(forKey: buttonOuterRingKey) as? Double ?? 0.0
         buttonTextOutline = defaults.object(forKey: buttonTextOutlineKey) as? Double ?? 0.0
         buttonOutlineWidth = defaults.object(forKey: buttonOutlineWidthKey) as? Double ?? 2.0
-        if let raw = defaults.object(forKey: interfaceTextSizeKey) as? Int,
-           let size = DynamicTypeSize(rawValue: raw) {
+        if let raw = defaults.object(forKey: interfaceTextSizeKey) as? String,
+           let size = DynamicTypeSize.allCases.first(where: { String(describing: $0) == raw }) {
             interfaceTextSize = size
         } else {
             interfaceTextSize = .xLarge

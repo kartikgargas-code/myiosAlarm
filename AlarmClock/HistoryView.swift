@@ -20,6 +20,7 @@ struct HistoryView: View {
                     historyList
                 }
             }
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .navigationTitle("Play History")
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)

@@ -16,6 +16,7 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
+            }.dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 Section("Alarm List") {
                     Toggle("Compact Mode", isOn: Binding(
                         get: { ThemeManager.shared.isCompactModeEnabled },
@@ -66,20 +67,88 @@ struct AppearanceView: View {
                             )
                         }
                         
-                        // Live preview button
+                        // Outer Spread slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Outer Spread")
+                                Spacer()
+                                Text("\(Int(ThemeManager.shared.buttonGlowSpread))")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonGlowSpread },
+                                    set: { ThemeManager.shared.setButtonGlow(spread: $0) }
+                                ),
+                                in: 0...20,
+                                step: 1
+                            )
+                        }
+                        
+                        // Outline slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Outline")
+                                Spacer()
+                                Text("\(ThemeManager.shared.buttonOutlineWidth, specifier: "%.1f")")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonOutlineWidth },
+                                    set: { ThemeManager.shared.setButtonOutlineWidth($0) }
+                                ),
+                                in: 0...6,
+                                step: 0.5
+                            )
+                        }
+                        
+                        // Outer Ring slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Outer Ring")
+                                Spacer()
+                                Text("\(ThemeManager.shared.buttonOuterRing, specifier: "%.1f")")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonOuterRing },
+                                    set: { ThemeManager.shared.setButtonOuterRing($0) }
+                                ),
+                                in: 0...6,
+                                step: 0.5
+                            )
+                        }
+                        
+                        // Text Outline slider
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Text Outline")
+                                Spacer()
+                                Text("\(ThemeManager.shared.buttonTextOutline, specifier: "%.1f")")
+                                    .font(.body.monospacedDigit())
+                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            }
+                            Slider(
+                                value: Binding(
+                                    get: { ThemeManager.shared.buttonTextOutline },
+                                    set: { ThemeManager.shared.setButtonTextOutline($0) }
+                                ),
+                                in: 0...3,
+                                step: 0.5
+                            )
+                        }
+                        
+                        // Live preview button using AppButtonChrome
                         Text("Live Preview")
                             .font(.footnote)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Button("Save") {}
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity)
-                            .background(Color(red: 0.118, green: 0.133, blue: 0.153))  // #1E2227 opaque
-                            .overlay(Capsule().stroke(ThemeManager.shared.colors.accent, lineWidth: 2))
-                            .clipShape(Capsule())
-                            .shadow(color: ThemeManager.shared.colors.accent.opacity(ThemeManager.shared.buttonGlowOpacity), radius: ThemeManager.shared.buttonGlowRadius)
+                            .appButtonChrome(shape: .capsule)
                     }
                     .padding(.vertical, 4)
                 }
@@ -87,6 +156,22 @@ struct AppearanceView: View {
                 Text("Glow applies to the bottom buttons and the floating + / gear.")
                     .font(.footnote)
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+
+                Section("Text Size") {
+                    Picker("Interface Text Size", selection: Binding(
+                        get: { ThemeManager.shared.interfaceTextSize },
+                        set: { ThemeManager.shared.setInterfaceTextSize($0) }
+                    )) {
+                        Text("Small").tag(DynamicTypeSize.small)
+                        Text("Default").tag(DynamicTypeSize.large)
+                        Text("Large").tag(DynamicTypeSize.xLarge)
+                        Text("Extra Large").tag(DynamicTypeSize.xxLarge)
+                    }
+                    .pickerStyle(.segmented)
+                    Text("Changes the text size across the entire app (sheets included). Requires supported semantic font styles.")
+                        .font(.footnote)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
 
                 Section("My Themes") {
                     ForEach(ThemeManager.shared.userThemes) { userTheme in

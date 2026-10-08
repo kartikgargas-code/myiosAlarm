@@ -59,6 +59,7 @@ struct ContentView: View {
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
                 .navigationTitle("myNextAlarm")
+                .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 .overlay(alignment: .bottomLeading) {
                     Button {
                         editorPresentation = EditorPresentation(id: UUID(), alarm: nil)

@@ -96,6 +96,7 @@ struct SoundPickerView: View {
     var body: some View {
         NavigationStack {
             List {
+            }.dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 // Selected sound at top (pinned) - only show if not system default
                 if selectedSound != .systemDefault {
                     Section("Selected") {
