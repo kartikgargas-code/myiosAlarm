@@ -11,21 +11,12 @@ struct ContentView: View {
     @State private var coordinator = AlarmCoordinator()
     @State private var editorPresentation: EditorPresentation?
     @State private var controlsAlarm: AlarmRecord?
-    @State private var showingDiagnostics = false
-    @State private var showingAppearance = false
-    @State private var showingHistory = false
-    @State private var showingSounds = false
     @State private var currentRingSongName: String? = nil
     @State private var pendingEnabled: [UUID: Bool] = [:]
     
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
     @State private var alarmPlaybackService = AlarmPlaybackService.shared
-    // Copy button feedback states
-    @State private var smartWakeLogCopied = false
-    @State private var smartWakeLogUnavailable = false
-    @State private var exportURL: URL?
-    @State private var showingImportPicker = false
     // Track foreground state for CC feedback gating
     @State private var isAppInForeground = true
     // Static property accessible from AlarmCoordinator
@@ -64,71 +55,44 @@ struct ContentView: View {
                             Text(error).foregroundStyle(ThemeManager.shared.colors.destructive)
                         }
                     }
-
-                    Section {
-                        Button("AlarmKit Diagnostics") { showingDiagnostics = true }
-                        Button("Appearance") { showingAppearance = true }
-                        Button("Play History") { showingHistory = true }
-                        Button("Sounds") { showingSounds = true }
-                    }
-                    
-                    Section("Backup & Restore") {
-                        Button("Export Backup") {
-                            Task {
-                                do {
-                                    let url = try await BackupRestoreService.shared.exportArchive()
-                                    exportURL = url
-                                } catch {
-                                    coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                                }
-                            }
-                        }
-                        Button("Import Backup") {
-                            showingImportPicker = true
-                        }
-                    }
-
-                    Section("Smart Wake") {
-                        Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
-                        if smartWakeService.isSmartWakeEnabled {
-                            Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
-                                .font(.caption)
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            // Status from SmartWakeService (only updates when changed)
-                            Text(smartWakeService.statusTextPublished)
-                                .font(.caption)
-                                .foregroundStyle(
-                                    smartWakeService.statusTextPublished.contains("Ringing") ? .orange :
-                                    smartWakeService.statusTextPublished.contains("Active") ? .green :
-                                    ThemeManager.shared.colors.secondaryText
-                                )
-                        }
-                    }
-                    
-                    // Build fingerprint footer
-                    Section {
-                        if let buildLine = SmartWakeDebugLog.latestBuildLine() {
-                            Text(buildLine)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                    }
                 }
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
                 .navigationTitle("myNextAlarm")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+                .overlay(alignment: .bottomLeading) {
+                    Button {
+                        editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(ThemeManager.shared.colors.accent)
+                            .clipShape(Circle())
+                            .shadow(radius: 4)
                     }
+                    .padding(.leading, 20)
+                    .padding(.bottom, 34)
+                    .contentShape(Circle())
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(ThemeManager.shared.colors.accent)
+                            .clipShape(Circle())
+                            .shadow(radius: 4)
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 34)
+                    .contentShape(Circle())
                 }
                 
-                // Now Ringing banner as pinned overlay (stable, not in List)
+                // Now Ringing banner as pinned overlay
                 // Shows during in-app playback OR system alarm rings (via smartWakeService.alertingSongName)
                 let songName = alarmPlaybackService.currentTrackName ?? currentRingSongName ?? smartWakeService.alertingSongName
                 if let songName = songName {
@@ -203,7 +167,7 @@ struct ContentView: View {
                 )
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView()
+                SettingsView(coordinator: coordinator)
             }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {
@@ -465,540 +429,12 @@ struct ContentView: View {
 
     private var diagnosticsView: some View {
         NavigationStack {
-            DiagnosticsScreen()
-                .navigationTitle("Diagnostics")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { showingDiagnostics = false }
-                    }
-                }
+            DiagnosticsView(coordinator: coordinator)
         }
-    }
-
-    var widgetDiagnosticsSection: some View {
-        // Not used - replaced by new DiagnosticsScreen
-        EmptyView()
-    }
-    
-    func generateWidgetDiagnosticsText() -> String {
-        var text = "=== WIDGET PIPELINE DIAGNOSTICS ===\n\n"
-        
-        // Current snapshot in memory
-        if let snapshot = coordinator.nextAlarmSnapshot {
-            text += "Current In-Memory Snapshot:\n"
-            text += "Alarm ID: \(snapshot.alarmID.uuidString)\n"
-            text += "Label: \(snapshot.label)\n"
-            text += "Next Occurrence: \(snapshot.nextOccurrenceDate.formatted(date: .complete, time: .standard))\n"
-            text += "Enabled: \(snapshot.isEnabled ? "Yes" : "No")\n"
-            text += "Adjusted: \(snapshot.isAdjusted ? "Yes" : "No")\n"
-            if let adj = snapshot.adjustmentDescription {
-                text += "Adjustment: \(adj)\n"
-            }
-            text += "Sound: \(snapshot.sound.displayName)\n"
-            text += "Loudness: \(snapshot.loudness.percentage)%\n\n"
-        } else {
-            text += "Current In-Memory Snapshot: NONE (no upcoming alarm)\n\n"
-        }
-        
-        // Last write result
-        let result = coordinator.lastSnapshotWriteResult
-        text += "Last Snapshot Write:\n"
-        text += "Success: \(result.success ? "YES" : "NO")\n"
-        if let error = result.error {
-            text += "Error: \(error)\n"
-        }
-        if let timestamp = result.timestamp {
-            text += "Timestamp: \(timestamp.formatted(date: .complete, time: .standard))\n"
-        }
-        text += "\n"
-        
-        // Last widget reload request
-        text += "Last WidgetCenter Reload Request:\n"
-        if let timestamp = coordinator.lastWidgetReloadRequest {
-            text += "Timestamp: \(timestamp.formatted(date: .complete, time: .standard))\n"
-            text += "Age: \(Int(Date().timeIntervalSince(timestamp))) seconds ago\n\n"
-        } else {
-            text += "Never requested\n\n"
-        }
-        
-        // App Group configuration
-        text += "App Group Configuration:\n"
-        if let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String {
-            text += "Configured: \(configured)\n"
-        }
-        if let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String], !resigned.isEmpty {
-            text += "ALTAppGroups: \(resigned.joined(separator: ", "))\n"
-        } else {
-            text += "ALTAppGroups: (none)\n"
-        }
-        text += "\n"
-        
-        return text
-    }
-    
-    // MARK: - Smart Wake Log for copy-all diagnostics
-    func smartWakeLogForDiagnostics() -> String {
-        let log = SmartWakeDebugLog.read() ?? "No Smart Wake log entries yet."
-        return "=== SMART WAKE LOG ===\n\(log)\n"
     }
 }
 
 // MARK: - New Clean Diagnostics Screen
-struct DiagnosticsScreen: View {
-    @State private var logLines: [String] = []
-    @State private var isLoading = false
-    @State private var cacheProcessedCount = 0
-    @State private var cacheProcessedMB: Double = 0
-    @State private var cacheSoundsCount = 0
-    @State private var cacheSoundsMB: Double = 0
-    // Imported sounds stats
-    @State private var importedSoundsCount = 0
-    @State private var importedSoundsMB: Double = 0
-    @State private var orphanedFiles: [AudioProcessingService.OrphanedFile] = []
-    @State private var armedFileNames: [String] = []
-    @State private var lastPruneDate: Date? = nil
-    @State private var lastPruneFreedMB: Double = 0
-    @State private var showUTCNotice = true
-    @State private var buildFingerprint: String? = nil
-    @State private var armedRecords: [AlarmCoordinator.ArmedAlarmRecord] = []
-    
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // 0. Build Fingerprint (always at top)
-                buildFingerprintSection
-
-                Divider()
-
-                // 0b. CAF format experiment
-                cafExperimentSection
-
-                Divider()
-
-                // 0c. Alarm sound cache
-                alarmSoundCacheSection
-
-                Divider()
-
-                // 0d. Armed right now
-                armedRightNowSection
-
-                Divider()
-
-                // 1. Last Alarm Result
-                lastAlarmResultSection
-                
-                Divider()
-                
-                // 2. Next Alarm Time
-                nextAlarmTimeSection
-                
-                Divider()
-                
-                // 3. Loop Alive/Dead
-                loopStatusSection
-                
-                Divider()
-                
-                // 4. Last ~20 useful log lines
-                logSection
-            }
-            .padding()
-        }
-        .navigationTitle("Diagnostics")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Copy (40 lines)") {
-                    copyFilteredLog()
-                }
-                .disabled(logLines.isEmpty)
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                HStack(spacing: 8) {
-                    Button("Clear") {
-                        clearLog()
-                    }
-                    .disabled(logLines.isEmpty)
-                    Button("Refresh") {
-                        loadLog()
-                    }
-                    .disabled(isLoading)
-                }
-            }
-        }
-        .onAppear {
-            loadLog()
-            loadBuildFingerprint()
-            loadCacheStats()
-        }
-    }
-    
-    // MARK: - Section 0: Build Fingerprint
-    private var buildFingerprintSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Build Fingerprint")
-                .font(.subheadline.weight(.semibold))
-            
-            if let fingerprint = buildFingerprint {
-                Text(fingerprint)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.primary)
-            } else {
-                Text("Build fingerprint not found in log")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    
-    // MARK: - Section 0b: CAF format experiment
-    private var cafExperimentSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CAF Format Experiment")
-                .font(.subheadline.weight(.semibold))
-            Text("Renders the current 60s floor stitch a second time as compressed CAF (IMA4), logs both byte sizes, and schedules a one-shot test alarm 15 s out using the CAF. If it rings with your playlist audio, AlarmKit accepts compressed files; if it rings with the stock system sound, it refused the CAF.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Test CAF floor sound") {
-                Task { await AlarmCoordinator.sharedInstance?.scheduleCAFTestAlarm() }
-            }
-        }
-    }
-
-    // MARK: - Section 0c: Alarm sound cache
-    private var alarmSoundCacheSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Alarm Sound Cache")
-                .font(.subheadline.weight(.semibold))
-            
-            // Stitched files (playlist cache)
-            Text("Stitched playlist files:")
-                .font(.caption.weight(.semibold))
-            Text("Library/ProcessedSounds: \(cacheProcessedCount) files (\(String(format: "%.1f", cacheProcessedMB)) MB)")
-                .font(.caption.monospaced())
-            Text("Library/Sounds (playlist_): \(cacheSoundsCount) files (\(String(format: "%.1f", cacheSoundsMB)) MB)")
-                .font(.caption.monospaced())
-            
-            Divider()
-            
-            // Imported sounds
-            Text("Imported sound files (Library/Sounds):")
-                .font(.caption.weight(.semibold))
-            Text("Total: \(importedSoundsCount) files (\(String(format: "%.1f", importedSoundsMB)) MB)")
-                .font(.caption.monospaced())
-            
-            // Orphaned files
-            if !orphanedFiles.isEmpty {
-                Text("Orphaned files (no library entry):")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
-                ForEach(orphanedFiles, id: \.fileName) { orphan in
-                    Text("\(orphan.fileName) — \(String(format: "%.1f", Double(orphan.sizeBytes) / 1_048_576.0)) MB")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                }
-            }
-            
-            if let lastPruneDate {
-                Text("Last cleanup: \(lastPruneDate.formatted(date: .abbreviated, time: .shortened)) (freed \(String(format: "%.1f", lastPruneFreedMB)) MB)")
-                    .font(.caption.monospaced())
-            } else {
-                Text("Last cleanup: never")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            
-            HStack {
-                Button("Clear unused cached sounds") {
-                    AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
-                    loadCacheStats()
-                }
-                
-                if !orphanedFiles.isEmpty {
-                    Button("Clean orphaned sound files") {
-                        let _ = AudioProcessingService.shared.cleanOrphanedSoundFiles()
-                        loadCacheStats()
-                    }
-                    .foregroundStyle(.red)
-                }
-            }
-        }
-    }
-
-    private func loadCacheStats() {
-        let stats = AudioProcessingService.shared.stitchCacheStats()
-        cacheProcessedCount = stats.processed.fileCount
-        cacheProcessedMB = Double(stats.processed.totalBytes) / 1_048_576.0
-        cacheSoundsCount = stats.sounds.fileCount
-        cacheSoundsMB = Double(stats.sounds.totalBytes) / 1_048_576.0
-        
-        // Load imported sounds stats including orphaned files
-        let importedStats = AudioProcessingService.shared.importedSoundsStats()
-        importedSoundsCount = importedStats.fileCount
-        importedSoundsMB = Double(importedStats.totalBytes) / 1_048_576.0
-        orphanedFiles = importedStats.orphanedFiles
-        
-        armedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames.sorted() ?? []
-        lastPruneDate = AlarmCoordinator.sharedInstance?.lastStitchPruneDate
-        lastPruneFreedMB = Double(AlarmCoordinator.sharedInstance?.lastStitchPruneFreedBytes ?? 0) / 1_048_576.0
-        loadArmedRecords()
-    }
-    
-    private func loadArmedRecords() {
-        armedRecords = AlarmCoordinator.sharedInstance?.lastArmedRecords ?? []
-    }
-    
-    // MARK: - Section 0d: Armed right now
-    private var armedRightNowSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Armed Right Now")
-                .font(.subheadline.weight(.semibold))
-            
-            if armedRecords.isEmpty {
-                Text("No alarms currently armed")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(armedRecords, id: \.alarmID) { record in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(record.kind.uppercased())
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(record.kind == "primary" ? .green : .orange)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color(.systemGray5))
-                                .cornerRadius(3)
-                            Text(record.soundFileName)
-                                .font(.caption.monospaced())
-                                .lineLimit(1)
-                            Spacer()
-                            Text(record.format)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                            if record.isCapped {
-                                Text("CAPPED")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.orange)
-                                    .padding(.horizontal, 3)
-                                    .padding(.vertical, 1)
-                                    .background(Color.orange.opacity(0.2))
-                                    .cornerRadius(3)
-                            }
-                        }
-                        Text("Fire: \(record.effectiveDate.formatted(date: .abbreviated, time: .standard))  Duration: \(String(format: "%.1f", record.duration))s  Bytes: \(record.bytes)")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                        if record.firedAt != nil {
-                            Text("FIRED at \(record.firedAt!.formatted(date: .abbreviated, time: .standard))")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.red)
-                        } else if record.reArmedAt != nil {
-                            Text("Re-armed at \(record.reArmedAt!.formatted(date: .abbreviated, time: .standard))")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.blue)
-                        } else if record.skipped {
-                            Text("SKIPPED")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.orange)
-                        } else {
-                            Text("Armed at \(record.armedAt.formatted(date: .abbreviated, time: .standard))")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    Divider()
-                }
-            }
-        }
-    }
-    
-    // MARK: - Section 1: Last Alarm Result
-    private var lastAlarmResultSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Last Alarm Result")
-                .font(.subheadline.weight(.semibold))
-            
-            // Get last playback event from coordinator
-            if let lastEvent = AlarmCoordinator.sharedInstance?.playlistDiagnostics.playbackHistory.last {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(lastEvent.eventType)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(lastEvent.eventType.contains("FAILED") || lastEvent.eventType.contains("ERROR") ? .red : .green)
-                    if let details = lastEvent.details {
-                        Text(details)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("At: \(lastEvent.timestamp.formatted(date: .abbreviated, time: .standard))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Text("No alarm events recorded yet")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    
-    // MARK: - Section 2: Next Alarm Time
-    private var nextAlarmTimeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Next Alarm Time")
-                .font(.subheadline.weight(.semibold))
-            
-            if let next = AlarmCoordinator.sharedInstance?.nextOccurrence,
-               let alarm = AlarmCoordinator.sharedInstance?.alarms.first(where: { $0.id == next.alarmID }) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Label: \(alarm.label.isEmpty ? "Alarm" : alarm.label)")
-                    Text("ID: \(alarm.id.uuidString.prefix(8))")
-                    Text("Sound: \(alarm.sound.displayName)")
-                    Text("Next Fire: \(next.effectiveDate.formatted(date: .complete, time: .standard))")
-                    Text("Adjusted: \(next.isAdjusted ? "Yes" : "No")")
-                    if next.isAdjusted {
-                        let minutes = Int(next.effectiveDate.timeIntervalSince(next.baseDate) / 60)
-                        Text("Adjustment: \(minutes > 0 ? "+" : "")\(minutes) min")
-                    }
-                }
-                .font(.caption.monospaced())
-            } else {
-                Text("No upcoming alarm scheduled")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-    
-    // MARK: - Section 3: Loop Alive/Dead
-    private var loopStatusSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Smart Wake Loop Status")
-                .font(.subheadline.weight(.semibold))
-            
-            let status = SmartWakeService.shared.isRunning ? "ALIVE — silent loop running" : "DEAD — no silent loop"
-            let color = SmartWakeService.shared.isRunning ? Color.green : Color.red
-            
-            Text(status)
-                .font(.caption.monospaced())
-                .foregroundStyle(color)
-            
-            Text("Status tick: \(SmartWakeService.shared.statusTextPublished)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-    
-    // MARK: - Section 4: Log Lines
-    private var logSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Smart Wake Log (last 20 useful lines)")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if showUTCNotice {
-                    Text("Times shown in UTC (device is local)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            if isLoading {
-                ProgressView("Loading...")
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else if logLines.isEmpty {
-                Text("No log entries yet")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(logLines, id: \.self) { line in
-                        Text(line)
-                            .font(.system(.caption2, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(Color(.systemGray6))
-                .cornerRadius(8)
-            }
-        }
-    }
-    
-    // MARK: - Helpers
-    private func loadLog() {
-        isLoading = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            let text = SmartWakeDebugLog.read() ?? ""
-            let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-                .map(String.init)
-                // Filter out noise: SESSION DUMP, play() FALSE, STATE DUMP, BACKUP: skipping, lines starting with "  id="
-                .filter { line in
-                    !line.contains("SESSION DUMP") &&
-                    !line.contains("play() FALSE") &&
-                    !line.contains("STATE DUMP") &&
-                    !line.contains("BACKUP: skipping") &&
-                    !line.hasPrefix("  id=")
-                }
-                .suffix(20)
-                .map { line in
-                    // Extract timestamp and convert to local time if it's ISO8601
-                    if let timestampEnd = line.firstIndex(of: "]") {
-                        let timestampStr = String(line[line.startIndex...timestampEnd])
-                        if let date = ISO8601DateFormatter().date(from: String(timestampStr.dropFirst().dropLast())) {
-                            let localFormatter = DateFormatter()
-                            localFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                            localFormatter.timeZone = TimeZone.current
-                            let localStr = localFormatter.string(from: date)
-                            return line.replacingOccurrences(of: timestampStr, with: "[\(localStr) LOCAL]")
-                        }
-                    }
-                    return line
-                }
-            
-            DispatchQueue.main.async {
-                self.logLines = Array(lines)
-                self.isLoading = false
-            }
-        }
-    }
-    
-    private func clearLog() {
-        SmartWakeDebugLog.clear()
-        logLines.removeAll()
-    }
-    
-    private func copyFilteredLog() {
-        let text = SmartWakeDebugLog.read() ?? ""
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-            .map(String.init)
-            .filter { line in
-                !line.contains("SESSION DUMP") &&
-                !line.contains("play() FALSE") &&
-                !line.contains("STATE DUMP") &&
-                !line.contains("BACKUP: skipping") &&
-                !line.hasPrefix("  id=")
-            }
-            .suffix(40)
-            .joined(separator: "\n")
-        
-        UIPasteboard.general.string = lines
-    }
-    
-    private func loadBuildFingerprint() {
-        self.buildFingerprint = SmartWakeDebugLog.latestBuildLine()
-    }
-}
-
 // MARK: - Editor Presentation (item-based, travels with sheet)
 struct EditorPresentation: Identifiable {
     let id: UUID

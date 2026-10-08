@@ -10,7 +10,7 @@ struct SettingsView: View {
     @State private var showingSounds = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
-    @State private var coordinator = AlarmCoordinator()
+    let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
     var body: some View {
@@ -129,81 +129,12 @@ struct SettingsView: View {
             }
         }
     }
-}
-
-// Need to import DiagnosticsView - it's defined in ContentView
-// We'll need to make it accessible or duplicate the code
-// For now, let's create a simple wrapper or extract it
-
-struct DiagnosticsView: View {
-    let coordinator: AlarmCoordinator
-    @Environment(\.dismiss) private var dismiss
     
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                Text(diagnosticsText)
-                    .font(.system(.caption, design: .monospaced))
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(ThemeManager.shared.colors.background)
-            .navigationTitle("AlarmKit Diagnostics")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-        .background(ThemeManager.shared.colors.background)
-    }
-    
-    private var diagnosticsText: String {
-        var text = ""
-        
-        // Snapshot
-        if let snapshot = coordinator.nextAlarmSnapshot {
-            text += "=== NEXT ALARM SNAPSHOT ===\n"
-            text += "Alarm ID: \(snapshot.alarmID.uuidString)\n"
-            text += "Label: \(snapshot.label)\n"
-            text += "Next Occurrence: \(snapshot.nextOccurrenceDate.formatted(date: .complete, time: .standard))\n"
-            text += "Enabled: \(snapshot.isEnabled ? "Yes" : "No")\n"
-            text += "Adjusted: \(snapshot.isAdjusted ? "Yes" : "No")\n"
-            if let adj = snapshot.adjustmentDescription {
-                text += "Adjustment: \(adj)\n"
-            }
-            text += "Sound: \(snapshot.sound.displayName)\n"
-            text += "Loudness: \(snapshot.loudness.percentage)%\n\n"
-        } else {
-            text += "Current In-Memory Snapshot: NONE (no upcoming alarm)\n\n"
-        }
-        
-        // Last write result
-        let result = coordinator.lastSnapshotWriteResult
-        text += "Last Snapshot Write:\n"
-        text += "Success: \(result.success ? "YES" : "NO")\n"
-        if let error = result.error {
-            text += "Error: \(error)\n"
-        }
-        if let timestamp = result.timestamp {
-            text += "Timestamp: \(timestamp.formatted(date: .complete, time: .standard))\n"
-        }
-        text += "\n"
-        
-        // All alarms in engine
-        text += "=== ENGINE ALARMS ===\n"
-        if coordinator.alarms.isEmpty {
-            text += "NONE\n"
-        } else {
-            for alarm in coordinator.alarms {
-                text += "\(alarm.id.uuidString.prefix(8)) - \(alarm.label.isEmpty ? "Alarm" : alarm.label) - \(alarm.isEnabled ? "ON" : "OFF")\n"
-            }
-        }
-        
-        return text
+    init(coordinator: AlarmCoordinator) {
+        self.coordinator = coordinator
     }
 }
 
 #Preview {
-    SettingsView()
+    SettingsView(coordinator: AlarmCoordinator())
 }
