@@ -48,7 +48,7 @@ struct BottomActionsBar: View {
             HStack(spacing: 8) {
                 if let systemImage = action.systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.body.weight(.semibold))
                 }
                 Text(action.title)
             }

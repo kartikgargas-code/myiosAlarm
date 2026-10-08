@@ -76,7 +76,7 @@ struct AppButtonChrome<Content: View>: View {
     
     var body: some View {
         content
-            .font(.system(size: 17, weight: .bold))
+            .font(.body.weight(.bold))
             .foregroundStyle(colors.accent)
             .modifier(TextOutlineModifier(width: textOutlineWidth))
             .padding(.horizontal, shape == .capsule ? 20 : 0)
