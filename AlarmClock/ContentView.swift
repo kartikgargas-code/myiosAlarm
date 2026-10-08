@@ -65,9 +65,10 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent)
+                            .background(ThemeManager.shared.colors.accent.opacity(0.22))
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
                             .clipShape(Circle())
                             .shadow(radius: 4)
                     }
@@ -81,9 +82,10 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "gearshape.fill")
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
-                            .background(ThemeManager.shared.colors.accent)
+                            .background(ThemeManager.shared.colors.accent.opacity(0.22))
+                            .overlay(Circle().stroke(ThemeManager.shared.colors.accent.opacity(0.55), lineWidth: 1))
                             .clipShape(Circle())
                             .shadow(radius: 4)
                     }
