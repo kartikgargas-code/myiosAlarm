@@ -72,12 +72,12 @@ struct DiagnosticsView: View {
         .safeAreaInset(edge: .bottom) {
             BottomActionsBar(
                 leadingActions: [
-                    .custom("Copy (40 lines)") { copyFilteredLog() },
-                    .custom("Clear") { clearLog() },
-                    .custom("Refresh") { loadLog() }
+                    .icon("Copy", systemImage: "doc.on.doc") { copyFilteredLog() },
+                    .icon("Clear", systemImage: "trash", destructive: true) { clearLog() },
+                    .icon("Refresh", systemImage: "arrow.clockwise") { loadLog() }
                 ],
                 trailingActions: [
-                    .primary("Done") { dismiss() }
+                    .icon("Done", systemImage: "checkmark") { dismiss() }
                 ]
             )
         }

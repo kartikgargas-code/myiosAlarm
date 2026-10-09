@@ -209,13 +209,13 @@ struct SoundPickerView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") {
+                        .icon("Cancel", systemImage: "xmark") {
                             selectedSound = initialSelection
                             dismiss()
                         }
                     ],
                     trailingActions: [
-                        .primary("Save") { dismiss() }
+                        .icon("Save", systemImage: "checkmark") { dismiss() }
                     ]
                 )
             }
@@ -486,10 +486,10 @@ struct PlaylistCreatorView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") { dismiss() }
+                        .icon("Cancel", systemImage: "xmark") { dismiss() }
                     ],
                     trailingActions: [
-                        .primary("Save") {
+                        .icon("Save", systemImage: "checkmark") {
                             let trimmed = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !trimmed.isEmpty, !selectedSoundIDs.isEmpty else { return }
                             onSave(trimmed, Array(selectedSoundIDs))
@@ -638,13 +638,13 @@ struct PlaylistEditorView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") {
+                        .icon("Cancel", systemImage: "xmark") {
                             selectedSoundIDs = initialSelectedSoundIDs
                             dismiss()
                         }
                     ],
                     trailingActions: [
-                        .primary("Save") {
+                        .icon("Save", systemImage: "checkmark") {
                             var updatedPlaylist = playlist
                             updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
                             updatedPlaylist.sortOption = sortOption

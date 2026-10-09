@@ -30,7 +30,7 @@ struct NextAlarmControlView: View {
                 BottomActionsBar(
                     leadingActions: [],
                     trailingActions: [
-                        .primary("Done") { dismiss() }
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
             }

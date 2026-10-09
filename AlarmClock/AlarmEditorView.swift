@@ -93,10 +93,10 @@ struct AlarmEditorView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") { dismiss() }
+                        .icon("Cancel", systemImage: "xmark") { dismiss() }
                     ],
                     trailingActions: [
-                        .primary("Save", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
+                        .icon("Save", systemImage: "checkmark", isEnabled: !(isSaving || (repeatSelection.wrappedValue == .custom && customDays.isEmpty))) { saveAlarm() }
                     ]
                 )
             }

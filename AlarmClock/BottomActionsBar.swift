@@ -62,18 +62,29 @@ struct BottomActionsBar: View {
         let isDestructive = action.foregroundColor == .red
         let accent = isDestructive ? Color.red : ThemeManager.shared.colors.accent
         
-        return Button(action: action.action) {
-            HStack(spacing: 8) {
-                if let systemImage = action.systemImage {
-                    Image(systemName: systemImage)
-                        .font(.body.weight(.semibold))
-                }
-                Text(action.title)
+        if action.isIconOnly {
+            return Button(action: action.action) {
+                Image(systemName: action.systemImage ?? "")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .appButtonChrome(shape: .circle, size: 48)
             }
-            .foregroundStyle(accent)
-            .appButtonChrome(shape: .capsule)
+            .disabled(!action.isEnabled)
+            .accessibilityLabel(action.title)
+        } else {
+            return Button(action: action.action) {
+                HStack(spacing: 8) {
+                    if let systemImage = action.systemImage {
+                        Image(systemName: systemImage)
+                            .font(.body.weight(.semibold))
+                    }
+                    Text(action.title)
+                }
+                .foregroundStyle(accent)
+                .appButtonChrome(shape: .capsule)
+            }
+            .disabled(!action.isEnabled)
         }
-        .disabled(!action.isEnabled)
     }
 }
 
@@ -84,6 +95,7 @@ struct ActionButton {
     var isPrimary: Bool = false
     var foregroundColor: Color? = nil
     var isEnabled: Bool = true
+    var isIconOnly: Bool = false
     
     static func cancel(_ title: String = "Cancel", action: @escaping () -> Void) -> ActionButton {
         ActionButton(title: title, action: action, isPrimary: false)
@@ -101,12 +113,20 @@ struct ActionButton {
     static func custom(_ title: String, action: @escaping () -> Void, systemImage: String? = nil, isPrimary: Bool = false, foregroundColor: Color? = nil, isEnabled: Bool = true) -> ActionButton {
         ActionButton(title: title, action: action, systemImage: systemImage, isPrimary: isPrimary, foregroundColor: foregroundColor, isEnabled: isEnabled)
     }
+    
+    static func icon(_ accessibilityLabel: String, systemImage: String,
+                     destructive: Bool = false, isEnabled: Bool = true,
+                     action: @escaping () -> Void) -> ActionButton {
+        ActionButton(title: accessibilityLabel, action: action, systemImage: systemImage,
+                     isPrimary: false, foregroundColor: destructive ? .red : nil,
+                     isEnabled: isEnabled, isIconOnly: true)
+    }
 }
 
 // Preview
 #Preview {
     BottomActionsBar(
         leadingActions: [.cancel { print("Cancel") }],
-        trailingActions: [.primary("Save") { print("Save") }]
+        trailingActions: [.icon("Save", systemImage: "checkmark") { print("Save") }]
     )
 }

@@ -27,12 +27,12 @@ struct HistoryView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .custom("Clear All", action: {
+                        .icon("Clear All", systemImage: "trash", destructive: true) {
                             showingClearAllConfirmation = true
-                        }, foregroundColor: ThemeManager.shared.colors.destructive)
+                        }
                     ],
                     trailingActions: [
-                        .primary("Done") { dismiss() }
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
             }

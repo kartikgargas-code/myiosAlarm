@@ -255,7 +255,7 @@ struct AppearanceView: View {
                 BottomActionsBar(
                     leadingActions: [],
                     trailingActions: [
-                        .primary("Done") { dismiss() }
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
             }
@@ -351,10 +351,10 @@ struct CustomColorPickerView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") { dismiss() }
+                        .icon("Cancel", systemImage: "xmark") { dismiss() }
                     ],
                     trailingActions: [
-                        .primary("Save") {
+                        .icon("Save", systemImage: "checkmark") {
                             onSave(customColors)
                             dismiss()
                         }
@@ -430,10 +430,10 @@ struct UserThemeEditorView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .cancel("Cancel") { dismiss() }
+                        .icon("Cancel", systemImage: "xmark") { dismiss() }
                     ],
                     trailingActions: [
-                        .primary("Save", isEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                        .icon("Save", systemImage: "checkmark", isEnabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                             if let editingTheme {
                                 ThemeManager.shared.updateUserTheme(id: editingTheme.id, name: name, colors: colors)
                             } else {
