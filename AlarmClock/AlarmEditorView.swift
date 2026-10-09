@@ -25,7 +25,6 @@ struct AlarmEditorView: View {
     @State private var silenceAfterMinutes: Int? = nil
     @State private var loopSound: Bool = true
     @State private var showingSoundPicker = false
-    @State private var showingLoudnessSheet = false
     @State private var isSaving = false
     @State private var draftID = UUID()
     // Capture the alarm ID at init so a nil existingAlarm at save time
@@ -107,48 +106,9 @@ struct AlarmEditorView: View {
         .sheet(isPresented: $showingSoundPicker) {
             SoundPickerView(selectedSound: $selectedSound, alarms: alarms)
         }
-        .sheet(isPresented: $showingLoudnessSheet) {
-            NavigationStack {
-                Form {
-                    Section("Loudness") {
-                        Picker("Loudness", selection: loudnessBinding) {
-                            ForEach(Array(stride(from: 0, through: 100, by: 5)), id: \.self) { v in
-                                Text("\(v)%").tag(Double(v))
-                            }
-                        }
-                        .pickerStyle(.wheel)
-                    }
-                }
-                .navigationTitle("Loudness")
-                .navigationBarTitleDisplayMode(.inline)
-                .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
-                .safeAreaInset(edge: .bottom) {
-                    HStack {
-                        Spacer()
-                        Button("Done") {
-                            showingLoudnessSheet = false
-                        }
-                        .appButtonChrome(shape: .capsule)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(.clear)
-                }
-                .onAppear {
-                    // Start preview when sheet opens
-                    startLoudnessPreview()
-                }
-                .onDisappear {
-                    // Stop preview when sheet closes
-                    stopLoudnessPreview()
-                }
-            }
-        }
         .onChange(of: selectedLoudness) { _, newValue in
-            // Start preview when loudness changes via wheel picker (only when sheet is open)
-            if showingLoudnessSheet {
-                startLoudnessPreview()
-            }
+            // Start preview when loudness changes via wheel picker
+            startLoudnessPreview()
         }
         .onDisappear {
             testAlarmTask?.cancel()
@@ -198,25 +158,21 @@ struct AlarmEditorView: View {
     }
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
-            Button {
-                showingLoudnessSheet = true
-            } label: {
-                HStack {
-                    Text("Loudness")
-                    Spacer()
-                    Text(selectedLoudness.displayName)
-                        .monospacedDigit()
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                }
-            }
-            .buttonStyle(.plain)
+            AccentWheelPicker(
+                values: Array(stride(from: 0, through: 100, by: 5)),
+                display: { "\($0)%" },
+                selection: loudnessIntBinding,
+                accent: ThemeManager.shared.colors.accent,
+                secondary: ThemeManager.shared.colors.secondaryText
+            )
+            .frame(height: 130)
         }
     }
 
-    private var loudnessBinding: Binding<Double> {
+    private var loudnessIntBinding: Binding<Int> {
         Binding(
-            get: { Double(selectedLoudness.percentage) },
-            set: { selectedLoudness = AlarmLoudness(Int($0.rounded())) }
+            get: { selectedLoudness.percentage },
+            set: { selectedLoudness = AlarmLoudness($0) }
         )
     }
     
