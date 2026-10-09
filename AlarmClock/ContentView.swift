@@ -691,7 +691,7 @@ struct SoundsView: View {
         var refs: [String] = []
         
         // Check alarms
-        for alarm in alarms {
+        for alarm in coordinator.alarms {
             if case .imported(let id) = alarm.sound, id == sound.id {
                 refs.append("alarm \"\(alarm.label.isEmpty ? "Alarm" : alarm.label)\"")
             }
@@ -723,7 +723,7 @@ struct SoundsView: View {
     
     private func isSoundReferenced(_ sound: ImportedSound) -> Bool {
         // Check alarms
-        for alarm in alarms {
+        for alarm in coordinator.alarms {
             if case .imported(let id) = alarm.sound, id == sound.id {
                 return true
             }

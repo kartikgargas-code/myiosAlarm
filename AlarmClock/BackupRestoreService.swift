@@ -179,7 +179,12 @@ final class BackupRestoreService {
             }
         }
         
-        let finalAlarms = AlarmStoreSnapshot(alarms: restoredAlarms)
+        let finalAlarms = AlarmStoreSnapshot(
+            alarms: restoredAlarms,
+            playlists: archive.alarms.playlists,
+            managedSystemAlarmIDs: archive.alarms.managedSystemAlarmIDs,
+            playHistory: archive.alarms.playHistory
+        )
         
         // Stage 5: Save alarms snapshot
         try coordinator.persistence.save(finalAlarms)
