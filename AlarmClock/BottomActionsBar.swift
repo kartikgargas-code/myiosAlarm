@@ -63,14 +63,27 @@ struct BottomActionsBar: View {
         let accent = isDestructive ? Color.red : ThemeManager.shared.colors.accent
         
         if action.isIconOnly {
-            return Button(action: action.action) {
-                Image(systemName: action.systemImage ?? "")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(accent)
-                    .appButtonChrome(shape: .circle, size: 48)
+            if let menu = action.menu {
+                return Menu {
+                    menu
+                } label: {
+                    Image(systemName: action.systemImage ?? "")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .appButtonChrome(shape: .circle, size: 48)
+                }
+                .disabled(!action.isEnabled)
+                .accessibilityLabel(action.title)
+            } else {
+                return Button(action: action.action) {
+                    Image(systemName: action.systemImage ?? "")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .appButtonChrome(shape: .circle, size: 48)
+                }
+                .disabled(!action.isEnabled)
+                .accessibilityLabel(action.title)
             }
-            .disabled(!action.isEnabled)
-            .accessibilityLabel(action.title)
         } else {
             return Button(action: action.action) {
                 HStack(spacing: 8) {
@@ -96,6 +109,7 @@ struct ActionButton {
     var foregroundColor: Color? = nil
     var isEnabled: Bool = true
     var isIconOnly: Bool = false
+    var menu: AnyView? = nil
     
     static func cancel(_ title: String = "Cancel", action: @escaping () -> Void) -> ActionButton {
         ActionButton(title: title, action: action, isPrimary: false)
@@ -120,6 +134,12 @@ struct ActionButton {
         ActionButton(title: accessibilityLabel, action: action, systemImage: systemImage,
                      isPrimary: false, foregroundColor: destructive ? .red : nil,
                      isEnabled: isEnabled, isIconOnly: true)
+    }
+    
+    func menu(_ menu: AnyView) -> ActionButton {
+        var copy = self
+        copy.menu = menu
+        return copy
     }
 }
 

@@ -540,33 +540,30 @@ struct SoundsView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 12) {
-                    Spacer(minLength: 0)
-                    
-                    // Sort Menu grouped with Done on the right
-                    Menu {
-                        Picker("Sort by", selection: $sortOptionRaw) {
-                            ForEach(SoundSortOption.allCases) { option in
-                                Text(option.rawValue).tag(option.rawValue)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                            .frame(width: 44, height: 44)
-                            .appButtonChrome(shape: .circle)
-                    }
-                    .menuStyle(.borderlessButton)
-                    
-                    // Done on the RIGHT - capsule with chrome
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .appButtonChrome(shape: .capsule)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.clear)
+                BottomActionsBar(
+                    leadingActions: [
+                        .icon("Sort", systemImage: "arrow.up.arrow.down", action: {})
+                            .menu(
+                                Menu {
+                                    Picker("Sort by", selection: $sortOptionRaw) {
+                                        ForEach(SoundSortOption.allCases) { option in
+                                            Text(option.rawValue).tag(option.rawValue)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.up.arrow.down")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .frame(width: 48, height: 48)
+                                        .appButtonChrome(shape: .circle, size: 48)
+                                }
+                                .menuStyle(.borderlessButton)
+                            )
+                    ],
+                    trailingActions: [
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
+                    ]
+                )
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,
