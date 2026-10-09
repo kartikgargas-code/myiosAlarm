@@ -29,6 +29,10 @@ struct AccentWheelPicker: UIViewRepresentable {
         picker.reloadComponent(0)
     }
 
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIPickerView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 90, height: proposal.height ?? 110)
+    }
+
     final class Coordinator: NSObject, UIPickerViewDataSource, UIPickerViewDelegate {
         var parent: AccentWheelPicker
         init(_ parent: AccentWheelPicker) { self.parent = parent }

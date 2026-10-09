@@ -114,15 +114,6 @@ struct AppearanceView: View {
                             display: { String(format: "%.1f", Double($0) / 2) }
                         )
                     }
-
-                    Text("Live Preview")
-                        .font(.footnote)
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    BottomActionsBar(
-                        leadingActions: [],
-                        trailingActions: [.icon("Test", systemImage: "checkmark") {}]
-                    )
-                    .listRowBackground(Color.clear)
                 }
                 
                 Text("Glow applies to the bottom buttons and the floating + / gear.")

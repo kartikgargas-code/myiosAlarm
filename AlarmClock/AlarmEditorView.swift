@@ -158,6 +158,13 @@ struct AlarmEditorView: View {
     }
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
+            HStack {
+                Text("Loudness")
+                Spacer()
+                Text("\(selectedLoudness.percentage)%")
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+            }
             AccentWheelPicker(
                 values: Array(stride(from: 0, through: 100, by: 5)),
                 display: { "\($0)%" },
