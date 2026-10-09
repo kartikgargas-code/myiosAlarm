@@ -72,11 +72,6 @@ struct AppearanceView: View {
                     SliderSettingRow(title: "Border", value: outlineSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
                     SliderSettingRow(title: "Ring", value: outerRingSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
                     SliderSettingRow(title: "Edge", value: textOutlineSlider, range: 0...3, step: 0.5) { String(format: "%.1f", $0) }
-
-                    // TEMPORARY DIAGNOSTIC - leave in this build so we can see the stored values; remove next round.
-                    Text("DBG r=\(ThemeManager.shared.buttonGlowRadius) o=\(ThemeManager.shared.buttonGlowOpacity) s=\(ThemeManager.shared.buttonGlowSpread) b=\(ThemeManager.shared.buttonOutlineWidth) ring=\(ThemeManager.shared.buttonOuterRing) e=\(ThemeManager.shared.buttonTextOutline)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
 
                 Section("Text Size") {

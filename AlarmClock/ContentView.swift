@@ -441,12 +441,14 @@ struct EditorPresentation: Identifiable {
 // MARK: - Sounds View (Sound Manager)
 struct SoundsView: View {
     @Environment(\.dismiss) private var dismiss
-    let alarms: [AlarmRecord]
+    let coordinator: AlarmCoordinator
     
     @State private var showingDocumentPicker = false
     @State private var importError: String?
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
+    @State private var showingDeleteAll = false
+    @State private var folderToDelete: String? = nil
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -543,29 +545,48 @@ struct SoundsView: View {
                 BottomActionsBar(
                     leadingActions: [
                         .icon("Sort", systemImage: "arrow.up.arrow.down", action: {})
-                            .menu(
-                                AnyView(
-                                    Menu {
-                                        Picker("Sort by", selection: $sortOptionRaw) {
-                                            ForEach(SoundSortOption.allCases) { option in
-                                                Text(option.rawValue).tag(option.rawValue)
+                            .menu(AnyView(
+                                ForEach(SoundSortOption.allCases) { option in
+                                    Button { sortOptionRaw = option.rawValue } label: {
+                                        if sortOption == option { Label(option.rawValue, systemImage: "checkmark") }
+                                        else { Text(option.rawValue) }
+                                    }
+                                }
+                            ))
+                            .contextMenu(AnyView(
+                                Group {
+                                    Button("Delete All Tracks", role: .destructive) { showingDeleteAll = true }
+                                    if !SoundLibrary.shared.importedFolders.isEmpty {
+                                        Menu("Delete Folder") {
+                                            ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                                                Button(folder, role: .destructive) { folderToDelete = folder }
                                             }
                                         }
-                                    } label: {
-                                        Image(systemName: "arrow.up.arrow.down")
-                                            .font(.title3.weight(.semibold))
-                                            .foregroundStyle(ThemeManager.shared.colors.accent)
-                                            .frame(width: 48, height: 48)
-                                            .appButtonChrome(shape: .circle, size: 48)
                                     }
-                                    .menuStyle(.borderlessButton)
-                                )
-                            )
+                                }
+                            ))
                     ],
                     trailingActions: [
                         .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
+            }
+            .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
+                Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Removes every imported track from the app and resets any alarm using one to Default.")
+            }
+            .confirmationDialog("Delete folder \"\(folderToDelete ?? "")\"?",
+                isPresented: Binding(get: { folderToDelete != nil }, set: { if !$0 { folderToDelete = nil } }),
+                titleVisibility: .visible) {
+                Button("Delete Folder", role: .destructive) {
+                    if let f = folderToDelete { Task { await coordinator.deleteImportedSounds(inFolder: f) } }
+                    folderToDelete = nil
+                }
+                Button("Cancel", role: .cancel) { folderToDelete = nil }
+            } message: {
+                Text("Deletes every track in this folder and removes its playlist.")
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,

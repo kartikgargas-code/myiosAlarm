@@ -171,6 +171,40 @@ final class AlarmCoordinator {
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         SmartWakeDebugLog.log("ALARM DELETE: after count=\(afterCount) ids=\(afterIds)")
     }
+    
+    /// Reset alarms that use sounds we just deleted
+    private func resetAlarmsUsingDeletedSounds(_ shouldReset: (AlarmSound) -> Bool) async {
+        for alarm in alarms where shouldReset(alarm.sound) {
+            var updated = alarm
+            updated.sound = .systemDefault
+            await save(updated)
+        }
+    }
+    
+    /// Delete all imported sounds and reset affected alarms
+    func deleteAllImportedSounds() async {
+        SoundLibrary.shared.deleteAllSounds()
+        await resetAlarmsUsingDeletedSounds { sound in
+            switch sound {
+            case .systemDefault, .builtIn: return false
+            case .imported, .random, .precomposedPlaylist: return true
+            }
+        }
+    }
+    
+    /// Delete imported sounds in a specific folder and reset affected alarms
+    func deleteImportedSounds(inFolder folder: String) async {
+        let removedIDs = Set(SoundLibrary.shared.importedSounds.filter { $0.folder == folder }.map { $0.id })
+        let removedPlaylistIDs = Set(SoundLibrary.shared.playlists.filter { $0.name == folder }.map { $0.id })
+        SoundLibrary.shared.deleteSounds(inFolder: folder)
+        await resetAlarmsUsingDeletedSounds { sound in
+            switch sound {
+            case .imported(let id): return removedIDs.contains(id)
+            case .random(let pid), .precomposedPlaylist(let pid, _): return removedPlaylistIDs.contains(pid)
+            case .systemDefault, .builtIn: return false
+            }
+        }
+    }
 
     func duplicate(id: UUID) async {
         guard let original = engine.alarm(id: id) else {

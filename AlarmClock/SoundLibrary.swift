@@ -601,4 +601,39 @@ final class SoundLibrary {
         overrides[fileName] = nil
         UserDefaults.standard.set(overrides, forKey: displayNameKey)
     }
+    
+    /// All unique folder names from imported sounds (sorted)
+    var importedFolders: [String] {
+        Array(Set(importedSounds.compactMap { $0.folder })).sorted()
+    }
+    
+    /// Remove the physical sound file and any processed variants
+    private func purgeSoundFiles(_ sound: ImportedSound) {
+        AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        if let url = sound.localURL(soundsDirectory: soundsDirectory) {
+            try? fileManager.removeItem(at: url)
+        }
+        removeDisplayNameOverride(for: sound.fileName)
+    }
+    
+    /// Delete all imported sounds and playlists
+    func deleteAllSounds() {
+        let count = importedSounds.count
+        for sound in importedSounds { purgeSoundFiles(sound) }
+        importedSounds = []
+        playlists = []
+        savePlaylists()
+        SmartWakeDebugLog.log("SOUNDS DELETE ALL: cleared \(count) tracks + playlists")
+    }
+    
+    /// Delete all sounds in a specific folder (and the playlist with that name)
+    func deleteSounds(inFolder folder: String) {
+        let victims = importedSounds.filter { $0.folder == folder }
+        let victimIDs = Set(victims.map { $0.id })
+        for sound in victims { purgeSoundFiles(sound) }
+        importedSounds.removeAll { victimIDs.contains($0.id) }
+        playlists.removeAll { $0.name == folder }
+        savePlaylists()
+        SmartWakeDebugLog.log("SOUNDS DELETE FOLDER: \(folder) removed \(victims.count) tracks + playlist")
+    }
 }

@@ -64,31 +64,37 @@ struct BottomActionsBar: View {
         
         if action.isIconOnly {
             if let menu = action.menu {
-                return AnyView(
-                    Menu {
-                        menu
-                    } label: {
-                        Image(systemName: action.systemImage ?? "")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(accent)
-                            .appButtonChrome(shape: .circle, size: 48)
-                    }
-                    .disabled(!action.isEnabled)
-                    .accessibilityLabel(action.title)
-                    .buttonStyle(.plain)
-                )
+                let base = Menu {
+                    menu
+                } label: {
+                    Image(systemName: action.systemImage ?? "")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .appButtonChrome(shape: .circle, size: 48)
+                }
+                .disabled(!action.isEnabled)
+                .accessibilityLabel(action.title)
+                .buttonStyle(.plain)
+                
+                if let cm = action.contextMenu {
+                    return AnyView(base.contextMenu { cm })
+                }
+                return AnyView(base)
             } else {
-                return AnyView(
-                    Button(action: action.action) {
-                        Image(systemName: action.systemImage ?? "")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(accent)
-                            .appButtonChrome(shape: .circle, size: 48)
-                    }
-                    .disabled(!action.isEnabled)
-                    .accessibilityLabel(action.title)
-                    .buttonStyle(.plain)
-                )
+                let base = Button(action: action.action) {
+                    Image(systemName: action.systemImage ?? "")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .appButtonChrome(shape: .circle, size: 48)
+                }
+                .disabled(!action.isEnabled)
+                .accessibilityLabel(action.title)
+                .buttonStyle(.plain)
+                
+                if let cm = action.contextMenu {
+                    return AnyView(base.contextMenu { cm })
+                }
+                return AnyView(base)
             }
         } else {
             return AnyView(
@@ -119,6 +125,7 @@ struct ActionButton {
     var isEnabled: Bool = true
     var isIconOnly: Bool = false
     var menu: AnyView? = nil
+    var contextMenu: AnyView? = nil
     
     static func cancel(_ title: String = "Cancel", action: @escaping () -> Void) -> ActionButton {
         ActionButton(title: title, action: action, isPrimary: false)
@@ -148,6 +155,12 @@ struct ActionButton {
     func menu(_ menu: AnyView) -> ActionButton {
         var copy = self
         copy.menu = menu
+        return copy
+    }
+    
+    func contextMenu(_ menu: AnyView) -> ActionButton {
+        var copy = self
+        copy.contextMenu = menu
         return copy
     }
 }

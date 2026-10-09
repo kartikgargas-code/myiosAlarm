@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showingImportPicker = false
     @State private var showingShareSheet = false
     @State private var shareURL: URL?
+    @State private var showingExportSheet = false
+    @State private var pendingExportName: String?
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -37,16 +39,7 @@ struct SettingsView: View {
                 
                 Section("Backup & Restore") {
                     Button("Export Backup") {
-                        Task {
-                            do {
-                                let url = try await BackupRestoreService.shared.exportArchive()
-                                exportURL = url
-                                shareURL = url
-                                showingShareSheet = true
-                            } catch {
-                                coordinator.lastError = "Export failed: \(error.localizedDescription)"
-                            }
-                        }
+                        showingExportSheet = true
                     }
                     Button("Import Backup") {
                         showingImportPicker = true
@@ -101,7 +94,7 @@ struct SettingsView: View {
                 HistoryView(coordinator: coordinator)
             }
             .sheet(isPresented: $showingSounds) {
-                SoundsView(alarms: coordinator.alarms)
+                SoundsView(coordinator: coordinator)
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
@@ -125,11 +118,71 @@ struct SettingsView: View {
                     ShareSheet(activityItems: [shareURL])
                 }
             }
+            .sheet(isPresented: $showingExportSheet, onDismiss: runPendingExport) {
+                ExportBackupSheet { name in
+                    pendingExportName = name
+                    showingExportSheet = false
+                }
+            }
+        }
+    }
+    
+    private func runPendingExport() {
+        guard let name = pendingExportName else { return }
+        pendingExportName = nil
+        Task {
+            do {
+                let url = try await BackupRestoreService.shared.exportArchive(fileName: name)
+                shareURL = url
+                showingShareSheet = true
+            } catch {
+                coordinator.lastError = "Export failed: \(error.localizedDescription)"
+            }
         }
     }
     
     init(coordinator: AlarmCoordinator) {
         self.coordinator = coordinator
+    }
+}
+
+// Export Backup Sheet
+private struct ExportBackupSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let onName: (String) -> Void
+    @State private var name: String = ""
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("File Name") {
+                    TextField("Backup name", text: $name)
+                        .autocorrectionDisabled()
+                }
+                Text("Saved as \(name).json - your alarms and app settings only (no audio files).")
+                    .font(.footnote)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            }
+            .navigationTitle("Export Backup")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [.icon("Cancel", systemImage: "xmark") { dismiss() }],
+                    trailingActions: [.icon("Save", systemImage: "checkmark",
+                                            isEnabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) {
+                        onName(name)
+                        dismiss()
+                    }]
+                )
+            }
+            .onAppear {
+                if name.isEmpty {
+                    let f = DateFormatter()
+                    f.dateFormat = "yyyy-MM-dd"
+                    name = "AlarmClock_Backup_\(f.string(from: Date()))"
+                }
+            }
+        }
     }
 }
 

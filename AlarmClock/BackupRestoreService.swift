@@ -35,19 +35,22 @@ final class BackupRestoreService {
         var displayNameOverrides: [String: String]  // fileName -> displayName
         var durationOverrides: [String: TimeInterval]  // fileName -> duration
         var sounds: [BackupSoundFile]  // Only imported sounds
-        var version: Int = 1
+        var version: Int = 2
         var exportedAt: Date = Date()
         
         struct BackupSoundFile: Codable {
             let fileName: String
-            let dataBase64: String  // Base64 encoded
+            var name: String? = nil
+            var folder: String? = nil
+            var duration: TimeInterval? = nil
+            var dataBase64: String? = nil   // nil = metadata-only (v2). v1 files still decode.
         }
     }
     
     private init() {}
     
-    /// Export all app data to a JSON file (with base64-encoded sounds)
-    func exportArchive() async throws -> URL {
+    /// Export all app data to a JSON file (metadata-only, no audio bytes)
+    func exportArchive(fileName: String? = nil) async throws -> URL {
         let fileManager = FileManager.default
         
         // Gather all data
@@ -59,19 +62,16 @@ final class BackupRestoreService {
             throw BackupError.coordinatorNotAvailable
         }
         
-        // Collect imported sound files as base64
+        // Collect imported sound metadata only (no audio bytes)
         var soundFiles: [BackupArchive.BackupSoundFile] = []
-        let soundsDir = soundLibrary.soundsDirectory
-        
-        if let soundsDir {
-            for sound in soundLibrary.importedSounds {
-                let fileURL = soundsDir.appendingPathComponent(sound.fileName)
-                if fileManager.fileExists(atPath: fileURL.path) {
-                    let data = try Data(contentsOf: fileURL)
-                    let base64String = data.base64EncodedString()
-                    soundFiles.append(BackupArchive.BackupSoundFile(fileName: sound.fileName, dataBase64: base64String))
-                }
-            }
+        for sound in soundLibrary.importedSounds {
+            soundFiles.append(.init(
+                fileName: sound.fileName,
+                name: sound.name,
+                folder: sound.folder,
+                duration: sound.duration,
+                dataBase64: nil
+            ))
         }
         
         // Get display name and duration overrides
@@ -91,7 +91,11 @@ final class BackupRestoreService {
         let backupDir = docsDir.appendingPathComponent("AlarmClock_Backups", isDirectory: true)
         try fileManager.createDirectory(at: backupDir, withIntermediateDirectories: true)
         
-        let archiveURL = backupDir.appendingPathComponent("AlarmClock_Backup_\(Date().timeIntervalSince1970).json")
+        // Sanitize the file name
+        let base = (fileName?.isEmpty == false ? fileName! : "AlarmClock_Backup_\(Int(Date().timeIntervalSince1970))")
+            .components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|")).joined()
+        let archiveURL = backupDir.appendingPathComponent("\(base).json")
+        
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -124,8 +128,8 @@ final class BackupRestoreService {
         decoder.dateDecodingStrategy = .iso8601
         let archive = try decoder.decode(BackupArchive.self, from: data)
         
-        // Validate version
-        guard archive.version <= 1 else {
+        // Validate version (support v1 and v2)
+        guard archive.version <= 2 else {
             throw BackupError.unsupportedVersion(archive.version)
         }
         
@@ -135,18 +139,20 @@ final class BackupRestoreService {
             throw BackupError.coordinatorNotAvailable
         }
         
-        // Stage 1: Restore sound files from base64
-        let soundsDir = SoundLibrary.shared.soundsDirectory
-        if let soundsDir {
-            try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
-            
-            for soundFile in archive.sounds {
-                let destURL = soundsDir.appendingPathComponent(soundFile.fileName)
-                guard let decodedData = Data(base64Encoded: soundFile.dataBase64) else {
-                    os_log(.error, log: log, "Failed to decode base64 for sound: %{public}s", soundFile.fileName)
-                    continue
+        // Stage 1: Restore sound files from base64 (only for v1 archives)
+        if archive.version <= 1 {
+            let soundsDir = SoundLibrary.shared.soundsDirectory
+            if let soundsDir {
+                try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
+                
+                for soundFile in archive.sounds {
+                    let destURL = soundsDir.appendingPathComponent(soundFile.fileName)
+                    guard let decodedData = Data(base64Encoded: soundFile.dataBase64 ?? "") else {
+                        os_log(.error, log: log, "Failed to decode base64 for sound: %{public}s", soundFile.fileName)
+                        continue
+                    }
+                    try decodedData.write(to: destURL, options: .atomic)
                 }
-                try decodedData.write(to: destURL, options: .atomic)
             }
         }
         
@@ -162,21 +168,24 @@ final class BackupRestoreService {
         // Stage 3: Reload sound library
         soundLibrary.loadSounds()
         
-        // Stage 4: Validate alarm sound references
-        for alarm in archive.alarms.alarms {
-            if case .imported(let id) = alarm.sound {
-                let sound = soundLibrary.importedSounds.first { $0.id == id }
-                if sound == nil {
-                    os_log(.info, log: log, "Alarm %{public}s references missing imported sound %{public}s", alarm.id.uuidString, id.uuidString)
-                }
+        // Stage 4: Validate alarm sound references - reset missing imported sounds to Default
+        var restoredAlarms = archive.alarms.alarms
+        var changed = false
+        for i in restoredAlarms.indices {
+            if case .imported(let id) = restoredAlarms[i].sound,
+               !soundLibrary.importedSounds.contains(where: { $0.id == id }) {
+                restoredAlarms[i].sound = .systemDefault
+                changed = true
             }
         }
         
+        let finalAlarms = AlarmStoreSnapshot(alarms: restoredAlarms)
+        
         // Stage 5: Save alarms snapshot
-        try coordinator.persistence.save(archive.alarms)
-        coordinator.currentEngine.snapshot = archive.alarms
+        try coordinator.persistence.save(finalAlarms)
+        coordinator.currentEngine.snapshot = finalAlarms
         coordinator.publish()
-        coordinator.writeAlarmsToAppGroup(archive.alarms)
+        coordinator.writeAlarmsToAppGroup(finalAlarms)
         
         // Stage 6: Restore user themes
         let themeManager = ThemeManager.shared
