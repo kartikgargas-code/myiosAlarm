@@ -20,7 +20,6 @@ final class SoundPreviewService: NSObject {
     private(set) var lastError: String?
 
     var player: AVAudioPlayer?
-    private var sessionConfigured = false
 
     static func bundledSoundURL(for fileName: String) -> URL? {
         let name = (fileName as NSString).deletingPathExtension
@@ -41,14 +40,17 @@ final class SoundPreviewService: NSObject {
             newPlayer.delegate = self
             guard newPlayer.play() else {
                 lastError = "Preview could not start for \(url.lastPathComponent)."
+                SmartWakeDebugLog.log("PREVIEW FAIL id=\(id) \(lastError ?? "")")
                 return
             }
             player = newPlayer
             playingSoundID = id
             lastError = nil
+            SmartWakeDebugLog.log("PREVIEW OK id=\(id) file=\(url.lastPathComponent) vol=\(volume)")
         } catch {
             lastError = "Preview failed for \(url.lastPathComponent): \(error.localizedDescription)"
             playingSoundID = nil
+            SmartWakeDebugLog.log("PREVIEW ERROR id=\(id) \(lastError ?? "")")
         }
     }
 
@@ -59,11 +61,11 @@ final class SoundPreviewService: NSObject {
     }
 
     private func configureSessionIfNeeded() throws {
-        guard !sessionConfigured else { return }
+        // Do NOT cache "configured" - SmartWakeService and AlarmPlaybackService both change the
+        // shared session, so re-apply it before every play.
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default)
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try session.setActive(true)
-        sessionConfigured = true
     }
 }
 
