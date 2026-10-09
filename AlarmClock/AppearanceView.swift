@@ -8,47 +8,42 @@ struct AppearanceView: View {
     @State private var showingThemeEditor = false
     @State private var editingThemeID: UUID?
 
-    // Button chrome settings bind straight to ThemeManager. Wheel pickers emit
-    // discrete changes, so no local mirror / debounce is needed.
-    private var glowRadiusBinding: Binding<Int> {
+    // Button chrome settings bind straight to ThemeManager. Sliders emit
+    // continuous changes, so no local mirror / debounce is needed.
+    private var glowRadiusSlider: Binding<Double> {
         Binding(
-            get: { Int(ThemeManager.shared.buttonGlowRadius.rounded()) },
-            set: { ThemeManager.shared.setButtonGlow(radius: Double($0)) }
+            get: { ThemeManager.shared.buttonGlowRadius },
+            set: { ThemeManager.shared.setButtonGlow(radius: $0) }
         )
     }
-
-    private var glowOpacityBinding: Binding<Int> {
+    private var glowOpacitySlider: Binding<Double> {
         Binding(
-            get: { Int(((ThemeManager.shared.buttonGlowOpacity * 100) / 5).rounded()) * 5 },
-            set: { ThemeManager.shared.setButtonGlow(opacity: Double($0) / 100) }
+            get: { ThemeManager.shared.buttonGlowOpacity * 100 },
+            set: { ThemeManager.shared.setButtonGlow(opacity: $0 / 100) }
         )
     }
-
-    private var glowSpreadBinding: Binding<Int> {
+    private var glowSpreadSlider: Binding<Double> {
         Binding(
-            get: { Int(ThemeManager.shared.buttonGlowSpread.rounded()) },
-            set: { ThemeManager.shared.setButtonGlow(spread: Double($0)) }
+            get: { ThemeManager.shared.buttonGlowSpread },
+            set: { ThemeManager.shared.setButtonGlow(spread: $0) }
         )
     }
-
-    private var outlineWidthBinding: Binding<Int> {
+    private var outlineSlider: Binding<Double> {
         Binding(
-            get: { Int((ThemeManager.shared.buttonOutlineWidth * 2).rounded()) },
-            set: { ThemeManager.shared.setButtonOutlineWidth(Double($0) / 2) }
+            get: { ThemeManager.shared.buttonOutlineWidth },
+            set: { ThemeManager.shared.setButtonOutlineWidth($0) }
         )
     }
-
-    private var outerRingBinding: Binding<Int> {
+    private var outerRingSlider: Binding<Double> {
         Binding(
-            get: { Int((ThemeManager.shared.buttonOuterRing * 2).rounded()) },
-            set: { ThemeManager.shared.setButtonOuterRing(Double($0) / 2) }
+            get: { ThemeManager.shared.buttonOuterRing },
+            set: { ThemeManager.shared.setButtonOuterRing($0) }
         )
     }
-
-    private var textOutlineBinding: Binding<Int> {
+    private var textOutlineSlider: Binding<Double> {
         Binding(
-            get: { Int((ThemeManager.shared.buttonTextOutline * 2).rounded()) },
-            set: { ThemeManager.shared.setButtonTextOutline(Double($0) / 2) }
+            get: { ThemeManager.shared.buttonTextOutline },
+            set: { ThemeManager.shared.setButtonTextOutline($0) }
         )
     }
 
@@ -71,53 +66,17 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
-                    // Row 1: Size / Lume
-                    HStack(alignment: .top, spacing: 8) {
-                        WheelSettingRow(
-                            title: "Size",
-                            selection: glowRadiusBinding,
-                            values: Array(0...20),
-                            display: { "\($0)" }
-                        )
-                        WheelSettingRow(
-                            title: "Lume",
-                            selection: glowOpacityBinding,
-                            values: Array(stride(from: 0, through: 100, by: 5)),
-                            display: { "\($0)%" }
-                        )
-                    }
-                    
-                    // Row 2: Spread / Border
-                    HStack(alignment: .top, spacing: 8) {
-                        WheelSettingRow(
-                            title: "Spread",
-                            selection: glowSpreadBinding,
-                            values: Array(0...20),
-                            display: { "\($0)" }
-                        )
-                        WheelSettingRow(
-                            title: "Border",
-                            selection: outlineWidthBinding,
-                            values: Array(0...12),
-                            display: { String(format: "%.1f", Double($0) / 2) }
-                        )
-                    }
-                    
-                    // Row 3: Ring / Edge
-                    HStack(alignment: .top, spacing: 8) {
-                        WheelSettingRow(
-                            title: "Ring",
-                            selection: outerRingBinding,
-                            values: Array(0...12),
-                            display: { String(format: "%.1f", Double($0) / 2) }
-                        )
-                        WheelSettingRow(
-                            title: "Edge",
-                            selection: textOutlineBinding,
-                            values: Array(0...6),
-                            display: { String(format: "%.1f", Double($0) / 2) }
-                        )
-                    }
+                    SliderSettingRow(title: "Glow Size", value: glowRadiusSlider, range: 0...20, step: 1) { "\(Int($0))" }
+                    SliderSettingRow(title: "Lume", value: glowOpacitySlider, range: 0...100, step: 5) { "\(Int($0))%" }
+                    SliderSettingRow(title: "Spread", value: glowSpreadSlider, range: 0...20, step: 1) { "\(Int($0))" }
+                    SliderSettingRow(title: "Border", value: outlineSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
+                    SliderSettingRow(title: "Ring", value: outerRingSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
+                    SliderSettingRow(title: "Edge", value: textOutlineSlider, range: 0...3, step: 0.5) { String(format: "%.1f", $0) }
+
+                    // TEMPORARY DIAGNOSTIC - leave in this build so we can see the stored values; remove next round.
+                    Text("DBG r=\(ThemeManager.shared.buttonGlowRadius) o=\(ThemeManager.shared.buttonGlowOpacity) s=\(ThemeManager.shared.buttonGlowSpread) b=\(ThemeManager.shared.buttonOutlineWidth) ring=\(ThemeManager.shared.buttonOuterRing) e=\(ThemeManager.shared.buttonTextOutline)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
 
                 Section("Text Size") {
@@ -454,33 +413,24 @@ struct UserThemeEditorView: View {
     }
 }
 
-/// One button-chrome setting: a title + value readout above a wheel picker.
-/// Kept as its own view so spinning a wheel only re-renders this row.
-private struct WheelSettingRow: View {
+private struct SliderSettingRow: View {
     let title: String
-    let selection: Binding<Int>
-    let values: [Int]
-    let display: (Int) -> String
+    let value: Binding<Double>
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: (Double) -> String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
                 Spacer()
-                Text(display(selection.wrappedValue))
+                Text(format(value.wrappedValue))
                     .font(.body.monospacedDigit())
                     .foregroundStyle(ThemeManager.shared.colors.accent)
             }
-            AccentWheelPicker(
-                values: values,
-                display: display,
-                selection: selection,
-                accent: ThemeManager.shared.colors.accent,
-                secondary: ThemeManager.shared.colors.secondaryText
-            )
-            .frame(maxWidth: .infinity)
-            .frame(height: 110)
-            .clipped()
+            Slider(value: value, in: range, step: step)
+                .tint(ThemeManager.shared.colors.accent)
         }
     }
 }

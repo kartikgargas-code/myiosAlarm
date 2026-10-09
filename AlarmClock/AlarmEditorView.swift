@@ -165,21 +165,15 @@ struct AlarmEditorView: View {
                     .font(.body.monospacedDigit())
                     .foregroundStyle(ThemeManager.shared.colors.accent)
             }
-            AccentWheelPicker(
-                values: Array(stride(from: 0, through: 100, by: 5)),
-                display: { "\($0)%" },
-                selection: loudnessIntBinding,
-                accent: ThemeManager.shared.colors.accent,
-                secondary: ThemeManager.shared.colors.secondaryText
-            )
-            .frame(height: 130)
+            Slider(value: loudnessSlider, in: 0...100, step: 5)
+                .tint(ThemeManager.shared.colors.accent)
         }
     }
 
-    private var loudnessIntBinding: Binding<Int> {
+    private var loudnessSlider: Binding<Double> {
         Binding(
-            get: { selectedLoudness.percentage },
-            set: { selectedLoudness = AlarmLoudness($0) }
+            get: { Double(selectedLoudness.percentage) },
+            set: { selectedLoudness = AlarmLoudness(Int($0.rounded())) }
         )
     }
     
@@ -233,7 +227,7 @@ struct AlarmEditorView: View {
     private func getSoundURLForPreview() -> URL? {
         switch selectedSound {
         case .systemDefault:
-            return SoundPreviewService.bundledSoundURL(for: "system_default")
+            return SoundPreviewService.bundledSoundURL(for: "bright.wav")
         case .builtIn(let name):
             return SoundPreviewService.bundledSoundURL(for: name)
         case .imported(let id):
