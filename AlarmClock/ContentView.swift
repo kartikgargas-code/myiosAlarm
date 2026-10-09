@@ -64,11 +64,12 @@ struct ContentView: View {
                         editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
                     } label: {
                         Image(systemName: "plus")
-                            .font(.title2.weight(.semibold))
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
                             .appButtonChrome(shape: .circle, size: 56)
                     }
+                    .buttonStyle(.plain)
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
                     .contentShape(Circle())
@@ -78,11 +79,12 @@ struct ContentView: View {
                         showingSettings = true
                     } label: {
                         Image(systemName: "gearshape.fill")
-                            .font(.title2.weight(.semibold))
+                            .font(.title3.weight(.semibold))
                             .foregroundStyle(ThemeManager.shared.colors.accent)
                             .frame(width: 56, height: 56)
                             .appButtonChrome(shape: .circle, size: 56)
                     }
+                    .buttonStyle(.plain)
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
                     .contentShape(Circle())
@@ -558,19 +560,33 @@ struct SoundsView: View {
                                     }
                                 }
                             ))
+                            .popover(AnyView(
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(SoundSortOption.allCases) { option in
+                                        Button {
+                                            sortOptionRaw = option.rawValue
+                                            showingSortOptions = false
+                                        } label: {
+                                            HStack {
+                                                Text(option.rawValue)
+                                                Spacer(minLength: 24)
+                                                if sortOption == option { Image(systemName: "checkmark") }
+                                            }
+                                            .padding(.vertical, 10)
+                                            .padding(.horizontal, 14)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .frame(minWidth: 220)
+                                .presentationCompactAdaptation(.popover)
+                            ))
                     ],
                     trailingActions: [
                         .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
-            }
-            .confirmationDialog("Sort by", isPresented: $showingSortOptions, titleVisibility: .visible) {
-                ForEach(SoundSortOption.allCases) { option in
-                    Button(sortOption == option ? "\(option.rawValue)  (current)" : option.rawValue) {
-                        sortOptionRaw = option.rawValue
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }

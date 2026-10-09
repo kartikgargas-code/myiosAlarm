@@ -15,9 +15,6 @@ struct SettingsView: View {
     @State private var shareURL: URL?
     @State private var showingExportSheet = false
     @State private var pendingExportName: String?
-    @State private var showingFileExporter = false
-    @State private var exportDocument: ExportDocument?
-    @State private var exportName = ""
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -127,14 +124,6 @@ struct SettingsView: View {
                     showingExportSheet = false
                 }
             }
-            .fileExporter(isPresented: $showingFileExporter,
-                          document: exportDocument,
-                          contentType: .json,
-                          defaultFilename: exportName) { result in
-                if case .failure(let error) = result {
-                    coordinator.lastError = "Save failed: \(error.localizedDescription)"
-                }
-            }
         }
     }
     
@@ -144,9 +133,8 @@ struct SettingsView: View {
         Task {
             do {
                 let url = try await BackupRestoreService.shared.exportArchive(fileName: name)
-                exportDocument = ExportDocument(url: url)
-                exportName = name
-                showingFileExporter = true
+                shareURL = url
+                showingShareSheet = true
             } catch {
                 coordinator.lastError = "Export failed: \(error.localizedDescription)"
             }
@@ -171,7 +159,7 @@ private struct ExportBackupSheet: View {
                     TextField("Backup name", text: $name)
                         .autocorrectionDisabled()
                 }
-                Text("Next: choose the folder to save it in.")
+                Text("Next: choose 'Save to Files' to pick a folder, or share it anywhere.")
                     .font(.footnote)
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
