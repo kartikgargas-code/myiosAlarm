@@ -469,7 +469,7 @@ private struct WheelSettingRow: View {
                 Spacer()
                 Text(display(selection.wrappedValue))
                     .font(.body.monospacedDigit())
-                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
             }
             AccentWheelPicker(
                 values: values,
@@ -480,6 +480,7 @@ private struct WheelSettingRow: View {
             )
             .frame(maxWidth: .infinity)
             .frame(height: 110)
+            .clipped()
         }
     }
 }
