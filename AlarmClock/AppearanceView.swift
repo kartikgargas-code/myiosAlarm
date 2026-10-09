@@ -71,49 +71,56 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
-                    WheelSettingRow(
-                        title: "Glow Size",
-                        selection: glowRadiusBinding,
-                        values: Array(0...20),
-                        display: { "\($0)" }
-                    )
-                    WheelSettingRow(
-                        title: "Glow Brightness",
-                        selection: glowOpacityBinding,
-                        values: Array(stride(from: 0, through: 100, by: 5)),
-                        display: { "\($0)%" }
-                    )
-                    WheelSettingRow(
-                        title: "Outer Spread",
-                        selection: glowSpreadBinding,
-                        values: Array(0...20),
-                        display: { "\($0)" }
-                    )
-                    WheelSettingRow(
-                        title: "Outline",
-                        selection: outlineWidthBinding,
-                        values: Array(0...12),
-                        display: { String(format: "%.1f", Double($0) / 2) }
-                    )
-                    WheelSettingRow(
-                        title: "Outer Ring",
-                        selection: outerRingBinding,
-                        values: Array(0...12),
-                        display: { String(format: "%.1f", Double($0) / 2) }
-                    )
-                    WheelSettingRow(
-                        title: "Text Outline",
-                        selection: textOutlineBinding,
-                        values: Array(0...6),
-                        display: { String(format: "%.1f", Double($0) / 2) }
-                    )
+                    // Row 1: Size / Lume / Spread
+                    HStack(spacing: 8, alignment: .top) {
+                        WheelSettingRow(
+                            title: "Size",
+                            selection: glowRadiusBinding,
+                            values: Array(0...20),
+                            display: { "\($0)" }
+                        )
+                        WheelSettingRow(
+                            title: "Lume",
+                            selection: glowOpacityBinding,
+                            values: Array(stride(from: 0, through: 100, by: 5)),
+                            display: { "\($0)%" }
+                        )
+                        WheelSettingRow(
+                            title: "Spread",
+                            selection: glowSpreadBinding,
+                            values: Array(0...20),
+                            display: { "\($0)" }
+                        )
+                    }
+                    
+                    // Row 2: Border / Ring / Edge
+                    HStack(spacing: 8, alignment: .top) {
+                        WheelSettingRow(
+                            title: "Border",
+                            selection: outlineWidthBinding,
+                            values: Array(0...12),
+                            display: { String(format: "%.1f", Double($0) / 2) }
+                        )
+                        WheelSettingRow(
+                            title: "Ring",
+                            selection: outerRingBinding,
+                            values: Array(0...12),
+                            display: { String(format: "%.1f", Double($0) / 2) }
+                        )
+                        WheelSettingRow(
+                            title: "Edge",
+                            selection: textOutlineBinding,
+                            values: Array(0...6),
+                            display: { String(format: "%.1f", Double($0) / 2) }
+                        )
+                    }
 
                     Text("Live Preview")
                         .font(.footnote)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     BottomActionsBar(
                         leadingActions: [],
-                        trailingActions: [.primary("Test") {}]
+                        trailingActions: [.icon("Test", systemImage: "checkmark") {}]
                     )
                     .listRowBackground(Color.clear)
                 }
@@ -473,16 +480,15 @@ private struct WheelSettingRow: View {
                     .font(.body.monospacedDigit())
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
-            Picker(title, selection: selection) {
-                ForEach(values, id: \.self) { value in
-                    Text(display(value)).tag(value)
-                }
-            }
-            .pickerStyle(.wheel)
-            .labelsHidden()
+            AccentWheelPicker(
+                values: values,
+                display: display,
+                selection: selection,
+                accent: ThemeManager.shared.colors.accent,
+                secondary: ThemeManager.shared.colors.secondaryText
+            )
             .frame(maxWidth: .infinity)
-            .frame(height: 120)
-            .clipped()
+            .frame(height: 110)
         }
     }
 }
