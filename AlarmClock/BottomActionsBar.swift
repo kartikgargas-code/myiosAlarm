@@ -12,7 +12,7 @@ struct BottomActionsBar: View {
     init(
         leadingActions: [ActionButton] = [],
         trailingActions: [ActionButton] = [],
-        padding: CGFloat = 16,
+        padding: CGFloat = 20,
         backgroundColor: Color? = nil
     ) {
         self.leadingActions = leadingActions
@@ -40,7 +40,8 @@ struct BottomActionsBar: View {
             }
         }
         .padding(.horizontal, padding)
-        .padding(.vertical, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 34)
         .background(backgroundColor)
     }
     
@@ -70,7 +71,7 @@ struct BottomActionsBar: View {
                     Image(systemName: action.systemImage ?? "")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(accent)
-                        .appButtonChrome(shape: .circle, size: 48)
+                        .appButtonChrome(shape: .circle, size: 56)
                 }
                 .disabled(!action.isEnabled)
                 .accessibilityLabel(action.title)
@@ -85,7 +86,7 @@ struct BottomActionsBar: View {
                     Image(systemName: action.systemImage ?? "")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(accent)
-                        .appButtonChrome(shape: .circle, size: 48)
+                        .appButtonChrome(shape: .circle, size: 56)
                 }
                 .disabled(!action.isEnabled)
                 .accessibilityLabel(action.title)

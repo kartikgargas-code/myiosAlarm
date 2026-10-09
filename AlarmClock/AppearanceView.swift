@@ -66,6 +66,14 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
+                    HStack {
+                        Spacer()
+                        Button("Test") {}
+                            .appButtonChrome(shape: .capsule)
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                    
                     SliderSettingRow(title: "Glow Size", value: glowRadiusSlider, range: 0...20, step: 1) { "\(Int($0))" }
                     SliderSettingRow(title: "Lume", value: glowOpacitySlider, range: 0...100, step: 5) { "\(Int($0))%" }
                     SliderSettingRow(title: "Spread", value: glowSpreadSlider, range: 0...20, step: 1) { "\(Int($0))" }

@@ -449,6 +449,7 @@ struct SoundsView: View {
     private enum PickerMode { case files, folder }
     @State private var showingDeleteAll = false
     @State private var folderToDelete: String? = nil
+    @State private var showingSortOptions = false
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -544,15 +545,7 @@ struct SoundsView: View {
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
-                        .icon("Sort", systemImage: "arrow.up.arrow.down", action: {})
-                            .menu(AnyView(
-                                ForEach(SoundSortOption.allCases) { option in
-                                    Button { sortOptionRaw = option.rawValue } label: {
-                                        if sortOption == option { Label(option.rawValue, systemImage: "checkmark") }
-                                        else { Text(option.rawValue) }
-                                    }
-                                }
-                            ))
+                        .icon("Sort", systemImage: "arrow.up.arrow.down") { showingSortOptions = true }
                             .contextMenu(AnyView(
                                 Group {
                                     Button("Delete All Tracks", role: .destructive) { showingDeleteAll = true }
@@ -570,6 +563,14 @@ struct SoundsView: View {
                         .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
+            }
+            .confirmationDialog("Sort by", isPresented: $showingSortOptions, titleVisibility: .visible) {
+                ForEach(SoundSortOption.allCases) { option in
+                    Button(sortOption == option ? "\(option.rawValue)  (current)" : option.rawValue) {
+                        sortOptionRaw = option.rawValue
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
