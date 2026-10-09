@@ -64,39 +64,45 @@ struct BottomActionsBar: View {
         
         if action.isIconOnly {
             if let menu = action.menu {
-                return Menu {
-                    menu
-                } label: {
-                    Image(systemName: action.systemImage ?? "")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(accent)
-                        .appButtonChrome(shape: .circle, size: 48)
-                }
-                .disabled(!action.isEnabled)
-                .accessibilityLabel(action.title)
+                return AnyView(
+                    Menu {
+                        menu
+                    } label: {
+                        Image(systemName: action.systemImage ?? "")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(accent)
+                            .appButtonChrome(shape: .circle, size: 48)
+                    }
+                    .disabled(!action.isEnabled)
+                    .accessibilityLabel(action.title)
+                )
             } else {
-                return Button(action: action.action) {
-                    Image(systemName: action.systemImage ?? "")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(accent)
-                        .appButtonChrome(shape: .circle, size: 48)
-                }
-                .disabled(!action.isEnabled)
-                .accessibilityLabel(action.title)
+                return AnyView(
+                    Button(action: action.action) {
+                        Image(systemName: action.systemImage ?? "")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(accent)
+                            .appButtonChrome(shape: .circle, size: 48)
+                    }
+                    .disabled(!action.isEnabled)
+                    .accessibilityLabel(action.title)
+                )
             }
         } else {
-            return Button(action: action.action) {
-                HStack(spacing: 8) {
-                    if let systemImage = action.systemImage {
-                        Image(systemName: systemImage)
-                            .font(.body.weight(.semibold))
+            return AnyView(
+                Button(action: action.action) {
+                    HStack(spacing: 8) {
+                        if let systemImage = action.systemImage {
+                            Image(systemName: systemImage)
+                                .font(.body.weight(.semibold))
+                        }
+                        Text(action.title)
                     }
-                    Text(action.title)
+                    .foregroundStyle(accent)
+                    .appButtonChrome(shape: .capsule)
                 }
-                .foregroundStyle(accent)
-                .appButtonChrome(shape: .capsule)
-            }
-            .disabled(!action.isEnabled)
+                .disabled(!action.isEnabled)
+            )
         }
     }
 }

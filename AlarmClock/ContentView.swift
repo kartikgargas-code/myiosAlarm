@@ -544,20 +544,22 @@ struct SoundsView: View {
                     leadingActions: [
                         .icon("Sort", systemImage: "arrow.up.arrow.down", action: {})
                             .menu(
-                                Menu {
-                                    Picker("Sort by", selection: $sortOptionRaw) {
-                                        ForEach(SoundSortOption.allCases) { option in
-                                            Text(option.rawValue).tag(option.rawValue)
+                                AnyView(
+                                    Menu {
+                                        Picker("Sort by", selection: $sortOptionRaw) {
+                                            ForEach(SoundSortOption.allCases) { option in
+                                                Text(option.rawValue).tag(option.rawValue)
+                                            }
                                         }
+                                    } label: {
+                                        Image(systemName: "arrow.up.arrow.down")
+                                            .font(.title3.weight(.semibold))
+                                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                                            .frame(width: 48, height: 48)
+                                            .appButtonChrome(shape: .circle, size: 48)
                                     }
-                                } label: {
-                                    Image(systemName: "arrow.up.arrow.down")
-                                        .font(.title3.weight(.semibold))
-                                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                                        .frame(width: 48, height: 48)
-                                        .appButtonChrome(shape: .circle, size: 48)
-                                }
-                                .menuStyle(.borderlessButton)
+                                    .menuStyle(.borderlessButton)
+                                )
                             )
                     ],
                     trailingActions: [

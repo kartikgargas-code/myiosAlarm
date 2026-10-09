@@ -72,7 +72,7 @@ struct AppearanceView: View {
 
                 Section("Buttons") {
                     // Row 1: Size / Lume / Spread
-                    HStack(spacing: 8, alignment: .top) {
+                    HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Size",
                             selection: glowRadiusBinding,
@@ -94,7 +94,7 @@ struct AppearanceView: View {
                     }
                     
                     // Row 2: Border / Ring / Edge
-                    HStack(spacing: 8, alignment: .top) {
+                    HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Border",
                             selection: outlineWidthBinding,
