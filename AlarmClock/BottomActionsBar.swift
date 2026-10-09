@@ -75,6 +75,7 @@ struct BottomActionsBar: View {
                     }
                     .disabled(!action.isEnabled)
                     .accessibilityLabel(action.title)
+                    .buttonStyle(.plain)
                 )
             } else {
                 return AnyView(
@@ -86,6 +87,7 @@ struct BottomActionsBar: View {
                     }
                     .disabled(!action.isEnabled)
                     .accessibilityLabel(action.title)
+                    .buttonStyle(.plain)
                 )
             }
         } else {
@@ -102,6 +104,7 @@ struct BottomActionsBar: View {
                     .appButtonChrome(shape: .capsule)
                 }
                 .disabled(!action.isEnabled)
+                .buttonStyle(.plain)
             )
         }
     }
