@@ -71,7 +71,7 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
-                    // Row 1: Size / Lume / Spread
+                    // Row 1: Size / Lume
                     HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Size",
@@ -85,22 +85,26 @@ struct AppearanceView: View {
                             values: Array(stride(from: 0, through: 100, by: 5)),
                             display: { "\($0)%" }
                         )
+                    }
+                    
+                    // Row 2: Spread / Border
+                    HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Spread",
                             selection: glowSpreadBinding,
                             values: Array(0...20),
                             display: { "\($0)" }
                         )
-                    }
-                    
-                    // Row 2: Border / Ring / Edge
-                    HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Border",
                             selection: outlineWidthBinding,
                             values: Array(0...12),
                             display: { String(format: "%.1f", Double($0) / 2) }
                         )
+                    }
+                    
+                    // Row 3: Ring / Edge
+                    HStack(alignment: .top, spacing: 8) {
                         WheelSettingRow(
                             title: "Ring",
                             selection: outerRingBinding,
@@ -115,10 +119,6 @@ struct AppearanceView: View {
                         )
                     }
                 }
-                
-                Text("Glow applies to the bottom buttons and the floating + / gear.")
-                    .font(.footnote)
-                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
 
                 Section("Text Size") {
                     Picker("Interface Text Size", selection: Binding(

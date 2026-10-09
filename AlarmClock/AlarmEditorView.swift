@@ -189,26 +189,26 @@ struct AlarmEditorView: View {
     @State private var loudnessChangeDebounceTask: Task<Void, Never>?
     
     private func startLoudnessPreview() {
-        // Get the sound URL for the selected sound
-        let soundID = getSoundIDForPreview()
         guard let url = getSoundURLForPreview() else { return }
-        
-        loudnessPreviewURL = url
-        loudnessPreviewSoundID = soundID
-        
-        // Start playing the preview with initial volume
-        SoundPreviewService.shared.play(url: url, id: soundID ?? "loudness-preview")
-        updatePreviewVolume()
-        
-        // Cancel any existing debounce task
+        let soundID = getSoundIDForPreview() ?? "loudness-preview"
+
+
+        if SoundPreviewService.shared.playingSoundID == soundID,
+           let player = SoundPreviewService.shared.player {
+            player.volume = Float(selectedLoudness.gainFactor)
+        } else {
+            loudnessPreviewURL = url
+            loudnessPreviewSoundID = soundID
+            SoundPreviewService.shared.play(url: url, id: soundID,
+                                            volume: Float(selectedLoudness.gainFactor))
+            updatePreviewVolume()
+        }
+
+
         loudnessChangeDebounceTask?.cancel()
-        
-        // Schedule stop after ~2 seconds of no change
         loudnessChangeDebounceTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            if !Task.isCancelled {
-                stopLoudnessPreview()
-            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if !Task.isCancelled { stopLoudnessPreview() }
         }
     }
     

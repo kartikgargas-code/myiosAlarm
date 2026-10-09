@@ -31,11 +31,12 @@ final class SoundPreviewService: NSObject {
         return Bundle.main.url(forResource: name, withExtension: ext)
     }
 
-    func play(url: URL, id: String) {
+    func play(url: URL, id: String, volume: Float = 1.0) {
         stop()
         do {
             try configureSessionIfNeeded()
             let newPlayer = try AVAudioPlayer(contentsOf: url)
+            newPlayer.volume = volume
             newPlayer.prepareToPlay()
             newPlayer.delegate = self
             guard newPlayer.play() else {
