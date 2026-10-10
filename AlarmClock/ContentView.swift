@@ -653,10 +653,8 @@ struct SoundsView: View {
                                 Group {
                                     Button("Delete All Tracks", role: .destructive) { showingDeleteAll = true }
                                     if !SoundLibrary.shared.importedFolders.isEmpty {
-                                        Menu("Delete Folder") {
-                                            ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
-                                                Button(folder, role: .destructive) { folderToDelete = folder }
-                                            }
+                                        ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                                            Button("Delete \(folder)", role: .destructive) { folderToDelete = folder }
                                         }
                                     }
                                 }
