@@ -695,7 +695,7 @@ struct SoundsView: View {
         }
     }
     
-    private func soundRow(sound: ImportedSound) -> some View {
+    func soundRow(sound: ImportedSound) -> some View {
         let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
         let isPlayingThis = preview.playingSoundID == sound.fileName
         let isReferenced = isSoundReferenced(sound)
@@ -767,7 +767,7 @@ struct SoundsView: View {
         }
     }
     
-    private func getReferencesForSound(_ sound: ImportedSound) -> String {
+    func getReferencesForSound(_ sound: ImportedSound) -> String {
         var refs: [String] = []
         
         // Check alarms
@@ -801,7 +801,7 @@ struct SoundsView: View {
         return refs.isEmpty ? "nothing" : refs.joined(separator: ", ")
     }
     
-    private func isSoundReferenced(_ sound: ImportedSound) -> Bool {
+    func isSoundReferenced(_ sound: ImportedSound) -> Bool {
         // Check alarms
         for alarm in coordinator.alarms {
             if case .imported(let id) = alarm.sound, id == sound.id {
@@ -829,7 +829,7 @@ struct SoundsView: View {
         return false
     }
     
-    private func importSound(from url: URL) async {
+    func importSound(from url: URL) async {
         do {
             let _ = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
@@ -838,7 +838,7 @@ struct SoundsView: View {
         }
     }
     
-    private func importFolder(from url: URL) async {
+    func importFolder(from url: URL) async {
         do {
             let _ = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
