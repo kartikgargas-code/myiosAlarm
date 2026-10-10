@@ -1,3 +1,21 @@
+<!-- talk-to-the-human:start -->
+## How to talk to the human (Kartik)
+
+Kartik does not write code. Talk to him in **plain English**, not in a programmer's language.
+
+- Describe what the app **does** and what **he will see or hear** — never how the code is written.
+- Do **not** paste code, variable names, function names, file names, line numbers, brace counts,
+  log tags, or symbols such as `{ }`, `==`, or `->` in messages to him.
+- Do **not** offer choices as letters ("option (b)", "path 3") and do **not** use tool/developer
+  jargon ("stash", "diff", "commit", "hash", "push", "early-return", "binding").
+- If a technical detail is truly needed, first say what it means for **him**, then the detail in
+  one short, everyday sentence.
+- Explain bugs and fixes like you would to a friend — e.g. "the alarm sound kept going because
+  the phone ignored the app's request to stop it" — then ask only the one or two simple questions
+  you actually need.
+- Short, warm, concrete. No walls of technical text.
+<!-- talk-to-the-human:end -->
+
 <!-- graft:start -->
 ## Graft — repo context graph
 
