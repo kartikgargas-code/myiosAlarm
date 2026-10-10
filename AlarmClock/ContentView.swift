@@ -695,7 +695,7 @@ struct SoundsView: View {
         }
     }
     
-    private func soundRow(sound: ImportedSound) -> some View {
+    func soundRow(sound: ImportedSound) -> some View {
         let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
         let isPlayingThis = preview.playingSoundID == sound.fileName
         let isReferenced = isSoundReferenced(sound)
