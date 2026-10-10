@@ -85,7 +85,7 @@ struct OpenNextAlarmIntent: AppIntent {
 }
 
 /// Timeline provider for the next alarm widget
-struct NextAlarmWidgetProvider: TimelineProvider {
+final class NextAlarmWidgetProvider: TimelineProvider {
     typealias Entry = NextAlarmWidgetEntry
     
     private var appGroupIdentifier: String {
@@ -100,6 +100,8 @@ struct NextAlarmWidgetProvider: TimelineProvider {
     // Track last successful snapshot to avoid logging unchanged refreshes
     private var lastSnapshotAlarmID: UUID? = nil
     private var lastSnapshotNextOccurrence: Date? = nil
+    
+    init() {}
     
     func placeholder(in context: Context) -> NextAlarmWidgetEntry {
         NextAlarmWidgetEntry(
