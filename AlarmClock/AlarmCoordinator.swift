@@ -217,7 +217,7 @@ final class AlarmCoordinator {
         let beforeCount = idsBefore.count
         let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         SmartWakeDebugLog.log("ALARM DUPLICATE: before count=\(beforeCount) ids=\(beforeIds)")
-        // Copy alarm with new ID, clear per-occurrence overrides
+        // Copy alarm with new ID, clear per-occurrence overrides, KEEP ALL SETTINGS
         let copy = AlarmRecord(
             id: UUID(),
             label: original.label,
@@ -229,7 +229,12 @@ final class AlarmCoordinator {
             overrides: [:],
             sound: original.sound,
             loudness: original.loudness,
-            snoozeDurationMinutes: original.snoozeDurationMinutes
+            snoozeDurationMinutes: original.snoozeDurationMinutes,
+            vibrate: original.vibrate,
+            fadeInEnabled: original.fadeInEnabled,
+            fadeInSeconds: original.fadeInSeconds,
+            silenceAfterMinutes: original.silenceAfterMinutes,
+            loopSound: original.loopSound
         )
         await commit({ try $0.upsert(copy, now: self.now()) }, reason: "duplicate")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
@@ -1194,8 +1199,8 @@ final class AlarmCoordinator {
     /// Update published state from engine — call after external snapshot changes
     func publish() {
         let currentDate = now()
-        // Use stable permanent-time order for UI list; only compute next-occurrence for widget snapshot
-        alarms = engine.alarms
+        // Restore soonest-first ordering for UI (alarm that rings soonest on top)
+        alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
         let earliest = engine.earliestOccurrence(now: currentDate)
         nextOccurrence = earliest
         

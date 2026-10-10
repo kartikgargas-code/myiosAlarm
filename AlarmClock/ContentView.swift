@@ -73,6 +73,19 @@ struct ContentView: View {
                     .padding(.leading, 20)
                     .padding(.bottom, 34)
                     .contentShape(Circle())
+                    .contextMenu {
+                        Button {
+                            let newValue = !ThemeManager.shared.isCompactModeEnabled
+                            ThemeManager.shared.setCompactMode(newValue)
+                        } label: {
+                            HStack {
+                                Text(ThemeManager.shared.isCompactModeEnabled ? "Disable Compact List" : "Enable Compact List")
+                                if ThemeManager.shared.isCompactModeEnabled {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     Button {
@@ -642,6 +655,15 @@ struct SoundsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.destructive)
                     }
                 }
+                
+                // Playlists section
+                if !SoundLibrary.shared.playlists.isEmpty {
+                    Section("Playlists") {
+                        ForEach(SoundLibrary.shared.playlists) { playlist in
+                            playlistRow(playlist: playlist)
+                        }
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
@@ -794,9 +816,9 @@ struct SoundsView: View {
                     .foregroundStyle(ThemeManager.shared.colors.destructive)
                     .font(.title3)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
         .listRowBackground(colors.card)
         .listRowSeparatorTint(colors.divider)
@@ -810,6 +832,59 @@ struct SoundsView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+    
+    private func playlistRow(playlist: Playlist) -> some View {
+        let colors = ThemeManager.shared.colors
+        let soundCount = playlist.soundIDs.count
+        let selectedCount = playlist.selectedSoundIDs.count
+        
+        return HStack(spacing: 12) {
+            Image(systemName: "music.note.list")
+                .font(.title2)
+                .foregroundStyle(colors.accent)
+                .frame(width: 44, height: 44)
+                .background(colors.accent.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(playlist.name)
+                    .font(.body)
+                    .foregroundStyle(colors.primaryText)
+                    .lineLimit(1)
+                
+                Text("\(soundCount) song\(soundCount == 1 ? "" : "s") · \(selectedCount) selected")
+                    .font(.caption)
+                    .foregroundStyle(colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            Button {
+                let newName = playlist.name
+                let alert = UIAlertController(title: "Rename Playlist", message: nil, preferredStyle: .alert)
+                alert.addTextField { $0.text = playlist.name }
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Rename", style: .default) { _ in
+                    if let text = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !text.isEmpty {
+                        SoundLibrary.shared.updatePlaylist(playlist, newName: text)
+                    }
+                })
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let root = scene.windows.first?.rootViewController {
+                    root.present(alert, animated: true)
+                }
+            } label: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(colors.accent)
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(colors.card)
+        .listRowSeparatorTint(colors.divider)
     }
     
     func getReferencesForSound(_ sound: ImportedSound) -> String {
