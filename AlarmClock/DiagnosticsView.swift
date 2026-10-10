@@ -351,7 +351,7 @@ struct DiagnosticsView: View {
     private var logSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Smart Wake Log (last 20 useful lines)")
+                Text("Smart Wake Log (last 200 lines)")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 if showUTCNotice {
@@ -403,7 +403,7 @@ struct DiagnosticsView: View {
                     !line.contains("BACKUP: skipping") &&
                     !line.hasPrefix("  id=")
                 }
-                .suffix(20)
+                .suffix(200)
                 .map { line in
                     // Extract timestamp and convert to local time if it's ISO8601
                     if let timestampEnd = line.firstIndex(of: "]") {
@@ -429,6 +429,7 @@ struct DiagnosticsView: View {
     private func clearLog() {
         SmartWakeDebugLog.clear()
         logLines.removeAll()
+        loadLog()      // show the marker so it is obvious the clear took effect
     }
     
     private func copyFilteredLog() {
@@ -442,7 +443,7 @@ struct DiagnosticsView: View {
                 !line.contains("BACKUP: skipping") &&
                 !line.hasPrefix("  id=")
             }
-            .suffix(40)
+            .suffix(SmartWakeDebugLog.copyMaxLines)
             .joined(separator: "\n")
         
         UIPasteboard.general.string = lines

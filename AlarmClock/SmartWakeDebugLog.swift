@@ -7,8 +7,8 @@ import os.log
 /// device without a Mac. Capped ring buffer of recent lines.
 public enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
-    static let maxLines = 300
-    static let copyMaxLines = 80
+    static let maxLines = 1000
+    static let copyMaxLines = 1000
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
     private static var hasLoggedInterruption = false
@@ -77,16 +77,19 @@ public enum SmartWakeDebugLog {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
             .filter { !$0.contains("STATE DUMP:") }
-            .suffix(copyMaxLines)
+            // Return the full filtered buffer (up to copyMaxLines which is now 1000)
         return lines.joined(separator: "\n")
     }
-
+    
     static func clear() {
-        queue.async {
+        queue.sync {
             guard let url = logURL() else { return }
             try? FileManager.default.removeItem(at: url)
             inMemoryBuffer.removeAll()
             hasLoggedInterruption = false
+            // Write a marker so the clear is visible
+            let marker = "[\(ISO8601DateFormatter().string(from: Date()))] LOG CLEARED BY USER\n"
+            try? marker.write(to: url, atomically: true, encoding: .utf8)
         }
     }
     

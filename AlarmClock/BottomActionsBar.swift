@@ -96,8 +96,8 @@ struct BottomActionsBar: View {
                     return AnyView(base.contextMenu { cm })
                 }
                 
-                if let pop = action.popover {
-                    return AnyView(base.popover(isPresented: .constant(true), arrowEdge: .bottom) { pop })
+                if let pop = action.popover, let presented = action.popoverPresented {
+                    return AnyView(base.popover(isPresented: presented, arrowEdge: .bottom) { pop })
                 }
                 
                 return AnyView(base)
@@ -133,6 +133,7 @@ struct ActionButton {
     var menu: AnyView? = nil
     var contextMenu: AnyView? = nil
     var popover: AnyView? = nil
+    var popoverPresented: Binding<Bool>? = nil
     
     static func cancel(_ title: String = "Cancel", action: @escaping () -> Void) -> ActionButton {
         ActionButton(title: title, action: action, isPrimary: false)
@@ -171,9 +172,10 @@ struct ActionButton {
         return copy
     }
     
-    func popover(_ popover: AnyView) -> ActionButton {
+    func popover(_ popover: AnyView, presented: Binding<Bool>) -> ActionButton {
         var copy = self
         copy.popover = popover
+        copy.popoverPresented = presented
         return copy
     }
 }

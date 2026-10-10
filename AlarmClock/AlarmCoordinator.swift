@@ -500,7 +500,7 @@ final class AlarmCoordinator {
             // Fresh stitch on arming events (toggle / skip / reset / time change /
             // re-arm via synchronize) - one render per arming. Editor saves stay
             // sticky-cached and fast.
-            let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust", "synchronize"]
+            let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust"]
             let (desired, soundWarnings, armedSoundNames) = await desiredSystemAlarms(
                 from: candidate,
                 freshStitch: freshReasons.contains(reason),
@@ -702,12 +702,18 @@ final class AlarmCoordinator {
                 // Primary alarm at the effective date
                 // For playlist alarms with Smart Wake enabled, we SKIP the primary alarm at wake time
                 // and only schedule the backup alarm (which fires at wakeTime + 30s)
+                // Decide whether we need to arm the primary alarm at wake time.
+                // With Smart Wake enabled, the primary is never armed (the floor sound rings via AlarmKit,
+                // and we take over for playlist playback at alerting time).
+                let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
+                
                 // Arming path: roll a fresh random selection (song set AND order)
                 // so each ring differs. The rolled selection is hashed into the
                 // schedule ID, so reconcile re-schedules with the new file.
+                // Only roll fresh if we're actually scheduling a primary (not just a backup).
                 var selectionHash = desiredSelectionHash(for: soundToUse)
                 var forcedSelection: [UUID]? = nil
-                if freshStitch {
+                if freshStitch && shouldSchedulePrimaryAtWake {
                     let playlistIDForSound: UUID?
                     if case .precomposedPlaylist(let p, _) = soundToUse { playlistIDForSound = p }
                     else if case .random(let p) = soundToUse { playlistIDForSound = p }
@@ -720,8 +726,6 @@ final class AlarmCoordinator {
                         SmartWakeDebugLog.log("PRECOMPOSE: fresh selection rolled for \(pid.uuidString.prefix(8)) hash=\(selectionHash)")
                     }
                 }
-                
-                let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
                 
                 if shouldSchedulePrimaryAtWake {
                     // Only resolve (and for playlists, fully render) the primary
@@ -1530,7 +1534,7 @@ final class AlarmCoordinator {
     private func maybePruneStitchCacheDaily() {
         let defaults = UserDefaults.standard
         if let last = defaults.object(forKey: Self.lastStitchPruneDateKey) as? Date,
-           now().timeIntervalSince(last) < 86_400 {
+           now().timeIntervalSince(last) < 3_600 {
             return
         }
         pruneStitchCacheNow()

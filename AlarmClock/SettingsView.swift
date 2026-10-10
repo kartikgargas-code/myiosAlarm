@@ -13,8 +13,8 @@ struct SettingsView: View {
     @State private var showingImportPicker = false
     @State private var showingShareSheet = false
     @State private var shareURL: URL?
-    @State private var showingExportSheet = false
-    @State private var pendingExportName: String?
+    @State private var showingExportAlert = false
+    @State private var exportName = ""
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -39,7 +39,9 @@ struct SettingsView: View {
                 
                 Section("Backup & Restore") {
                     Button("Export Backup") {
-                        showingExportSheet = true
+                        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+                        exportName = "AlarmClock_Backup_\(f.string(from: Date()))"
+                        showingExportAlert = true
                     }
                     Button("Import Backup") {
                         showingImportPicker = true
@@ -118,18 +120,17 @@ struct SettingsView: View {
                     ShareSheet(activityItems: [shareURL])
                 }
             }
-            .sheet(isPresented: $showingExportSheet, onDismiss: runPendingExport) {
-                ExportBackupSheet { name in
-                    pendingExportName = name
-                    showingExportSheet = false
-                }
+            .alert("Export Backup", isPresented: $showingExportAlert) {
+                TextField("Backup name", text: $exportName)
+                Button("Cancel", role: .cancel) {}
+                Button("Export") { runExport(named: exportName) }
+            } message: {
+                Text("Saves your alarms and settings (no audio). You'll choose where to save it next.")
             }
         }
     }
     
-    private func runPendingExport() {
-        guard let name = pendingExportName else { return }
-        pendingExportName = nil
+    private func runExport(named name: String) {
         Task {
             do {
                 let url = try await BackupRestoreService.shared.exportArchive(fileName: name)
@@ -143,46 +144,6 @@ struct SettingsView: View {
     
     init(coordinator: AlarmCoordinator) {
         self.coordinator = coordinator
-    }
-}
-
-// Export Backup Sheet
-private struct ExportBackupSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let onName: (String) -> Void
-    @State private var name: String = ""
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("File Name") {
-                    TextField("Backup name", text: $name)
-                        .autocorrectionDisabled()
-                }
-                Text("Next: choose 'Save to Files' to pick a folder, or share it anywhere.")
-                    .font(.footnote)
-                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-            }
-            .navigationTitle("Export Backup")
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) {
-                BottomActionsBar(
-                    leadingActions: [.icon("Cancel", systemImage: "xmark") { dismiss() }],
-                    trailingActions: [.icon("Save", systemImage: "checkmark",
-                                            isEnabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) {
-                        onName(name)
-                        dismiss()
-                    }]
-                )
-            }
-            .onAppear {
-                if name.isEmpty {
-                    let f = DateFormatter()
-                    f.dateFormat = "yyyy-MM-dd"
-                    name = "AlarmClock_Backup_\(f.string(from: Date()))"
-                }
-            }
-        }
     }
 }
 

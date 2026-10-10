@@ -581,7 +581,7 @@ struct SoundsView: View {
                                 }
                                 .frame(minWidth: 220)
                                 .presentationCompactAdaptation(.popover)
-                            ))
+                            ), presented: $showingSortOptions)
                     ],
                     trailingActions: [
                         .icon("Done", systemImage: "checkmark") { dismiss() }

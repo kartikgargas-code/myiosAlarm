@@ -88,6 +88,7 @@ final class SmartWakeService {
     }
     
     private var statusTickTask: Task<Void, Never>?
+    private var lastRestartAttempt = Date.distantPast
     
     private func startStatusTick() {
         statusTickTask = Task { @MainActor in
@@ -240,8 +241,9 @@ final class SmartWakeService {
                 
                 // Check if silent loop died
                 if lastLoopRunning && !isRunning {
-                    SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false")
+                    SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false \(silentLoopDiagnostics())")
                     lastLoopRunning = false
+                    scheduleSilentLoopRestart()
                 } else if !lastLoopRunning && isRunning {
                     lastLoopRunning = true
                 }
@@ -280,7 +282,32 @@ final class SmartWakeService {
         @unknown default: return "unknown(\(state.rawValue))"
         }
     }
-
+    
+    private func silentLoopDiagnostics() -> String {
+        let session = AVAudioSession.sharedInstance()
+        let scene: String
+        switch UIApplication.shared.applicationState {
+        case .active: scene = "active"
+        case .inactive: scene = "inactive"
+        case .background: scene = "background"
+        @unknown default: scene = "unknown"
+        }
+        return "scene=\(scene) sessionCat=\(session.category.rawValue) mode=\(session.mode.rawValue) "
+            + "active=\(isSessionActive) otherAudio=\(session.isOtherAudioPlaying) "
+            + "volume=\(session.outputVolume) smartWakeEnabled=\(isSmartWakeEnabled) "
+            + "appPlaying=\(AlarmPlaybackService.shared.isPlaying) "
+            + "uptime=\(Int(ProcessInfo.processInfo.systemUptime))s"
+    }
+    
+    private func scheduleSilentLoopRestart() {
+        guard isSmartWakeEnabled else { return }
+        guard !AlarmPlaybackService.shared.isPlaying else { return }
+        guard Date().timeIntervalSince(lastRestartAttempt) > 10 else { return }
+        lastRestartAttempt = Date()
+        SmartWakeDebugLog.log("SILENT LOOP RESTART: attempting to restart the keep-alive loop")
+        Task { await startBackgroundAudio() }
+    }
+    
     private func loadPreference() {
         isEnabled = UserDefaults.standard.bool(forKey: enabledKey)
     }
@@ -455,6 +482,11 @@ final class SmartWakeService {
         let nextFire = upcoming.compactMap { coordinator.occurrence(for: $0.id)?.effectiveDate }.min()?.formatted(date: .omitted, time: .shortened) ?? "?"
         SmartWakeDebugLog.log("FOREGROUND START: silent loop active before backgrounding; next alarm \(nextFire); upcoming count \(upcoming.count)")
         await startBackgroundAudio()
+        
+        // Re-check if loop died and restart
+        if isSmartWakeEnabled && !isRunning && !AlarmPlaybackService.shared.isPlaying {
+            scheduleSilentLoopRestart()
+        }
     }
 
     /// Start the silent background audio loop
@@ -488,7 +520,7 @@ final class SmartWakeService {
             try await configureAudioSession()
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.numberOfLoops = -1 // Loop indefinitely
-            newPlayer.volume = 0.001 // Near-silent
+            newPlayer.volume = 0.02 // Near-silent (raised from 0.001 for reliability)
             newPlayer.prepareToPlay()
             guard newPlayer.play() else {
                 os_log(.error, log: log, "Failed to start silent loop playback")
@@ -626,12 +658,13 @@ final class SmartWakeService {
             try? AVAudioSession.sharedInstance().setActive(true)
             player?.play()
         } else {
-            // Interruption ended without resume â€” re-arm check in case we need to restart
+            // Interruption ended without resume -- re-arm check in case we need to restart
             if isSmartWakeEnabled {
                 Task { 
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                     await checkAndArmUpcomingAlarms()
                     SmartWakeDebugLog.log("RE-ARM scheduled after interruption (no resume)")
+                    scheduleSilentLoopRestart()
                 }
             }
         }

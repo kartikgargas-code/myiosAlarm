@@ -279,7 +279,11 @@ final class AudioProcessingService {
         }
 
         let freedMB = Double(freedBytes) / (1_048_576.0)
-        SmartWakeDebugLog.log(String(format: "PRECOMPOSE PRUNE: deleted %d files (%.1f MB), kept %d in use.", deleted, freedMB, kept))
+        // Count playlist_* files remaining
+        let playlistFiles = try? fileManager.contentsOfDirectory(at: processedDir, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("playlist_") }
+            .count ?? 0
+        SmartWakeDebugLog.log(String(format: "PRECOMPOSE PRUNE: deleted %d files (%.1f MB), kept %d in use, playlist_* files: %d", deleted, freedMB, kept, playlistFiles))
         return (deleted, freedBytes, kept)
     }
 
