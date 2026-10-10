@@ -1642,6 +1642,8 @@ final class AlarmCoordinator {
             playHistory = Array(playHistory.prefix(maxHistoryEntries))
         }
         
+        SmartWakeDebugLog.log("PLAYBACK HISTORY: added entry for song=\(songName) alarm=\(alarmLabel) count=\(playHistory.count)")
+        
         // Persist immediately
         Task {
             await saveHistory()

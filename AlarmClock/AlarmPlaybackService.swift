@@ -1148,12 +1148,23 @@ final class AlarmPlaybackService: NSObject {
 
     /// Record a completed song into play history via the app coordinator.
     private func recordHistoryForCurrentTrack() {
-        guard let currentTrackName,
-              let alarm = currentAlarm,
-              let coordinator = AlarmCoordinator.sharedInstance else { return }
+        guard let currentTrackName else {
+            SmartWakeDebugLog.log("PLAYBACK HISTORY: skipped — no currentTrackName")
+            return
+        }
+        guard let alarm = currentAlarm else {
+            SmartWakeDebugLog.log("PLAYBACK HISTORY: skipped — no currentAlarm for track=\(currentTrackName)")
+            return
+        }
+        guard let coordinator = AlarmCoordinator.sharedInstance else {
+            SmartWakeDebugLog.log("PLAYBACK HISTORY: skipped — no AlarmCoordinator.sharedInstance for track=\(currentTrackName)")
+            return
+        }
         
         // Get the sound ID for the currently playing track
         let soundID = currentTrackIndex < selectedSoundIDs.count ? selectedSoundIDs[currentTrackIndex] : nil
+        
+        SmartWakeDebugLog.log("PLAYBACK HISTORY: recording track=\(currentTrackName) alarm=\(alarm.label.isEmpty ? "Alarm" : alarm.label) soundID=\(soundID?.uuidString.prefix(8) ?? "nil") historyCountBefore=\(coordinator.playHistory.count)")
         
         coordinator.recordPlayHistory(
             songName: currentTrackName,
@@ -1161,6 +1172,8 @@ final class AlarmPlaybackService: NSObject {
             alarmLabel: alarm.label.isEmpty ? "Alarm" : alarm.label,
             soundID: soundID
         )
+        
+        SmartWakeDebugLog.log("PLAYBACK HISTORY: recorded track=\(currentTrackName) historyCountAfter=\(coordinator.playHistory.count)")
     }
 
     /// Resume playback after interruption - only while playback is active (currentAlarmID set and stop() not run)

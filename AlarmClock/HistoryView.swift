@@ -20,6 +20,9 @@ struct HistoryView: View {
                     historyList
                 }
             }
+            .onAppear {
+                SmartWakeDebugLog.log("HISTORY VIEW: built with \(coordinator.playHistory.count) entries")
+            }
             .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .navigationTitle("Play History")
             .scrollContentBackground(.hidden)
