@@ -645,6 +645,7 @@ struct SoundsView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
+            .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
