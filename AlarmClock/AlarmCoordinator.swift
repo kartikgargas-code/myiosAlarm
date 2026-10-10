@@ -16,7 +16,6 @@ final class AlarmCoordinator {
     // Phase 7a: Delayed backup for playlist alarms when Smart Wake is enabled
     // Schedule AlarmKit backup at occurrence.effectiveDate + backupDelaySeconds
     static let backupDelaySeconds = 30
-    static let backupCapSeconds: TimeInterval = 120
 
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
@@ -501,7 +500,7 @@ final class AlarmCoordinator {
             // Fresh stitch on arming events (toggle / skip / reset / time change /
             // re-arm via synchronize) - one render per arming. Editor saves stay
             // sticky-cached and fast.
-            let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust"]
+            let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust", "synchronize"]
             let (desired, soundWarnings, armedSoundNames) = await desiredSystemAlarms(
                 from: candidate,
                 freshStitch: freshReasons.contains(reason),
@@ -703,18 +702,12 @@ final class AlarmCoordinator {
                 // Primary alarm at the effective date
                 // For playlist alarms with Smart Wake enabled, we SKIP the primary alarm at wake time
                 // and only schedule the backup alarm (which fires at wakeTime + 30s)
-                // Decide whether we need to arm the primary alarm at wake time.
-                // With Smart Wake enabled, the primary is never armed (the floor sound rings via AlarmKit,
-                // and we take over for playlist playback at alerting time).
-                let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
-                
                 // Arming path: roll a fresh random selection (song set AND order)
                 // so each ring differs. The rolled selection is hashed into the
                 // schedule ID, so reconcile re-schedules with the new file.
-                // Only roll fresh if we're actually scheduling a primary (not just a backup).
                 var selectionHash = desiredSelectionHash(for: soundToUse)
                 var forcedSelection: [UUID]? = nil
-                if freshStitch && shouldSchedulePrimaryAtWake {
+                if freshStitch {
                     let playlistIDForSound: UUID?
                     if case .precomposedPlaylist(let p, _) = soundToUse { playlistIDForSound = p }
                     else if case .random(let p) = soundToUse { playlistIDForSound = p }
@@ -727,6 +720,8 @@ final class AlarmCoordinator {
                         SmartWakeDebugLog.log("PRECOMPOSE: fresh selection rolled for \(pid.uuidString.prefix(8)) hash=\(selectionHash)")
                     }
                 }
+                
+                let shouldSchedulePrimaryAtWake = !(smartWakeEnabled && SmartWakeService.isPlaylistSound(soundToUse))
                 
                 if shouldSchedulePrimaryAtWake {
                     // Only resolve (and for playlists, fully render) the primary
@@ -848,14 +843,14 @@ final class AlarmCoordinator {
                         fatalError("Expected playlist sound for backup")
                     }
                     
-                    // Create short floor sound for backup (cap at AlarmCoordinator.backupCapSeconds)
+                    // Create short floor sound for backup (cap at 60s total duration)
                     let backupPrecomposedURL: URL
                     do {
                         let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
                             playlistID: playlistID,
                             loudness: alarm.loudness,
                             songCount: 5,
-                            maxDuration: AlarmCoordinator.backupCapSeconds,
+                            maxDuration: 60,  // Cap total duration at 60s for backup
                             forcedSelection: forcedSelection,
                             protectedFileNames: protectedFileNames
                         )
@@ -1265,17 +1260,6 @@ final class AlarmCoordinator {
 
     private func writeNextAlarmSnapshotToAppGroup() {
         let timestamp = Date()
-        guard let configuredAppGroup = Bundle.main.object(
-            forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
-        ) as? String else {
-            WidgetDiagnostics.appLogEvent("Missing configured App Group identifier in Info.plist", appGroupIdentifier: nil, containerAvailable: false)
-            lastSnapshotWriteResult = (false, "Missing configured App Group identifier", timestamp)
-            return
-        }
-        let resignedAppGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-        let appGroupIdentifier = resignedAppGroups.first {
-            private func writeNextAlarmSnapshotToAppGroup() {
-        let timestamp = Date()
         
         guard let configuredAppGroup = Bundle.main.object(
             forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
@@ -1283,67 +1267,7 @@ final class AlarmCoordinator {
             WidgetDiagnostics.appLogEvent("Missing configured App Group identifier in Info.plist", appGroupIdentifier: nil, containerAvailable: false)
             lastSnapshotWriteResult = (false, "Missing configured App Group identifier", timestamp)
             return
-        } == configuredAppGroup || private func writeNextAlarmSnapshotToAppGroup() {
-        let timestamp = Date()
-        
-        guard let configuredAppGroup = Bundle.main.object(
-            forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
-        ) as? String else {
-            WidgetDiagnostics.appLogEvent("Missing configured App Group identifier in Info.plist", appGroupIdentifier: nil, containerAvailable: false)
-            lastSnapshotWriteResult = (false, "Missing configured App Group identifier", timestamp)
-            return
-        }.hasPrefix(configuredAppGroup + ".")
-        } ?? configuredAppGroup
-        WidgetDiagnostics.appLogEvent("Resolved App Group identifier", appGroupIdentifier: appGroupIdentifier)
-        guard let appGroupURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: appGroupIdentifier
-        ) else {
-            WidgetDiagnostics.appLogEvent("Failed to get App Group container URL", appGroupIdentifier: appGroupIdentifier, containerAvailable: false)
-            lastSnapshotWriteResult = (false, "Failed to get App Group container URL", timestamp)
-            return
         }
-        WidgetDiagnostics.appLogEvent("App Group container available", appGroupIdentifier: appGroupIdentifier)
-        let snapshotURL = appGroupURL.appendingPathComponent("nextAlarmSnapshot.json")
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        do {
-            let newData = try encoder.encode(nextAlarmSnapshot)
-            // Check if data has changed
-            let changed = newData != (try? Data(contentsOf: snapshotURL))
-            try newData.write(to: snapshotURL, options: .atomic)
-            // Verify write
-            let fileAttributes = try FileManager.default.attributesOfItem(atPath: snapshotURL.path)
-            let fileSize = (fileAttributes[.size] as? Int) ?? 0
-            let fileModDate = (fileAttributes[.modificationDate] as? Date) ?? timestamp
-            SmartWakeDebugLog.log("NEXTSNAP WRITE by=app changed=\(changed) id=\(nextAlarmSnapshot?.alarmID.uuidString.prefix(8) ?? "nil") next=\(nextAlarmSnapshot?.nextOccurrenceDate.description ?? "nil")")
-            var reloadRequested = false
-            if changed {
-                if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
-                    WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
-                    reloadRequested = true
-                }
-                if let controlKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String {
-                    WidgetCenter.shared.reloadTimelines(ofKind: controlKind)
-                    reloadRequested = true
-                }
-                WidgetDiagnostics.appLogEvent("WidgetCenter reload requested", 
-                    appGroupIdentifier: appGroupIdentifier,
-                    widgetReloadRequested: reloadRequested)
-            } else {
-                SmartWakeDebugLog.log("WIDGET RELOAD skipped (snapshot unchanged)")
-            }
-            lastSnapshotWriteResult = (true, nil, timestamp)
-            lastWidgetReloadRequest = timestamp
-        } catch {
-            WidgetDiagnostics.appLogEvent("Failed to write snapshot", 
-                appGroupIdentifier: appGroupIdentifier,
-                containerAvailable: true,
-                fileExists: false,
-                writeSuccess: false,
-                writeError: error.localizedDescription)
-            lastSnapshotWriteResult = (false, error.localizedDescription, timestamp)
-        }
-    }
         let resignedAppGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
         let appGroupIdentifier = resignedAppGroups.first {
             $0 == configuredAppGroup || $0.hasPrefix(configuredAppGroup + ".")
@@ -1534,7 +1458,7 @@ final class AlarmCoordinator {
                     playlistID: playlist.id,
                     loudness: .hundred,
                     songCount: 5,
-                    maxDuration: AlarmCoordinator.backupCapSeconds
+                    maxDuration: 60
                 )
                 cafURL = tuple.0
                 playlistDiagnostics.addPreparation(tuple.1)
@@ -1592,8 +1516,7 @@ final class AlarmCoordinator {
     private func newestCappedStitchURL(in dir: URL) -> URL? {
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let outputExtension = AudioProcessingService.useCAFFormat ? "caf" : "wav"
-        let capSuffix = "pct_cap\(Int(AlarmCoordinator.backupCapSeconds)).\(outputExtension)"
-        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix(capSuffix) }
+        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap60.\(outputExtension)") }
         return candidates.max { lhs, rhs in
             let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -1607,7 +1530,7 @@ final class AlarmCoordinator {
     private func maybePruneStitchCacheDaily() {
         let defaults = UserDefaults.standard
         if let last = defaults.object(forKey: Self.lastStitchPruneDateKey) as? Date,
-           now().timeIntervalSince(last) < 3_600 {
+           now().timeIntervalSince(last) < 86_400 {
             return
         }
         pruneStitchCacheNow()
