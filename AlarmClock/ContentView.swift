@@ -508,8 +508,6 @@ struct SoundsView: View {
         }
     }
     
-    private let preview = SoundPreviewService.shared
-    
     var body: some View {
         NavigationStack {
             List {
