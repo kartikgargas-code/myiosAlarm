@@ -474,83 +474,124 @@ struct SoundsView: View {
     }
     
     private let preview = SoundPreviewService.shared
+
+    private var sortedSounds: [ImportedSound] {
+        let sounds = SoundLibrary.shared.importedSounds
+        switch sortOption {
+        case .name:
+            return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .dateAdded:
+            return sounds.sorted { $0.dateAdded > $1.dateAdded }
+        case .size:
+            // Size requires reading file attributes - for now sort by filename as proxy
+            return sounds.sorted { $0.fileName.localizedCaseInsensitiveCompare($1.fileName) == .orderedAscending }
+        case .folder:
+            return sounds.sorted {
+                let f1 = $0.folder ?? ""
+                let f2 = $1.folder ?? ""
+                return f1.localizedCaseInsensitiveCompare(f2) == .orderedAscending
+            }
+        case .duration:
+            return sounds.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
+        }
+    }
+
+    private var visibleSounds: [ImportedSound] {
+        sortedSounds.filter { sound in
+            (folderFilter == nil || sound.folder == folderFilter) &&
+            (searchText.isEmpty || sound.name.localizedCaseInsensitiveContains(searchText))
+        }
+    }
+
+    private struct SoundGroup: Identifiable { let id: String; let title: String; let sounds: [ImportedSound] }
+    private var visibleGroups: [SoundGroup] {
+        let dict = Dictionary(grouping: visibleSounds) { $0.folder }
+        return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
+            SoundGroup(id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+        }
+    }
+
     
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Fixed header row: folder picker on left, search on right
-                HStack(spacing: 12) {
-                    // Folder picker menu
-                    Menu {
-                        Button("All") {
-                            folderFilter = nil
-                        }
-                        ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
-                            Button(folder) {
-                                folderFilter = folder
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "folder.fill")
-                            Text(folderFilter ?? "All")
-                                .lineLimit(1)
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(ThemeManager.shared.colors.accent.opacity(0.12))
-                        .clipShape(Capsule())
+    private var headerRow: some View {
+        // Fixed header row: folder picker on left, search on right
+        HStack(spacing: 12) {
+            // Folder picker menu
+            Menu {
+                Button("All") {
+                    folderFilter = nil
+                }
+                ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                    Button(folder) {
+                        folderFilter = folder
                     }
-                    .menuOrder(.fixed)
-                    
-                    Spacer()
-                    
-                    // Search button/field
-                    if showingSearch {
-                        HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            TextField("Search sounds", text: $searchText)
-                                .textFieldStyle(.plain)
-                            if !searchText.isEmpty {
-                                Button {
-                                    searchText = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(ThemeManager.shared.colors.accent.opacity(0.12))
-                        .clipShape(Capsule())
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    } else {
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill")
+                    Text(folderFilter ?? "All")
+                        .lineLimit(1)
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(ThemeManager.shared.colors.accent.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .menuOrder(.fixed)
+            
+            Spacer()
+            
+            // Search button/field
+            if showingSearch {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    TextField("Search sounds", text: $searchText)
+                        .textFieldStyle(.plain)
+                    if !searchText.isEmpty {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showingSearch = true
-                            }
+                            searchText = ""
                         } label: {
-                            Image(systemName: "magnifyingglass")
-                                .font(.title3)
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                                .padding(8)
-                                .background(ThemeManager.shared.colors.accent.opacity(0.12))
-                                .clipShape(Circle())
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(ThemeManager.shared.colors.background)
-                .overlay(alignment: .bottom) {
-                    Divider()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(ThemeManager.shared.colors.accent.opacity(0.12))
+                .clipShape(Capsule())
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showingSearch = true
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.title3)
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .padding(8)
+                        .background(ThemeManager.shared.colors.accent.opacity(0.12))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(ThemeManager.shared.colors.background)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                headerRow
                 
                 // Sounds list
                 List {
