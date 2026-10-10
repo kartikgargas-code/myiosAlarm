@@ -97,6 +97,10 @@ struct NextAlarmWidgetProvider: TimelineProvider {
     }
     private let snapshotFileName = "nextAlarmSnapshot.json"
     
+    // Track last successful snapshot to avoid logging unchanged refreshes
+    private var lastSnapshotAlarmID: UUID? = nil
+    private var lastSnapshotNextOccurrence: Date? = nil
+    
     func placeholder(in context: Context) -> NextAlarmWidgetEntry {
         NextAlarmWidgetEntry(
             date: Date(),
@@ -127,7 +131,6 @@ struct NextAlarmWidgetProvider: TimelineProvider {
     }
     
     private func loadEntry() -> NextAlarmWidgetEntry {
-        SmartWakeDebugLog.log("WIDGET loadEntry started appGroup=\(appGroupIdentifier)")
         
         guard let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
@@ -143,15 +146,12 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             )
         }
         
-        SmartWakeDebugLog.log("WIDGET App Group container available appGroup=\(appGroupIdentifier) containerAvailable=true")
-        
         let snapshotURL = appGroupURL.appendingPathComponent(snapshotFileName)
         
         let fileExists = FileManager.default.fileExists(atPath: snapshotURL.path)
-        SmartWakeDebugLog.log("WIDGET checked snapshot file existence appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=\(fileExists)")
         
         guard fileExists else {
-            SmartWakeDebugLog.log("WIDGET snapshot file does not exist, returning empty entry appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=false entryHasAlarm=false")
+            SmartWakeDebugLog.log("WIDGET snapshot file does not exist appGroup=\(appGroupIdentifier)")
             return NextAlarmWidgetEntry(
                 date: Date(),
                 alarmLabel: "No upcoming alarm",
@@ -163,7 +163,7 @@ struct NextAlarmWidgetProvider: TimelineProvider {
         }
         
         guard let data = try? Data(contentsOf: snapshotURL) else {
-            SmartWakeDebugLog.log("WIDGET failed to read snapshot file data appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=true readSuccess=false readError=Data(contentsOf:) failed entryHasAlarm=false")
+            SmartWakeDebugLog.log("WIDGET failed to read snapshot file data appGroup=\(appGroupIdentifier)")
             return NextAlarmWidgetEntry(
                 date: Date(),
                 alarmLabel: "No upcoming alarm",
@@ -173,14 +173,12 @@ struct NextAlarmWidgetProvider: TimelineProvider {
                 alarmID: nil
             )
         }
-        
-        SmartWakeDebugLog.log("WIDGET snapshot file read successfully appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=true readSuccess=true")
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         
         guard let snapshot = try? decoder.decode(NextAlarmSnapshot.self, from: data) else {
-            SmartWakeDebugLog.log("WIDGET failed to decode snapshot JSON appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=true readSuccess=true decodeSuccess=false decodeError=JSONDecoder.decode failed entryHasAlarm=false")
+            SmartWakeDebugLog.log("WIDGET failed to decode snapshot JSON appGroup=\(appGroupIdentifier)")
             return NextAlarmWidgetEntry(
                 date: Date(),
                 alarmLabel: "No upcoming alarm",
@@ -191,7 +189,14 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             )
         }
         
-        SmartWakeDebugLog.log("WIDGET snapshot decoded successfully appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=true readSuccess=true decodeSuccess=true snapshotAlarmID=\(snapshot.alarmID.uuidString) snapshotLabel=\(snapshot.label) snapshotNextOccurrence=\(snapshot.nextOccurrenceDate) snapshotIsEnabled=\(snapshot.isEnabled)")
+        // Check if snapshot changed (alarm ID or next occurrence time)
+        let snapshotChanged = (lastSnapshotAlarmID != snapshot.alarmID) || (lastSnapshotNextOccurrence != snapshot.nextOccurrenceDate)
+        
+        if snapshotChanged {
+            lastSnapshotAlarmID = snapshot.alarmID
+            lastSnapshotNextOccurrence = snapshot.nextOccurrenceDate
+            SmartWakeDebugLog.log("WIDGET snapshot changed appGroup=\(appGroupIdentifier) alarmID=\(snapshot.alarmID.uuidString) nextOccurrence=\(snapshot.nextOccurrenceDate)")
+        }
         
         // Convert snapshot to widget entry
         let formatter = DateFormatter()
@@ -220,8 +225,6 @@ struct NextAlarmWidgetProvider: TimelineProvider {
             hasAlarm: true,
             alarmID: snapshot.alarmID
         )
-        
-        SmartWakeDebugLog.log("WIDGET entry created appGroup=\(appGroupIdentifier) containerAvailable=true fileExists=true readSuccess=true decodeSuccess=true snapshotAlarmID=\(snapshot.alarmID.uuidString) snapshotLabel=\(snapshot.label) snapshotNextOccurrence=\(snapshot.nextOccurrenceDate) snapshotIsEnabled=\(snapshot.isEnabled) entryHasAlarm=\(entry.hasAlarm)")
         
         return entry
     }

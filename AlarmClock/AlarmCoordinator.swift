@@ -845,6 +845,18 @@ final class AlarmCoordinator {
                         fatalError("Expected playlist sound for backup")
                     }
                     
+                    // For backup, ALWAYS roll a fresh random selection (if not sequence playlist)
+                    // so the floor sound differs each time the alarm is armed.
+                    var backupForcedSelection = forcedSelection
+                    var backupSelectionHash = selectionHash
+                    if backupForcedSelection == nil,
+                       let rolled = rollFreshSelection(playlistID: playlistID, songCount: 5),
+                       !rolled.isEmpty {
+                        backupForcedSelection = rolled
+                        backupSelectionHash = SoundSelectionHash.make(from: rolled.map { $0.uuidString }.sorted().joined(separator: "-"))
+                        SmartWakeDebugLog.log("PRECOMPOSE: fresh backup selection rolled for \(playlistID.uuidString.prefix(8)) hash=\(backupSelectionHash)")
+                    }
+                    
                     // Create short floor sound for backup (cap at backupSoundCapSeconds total duration)
                     let backupPrecomposedURL: URL
                     do {
@@ -853,7 +865,7 @@ final class AlarmCoordinator {
                             loudness: alarm.loudness,
                             songCount: 5,
                             maxDuration: TimeInterval(AlarmCoordinator.backupSoundCapSeconds),
-                            forcedSelection: forcedSelection,
+                            forcedSelection: backupForcedSelection,
                             protectedFileNames: protectedFileNames
                         )
                         backupPrecomposedURL = backupPrecomposedTuple.0
@@ -896,7 +908,7 @@ final class AlarmCoordinator {
                             label: label,
                             sound: soundToUse,
                             loudness: alarm.loudness,
-                            selectionHash: selectionHash
+                            selectionHash: backupSelectionHash
                         ),
                         occurrence: backupOccurrence,
                         label: label,
@@ -1464,7 +1476,7 @@ final class AlarmCoordinator {
                     playlistID: playlist.id,
                     loudness: .hundred,
                     songCount: 5,
-                    maxDuration: 60
+                    maxDuration: TimeInterval(AlarmCoordinator.backupSoundCapSeconds)
                 )
                 cafURL = tuple.0
                 playlistDiagnostics.addPreparation(tuple.1)

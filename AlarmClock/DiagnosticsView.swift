@@ -25,6 +25,19 @@ struct DiagnosticsView: View {
     @State private var buildFingerprint: String? = nil
     @State private var armedRecords: [AlarmCoordinator.ArmedAlarmRecord] = []
     
+    @State private var copySection: LogCopySection = .everything
+    
+    private enum LogCopySection: String, CaseIterable, Identifiable {
+        case everything = "Everything"
+        case last100 = "Last 100 lines"
+        case alarms = "Alarms only"
+        case smartWake = "Smart Wake only"
+        case widget = "Widget only"
+        case sounds = "Sounds / stitch only"
+        case errors = "Errors & warnings"
+        var id: String { rawValue }
+    }
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -72,7 +85,21 @@ struct DiagnosticsView: View {
         .safeAreaInset(edge: .bottom) {
             BottomActionsBar(
                 leadingActions: [
-                    .icon("Copy", systemImage: "doc.on.doc") { copyFilteredLog() },
+                    .icon("Copy", systemImage: "doc.on.doc") {
+                        // Will be replaced with menu-based copy
+                    }
+                    .menu(AnyView(
+                        Menu {
+                            ForEach(LogCopySection.allCases) { section in
+                                Button(section.rawValue) {
+                                    copySection = section
+                                    copyFilteredLog()
+                                }
+                            }
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    )),
                     .icon("Clear", systemImage: "trash", destructive: true) { clearLog() },
                     .icon("Refresh", systemImage: "arrow.clockwise") { loadLog() }
                 ],
@@ -434,7 +461,7 @@ struct DiagnosticsView: View {
     
     private func copyFilteredLog() {
         let text = SmartWakeDebugLog.read() ?? ""
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
             .map(String.init)
             .filter { line in
                 !line.contains("SESSION DUMP") &&
@@ -443,10 +470,37 @@ struct DiagnosticsView: View {
                 !line.contains("BACKUP: skipping") &&
                 !line.hasPrefix("  id=")
             }
-            .suffix(SmartWakeDebugLog.copyMaxLines)
-            .joined(separator: "\n")
         
-        UIPasteboard.general.string = lines
+        // Apply section filter
+        switch copySection {
+        case .everything:
+            lines = Array(lines.suffix(SmartWakeDebugLog.copyMaxLines))
+        case .last100:
+            lines = Array(lines.suffix(100))
+        case .alarms:
+            lines = lines.filter { line in
+                line.contains("ALARM") || line.contains("DESIRED ALARM") || line.contains("ARM RECORD") || line.contains("RECONCILE") || line.contains("DESIRED ITEM")
+            }
+        case .smartWake:
+            lines = lines.filter { line in
+                line.contains("SILENT LOOP") || line.contains("FOREGROUND") || line.contains("SCENE") || line.contains("START") || line.contains("PLAYLIST-FIRST") || line.contains("WAKE") || line.contains("SMART WAKE")
+            }
+        case .widget:
+            lines = lines.filter { line in
+                line.hasPrefix("[") && line.contains("WIDGET")
+            }
+        case .sounds:
+            lines = lines.filter { line in
+                line.contains("PRECOMPOSE") || line.contains("PRUNE") || line.contains("CAF TEST") || line.contains("SOUND") || line.contains("STITCH")
+            }
+        case .errors:
+            lines = lines.filter { line in
+                line.contains("ERROR") || line.contains("FAILED") || line.contains("WARNING") || line.contains("WARN")
+            }
+        }
+        
+        let result = lines.suffix(SmartWakeDebugLog.copyMaxLines).joined(separator: "\n")
+        UIPasteboard.general.string = result
     }
     
     private func loadBuildFingerprint() {
