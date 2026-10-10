@@ -845,16 +845,20 @@ final class AlarmCoordinator {
                         fatalError("Expected playlist sound for backup")
                     }
                     
-                    // For backup, ALWAYS roll a fresh random selection (if not sequence playlist)
-                    // so the floor sound differs each time the alarm is armed.
-                    var backupForcedSelection = forcedSelection
+                    // Backup floor: a DETERMINISTIC selection for this occurrence, so the
+                    // arm path and the playlist-first takeover (which must cancel THIS
+                    // exact alarm) compute the SAME SystemScheduleID. A random hash here
+                    // made the cancel miss and the safety-net ring on top of the playlist.
+                    // The songs still change from one occurrence to the next.
+                    var backupForcedSelection: [UUID]? = nil
                     var backupSelectionHash = selectionHash
-                    if backupForcedSelection == nil,
-                       let rolled = rollFreshSelection(playlistID: playlistID, songCount: 5),
-                       !rolled.isEmpty {
-                        backupForcedSelection = rolled
-                        backupSelectionHash = SoundSelectionHash.make(from: rolled.map { $0.uuidString }.sorted().joined(separator: "-"))
-                        SmartWakeDebugLog.log("PRECOMPOSE: fresh backup selection rolled for \(playlistID.uuidString.prefix(8)) hash=\(backupSelectionHash)")
+                    if let floor = AlarmCoordinator.backupFloorSelection(
+                        playlistID: playlistID,
+                        occurrenceKey: occurrence.occurrenceKey
+                    ) {
+                        backupForcedSelection = floor.ids
+                        backupSelectionHash = floor.hash
+                        SmartWakeDebugLog.log("PRECOMPOSE: backup floor selection occurrence=\(occurrence.occurrenceKey) hash=\(floor.hash)")
                     }
                     
                     // Create short floor sound for backup (cap at backupSoundCapSeconds total duration)
@@ -977,6 +981,43 @@ final class AlarmCoordinator {
         }
         return nil
     }
+
+    /// Deterministic backup-floor selection for one occurrence. It is deterministic so the
+    /// arm path and the takeover-cancel path compute the SAME SystemScheduleID, and it
+    /// varies with the occurrence key so the safety-net sound is not always the same songs.
+    static func backupFloorSelection(playlistID: UUID, occurrenceKey: String, songCount: Int = 5) -> (ids: [UUID], hash: String)? {
+        guard let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+              !playlist.selectedSoundIDs.isEmpty,
+              playlist.playOrder != .sequence else { return nil }
+        let seed = "\(occurrenceKey)|\(playlistID.uuidString)"
+        let ordered = playlist.selectedSoundIDs.sorted { a, b in
+            SoundSelectionHash.make(from: "\(a.uuidString)#\(seed)") < SoundSelectionHash.make(from: "\(b.uuidString)#\(seed)")
+        }
+        let picked = Array(ordered.prefix(min(songCount, ordered.count)))
+        guard !picked.isEmpty else { return nil }
+        let hash = SoundSelectionHash.make(from: picked.map { $0.uuidString }.sorted().joined(separator: "-"))
+        return (picked, hash)
+    }
+
+    /// Selection hash for the backup schedule ID on the CANCEL path. Must match
+    /// `backupFloorSelection` for the same occurrence; falls back to the stable playlist
+    /// hash for sequence/empty playlists, which is what the arm path uses there too.
+    static func backupFloorSelectionHash(for sound: AlarmSound, occurrenceKey: String) -> String? {
+        let playlistID: UUID?
+        if case .precomposedPlaylist(let id, _) = sound { playlistID = id }
+        else if case .random(let id) = sound { playlistID = id }
+        else { playlistID = nil }
+        guard let playlistID = playlistID else { return nil }
+        if let floor = backupFloorSelection(playlistID: playlistID, occurrenceKey: occurrenceKey) {
+            return floor.hash
+        }
+        if let playlist = try? SoundLibrary.shared.playlist(for: playlistID) {
+            let key = playlist.selectedSoundIDs.map { $0.uuidString }.sorted().joined(separator: "-")
+            return SoundSelectionHash.make(from: key)
+        }
+        return nil
+    }
+
 
     /// Resolve the sound for a specific occurrence, handling random mode
     /// Returns the sound to use and the updated override (if any)

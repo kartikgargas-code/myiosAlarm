@@ -1001,7 +1001,7 @@ final class SmartWakeService {
                             label: alarm.label.isEmpty ? "Alarm" : alarm.label,
                             sound: soundToUse,
                             loudness: alarm.loudness,
-                            selectionHash: desiredSelectionHash(for: soundToUse)
+                            selectionHash: AlarmCoordinator.backupFloorSelectionHash(for: soundToUse, occurrenceKey: occurrenceKey)
                         )
                         return
                     }
@@ -1044,7 +1044,7 @@ final class SmartWakeService {
                             label: alarm.label.isEmpty ? "Alarm" : alarm.label,
                             sound: soundToUse,
                             loudness: alarm.loudness,
-                            selectionHash: desiredSelectionHash(for: soundToUse)
+                            selectionHash: AlarmCoordinator.backupFloorSelectionHash(for: soundToUse, occurrenceKey: occurrenceKey)
                         )
                         
                         // Promote to primary session for lock screen controls (if not foreground)
