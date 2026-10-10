@@ -88,4 +88,29 @@ no API key, $0).
 10. **When a reported bug is one the code should already handle, first add one log
     line that proves which branch ran.** Do not change logic until the evidence says
     which path is actually taken.
+11. **Brace-balance EVERY Swift file you change, before you commit.** A single
+    missing `}` caused red builds that were hard to diagnose (build 487). Run this
+    helper (prints the final nesting depth — it MUST be `0`):
+
+    ```python
+    # usage: python .agent_tmp/brace.py <file.swift>
+    import re, sys
+    depth = 0
+    for i, l in enumerate(open(sys.argv[1], encoding='utf-8'), 1):
+        s = re.sub(r'//.*', '', l)
+        s = re.sub(r'"(?:\\.|[^"\\])*"', '', s)
+        depth += s.count('{') - s.count('}')
+    print('FINAL depth', depth)
+    ```
+
+    If the depth is not `0`, you are missing (or added) a brace. Fix it before pushing.
+12. **Never delete code you were not asked to change.** When you rewrite a screen's
+    `body`, read the WHOLE region you are replacing first, and after editing **grep
+    for every symbol the new code references** to confirm it still exists. This exact
+    mistake silently deleted `sortedSounds`, `visibleSounds`, `SoundGroup` and
+    `visibleGroups` while adding a header (build 488). Add and edit — do not remove
+    unrelated properties, types, or helper functions.
+13. **When you replace a screen's `body`, keep it small.** Extract big sub-views into
+    their own `private var someView: some View` properties; an over-large `body` can
+    fail the compiler with "unable to type-check this expression in reasonable time".
 <!-- builder-discipline:end -->
