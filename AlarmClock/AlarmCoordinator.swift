@@ -1146,7 +1146,7 @@ final class AlarmCoordinator {
         nextOccurrence = earliest
         
         // Log the alarm order for debugging
-        let order = alarms.map { "\($0.label)(\($0.id.uuidString.prefix(8)))@\(calculator.nextEffectiveOccurrence(for: $0, after: currentDate)?.effectiveDate.description ?? "none")" }.joined(separator: " -> ")
+        let order = alarms.map { "\($0.label)(\($0.id.uuidString.prefix(8)))@\(engine.calculator.nextEffectiveOccurrence(for: $0, after: currentDate)?.effectiveDate.description ?? "none")" }.joined(separator: " -> ")
         SmartWakeDebugLog.log("ALARM LIST ORDER: \(order)")
         
         // Compute next alarm snapshot for widgets and Lock Screen controls
