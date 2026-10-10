@@ -1194,7 +1194,8 @@ final class AlarmCoordinator {
     /// Update published state from engine — call after external snapshot changes
     func publish() {
         let currentDate = now()
-        alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
+        // Use stable permanent-time order for UI list; only compute next-occurrence for widget snapshot
+        alarms = engine.alarms
         let earliest = engine.earliestOccurrence(now: currentDate)
         nextOccurrence = earliest
         
