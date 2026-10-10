@@ -348,8 +348,19 @@ struct UserThemeEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let editingTheme: UserTheme?
 
-    @State private var name: String = ""
-    @State private var colors: CustomThemeColors = CustomThemeColors()
+    @State private var name: String
+    @State private var colors: CustomThemeColors
+
+    init(editingTheme: UserTheme?) {
+        self.editingTheme = editingTheme
+        if let editingTheme {
+            self._name = State(initialValue: editingTheme.name)
+            self._colors = State(initialValue: editingTheme.colors)
+        } else {
+            self._name = State(initialValue: "")
+            self._colors = State(initialValue: ThemeManager.shared.customThemeColors)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -397,14 +408,6 @@ struct UserThemeEditorView: View {
                         }
                     ]
                 )
-            }
-            .onAppear {
-                if let editingTheme {
-                    name = editingTheme.name
-                    colors = editingTheme.colors
-                } else {
-                    colors = ThemeManager.shared.customThemeColors
-                }
             }
         }
     }
