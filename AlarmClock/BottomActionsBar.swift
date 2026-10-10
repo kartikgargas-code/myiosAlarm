@@ -77,10 +77,14 @@ struct BottomActionsBar: View {
                 .accessibilityLabel(action.title)
                 .buttonStyle(.plain)
                 
+                var view = AnyView(base)
                 if let cm = action.contextMenu {
-                    return AnyView(base.contextMenu { cm })
+                    view = AnyView(view.contextMenu { cm })
                 }
-                return AnyView(base)
+                if let pop = action.popover, let presented = action.popoverPresented {
+                    view = AnyView(view.popover(isPresented: presented, arrowEdge: .bottom) { pop })
+                }
+                return view
             } else {
                 let base = Button(action: action.action) {
                     Image(systemName: action.systemImage ?? "")
@@ -92,15 +96,14 @@ struct BottomActionsBar: View {
                 .accessibilityLabel(action.title)
                 .buttonStyle(.plain)
                 
+                var view = AnyView(base)
                 if let cm = action.contextMenu {
-                    return AnyView(base.contextMenu { cm })
+                    view = AnyView(view.contextMenu { cm })
                 }
-                
                 if let pop = action.popover, let presented = action.popoverPresented {
-                    return AnyView(base.popover(isPresented: presented, arrowEdge: .bottom) { pop })
+                    view = AnyView(view.popover(isPresented: presented, arrowEdge: .bottom) { pop })
                 }
-                
-                return AnyView(base)
+                return view
             }
         } else {
             return AnyView(

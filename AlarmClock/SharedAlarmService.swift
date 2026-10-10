@@ -191,15 +191,26 @@ public struct SharedAlarmService: LiveActivityAlarmService {
         encoder.dateEncodingStrategy = .iso8601
         
         do {
-            let data = try encoder.encode(widgetSnapshot)
-            try data.write(to: snapshotURL, options: .atomic)
+            let newData = try encoder.encode(widgetSnapshot)
             
-            // Request widget reload
-            if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
-                WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+            // Check if data has changed
+            let changed = newData != (try? Data(contentsOf: snapshotURL))
+            
+            try newData.write(to: snapshotURL, options: .atomic)
+            
+            SmartWakeDebugLog.log("NEXTSNAP WRITE by=intent changed=\(changed) id=\(widgetSnapshot?.alarmID.uuidString.prefix(8) ?? "nil") next=\(widgetSnapshot?.nextOccurrenceDate.description ?? "nil")")
+            
+            // Request widget reload only if changed
+            if changed {
+                if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+                    WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+                }
+                SmartWakeDebugLog.log("WIDGET RELOAD requested by intent")
+            } else {
+                SmartWakeDebugLog.log("WIDGET RELOAD skipped (snapshot unchanged)")
             }
         } catch {
-            print("Failed to write widget snapshot: \(error)")
+            SmartWakeDebugLog.log("NEXTSNAP WRITE by=intent FAILED: \(error.localizedDescription)")
         }
     }
     

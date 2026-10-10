@@ -452,6 +452,8 @@ struct SoundsView: View {
     @State private var showingDeleteAll = false
     @State private var folderToDelete: String? = nil
     @State private var showingSortOptions = false
+    @State private var searchText = ""
+    @State private var folderFilter: String? = nil   // nil = All
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -491,6 +493,23 @@ struct SoundsView: View {
         }
     }
     
+    private var visibleSounds: [ImportedSound] {
+        sortedSounds.filter { sound in
+            (folderFilter == nil || sound.folder == folderFilter) &&
+            (searchText.isEmpty || sound.name.localizedCaseInsensitiveContains(searchText))
+        }
+    }
+    
+    private struct SoundGroup: Identifiable { let id: String; let title: String; let sounds: [ImportedSound] }
+    private var visibleGroups: [SoundGroup] {
+        let dict = Dictionary(grouping: visibleSounds) { $0.folder }
+        return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
+            SoundGroup(id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+        }
+    }
+    
+    private let preview = SoundPreviewService.shared
+    
     var body: some View {
         NavigationStack {
             List {
@@ -521,15 +540,26 @@ struct SoundsView: View {
                     }
                 }
                 
-                Section("Imported Sounds") {
-                    if SoundLibrary.shared.importedSounds.isEmpty {
+                if SoundLibrary.shared.importedSounds.isEmpty {
+                    Section("Imported Sounds") {
                         Text("No imported sounds yet. Tap 'Import MP3 from Files' to add sounds.")
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    } else {
-                        ForEach(sortedSounds) { sound in
-                            soundRow(sound: sound)
+                    }
+                } else {
+                    Section {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                folderChip(title: "All", value: nil)
+                                ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                                    folderChip(title: folder, value: folder)
+                                }
+                            }.padding(.vertical, 2)
                         }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+                    ForEach(visibleGroups) { group in
+                        Section(group.title) { ForEach(group.sounds) { soundRow(sound: $0) } }
                     }
                 }
                 
@@ -541,6 +571,7 @@ struct SoundsView: View {
                     }
                 }
             }
+            .searchable(text: $searchText)
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
@@ -604,6 +635,9 @@ struct SoundsView: View {
                 Button("Cancel", role: .cancel) { folderToDelete = nil }
             } message: {
                 Text("Deletes every track in this folder and removes its playlist.")
+            }
+            .onChange(of: SoundLibrary.shared.importedFolders) { _, folders in
+                if let f = folderFilter, !folders.contains(f) { folderFilter = nil }
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,
@@ -764,6 +798,18 @@ struct SoundsView: View {
             }
         }
         return false
+    }
+    
+    @ViewBuilder
+    private func folderChip(title: String, value: String?) -> some View {
+        let isOn = folderFilter == value
+        Button { folderFilter = value } label: {
+            Text(title).font(.subheadline)
+                .foregroundStyle(isOn ? ThemeManager.shared.colors.accent : ThemeManager.shared.colors.secondaryText)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(Capsule().fill(ThemeManager.shared.colors.accent.opacity(isOn ? 0.22 : 0.08)))
+                .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(isOn ? 0.9 : 0.25), lineWidth: 1))
+        }.buttonStyle(.plain)
     }
     
     private func importSound(from url: URL) async {

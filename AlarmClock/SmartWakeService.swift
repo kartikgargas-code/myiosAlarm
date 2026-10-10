@@ -33,6 +33,9 @@ final class SmartWakeService {
     private var silentLoopURL: URL?
     private weak var coordinator: AlarmCoordinator?
     
+    // Track intentional stops (takeover, snooze) to avoid logging as death
+    private var intentionalStop = false
+    
     // Transition arming
     private var transitionCheckTask: Task<Void, Never>?
     private var armedOccurrences: Set<String> = [] // Composite keys: "alarmID|occurrenceKey"
@@ -241,9 +244,14 @@ final class SmartWakeService {
                 
                 // Check if silent loop died
                 if lastLoopRunning && !isRunning {
-                    SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false \(silentLoopDiagnostics())")
+                    if intentionalStop {
+                        SmartWakeDebugLog.log("SILENT LOOP STOPPED (intentional: takeover/snooze)")
+                        intentionalStop = false
+                    } else {
+                        SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false \(silentLoopDiagnostics())")
+                        scheduleSilentLoopRestart()
+                    }
                     lastLoopRunning = false
-                    scheduleSilentLoopRestart()
                 } else if !lastLoopRunning && isRunning {
                     lastLoopRunning = true
                 }
@@ -627,6 +635,7 @@ final class SmartWakeService {
     func stopSilentPlayerOnly(reason: String = "transition to in-app playback") {
         os_log(.info, log: log, "stopSilentPlayerOnly() called - stopping silent loop, keeping session active (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("SILENT LOOP stopped (\(reason))")
+        intentionalStop = true
         player?.stop()
         player = nil
         isSessionActive = false
