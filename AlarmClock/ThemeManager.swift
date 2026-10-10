@@ -428,7 +428,8 @@ struct CustomThemeColors: Codable {
         case .card: card = colorData
         case .primaryText: primaryText = colorData
         case .secondaryText: secondaryText = colorData
-        case .accent: accent = colorData; toggleOn = colorData
+        case .accent: accent = colorData
+        case .toggleOn: toggleOn = colorData
         case .toggleOff: toggleOff = colorData
         case .divider: divider = colorData
         case .destructive: destructive = colorData
@@ -470,6 +471,7 @@ enum ColorRole: String, CaseIterable, Identifiable {
     case primaryText = "Primary Text"
     case secondaryText = "Secondary Text"
     case accent = "Accent"
+    case toggleOn = "Toggle On"
     case toggleOff = "Toggle Off"
     case divider = "Divider"
     case destructive = "Destructive"
@@ -499,5 +501,35 @@ extension Color {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+
+/// Custom ToggleStyle that uses theme colors for on/off track
+struct ThemedToggleStyle: ToggleStyle {
+    let colors: ThemeColors
+    
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            Spacer()
+            RoundedRectangle(cornerRadius: 16)
+                .fill(configuration.isOn ? colors.toggleOn : colors.toggleOff)
+                .frame(width: 51, height: 31)
+                .overlay(
+                    Circle()
+                        .fill(Color.white)
+                        .shadow(radius: 1, x: 0, y: 1)
+                        .padding(2)
+                        .offset(x: configuration.isOn ? 10 : -10)
+                        .animation(.easeInOut(duration: 0.15), value: configuration.isOn)
+                )
+                .onTapGesture {
+                    configuration.isOn.toggle()
+                }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            configuration.isOn.toggle()
+        }
     }
 }

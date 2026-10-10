@@ -304,10 +304,13 @@ struct AlarmEditorView: View {
     }
     
     private var alarmBehaviourSection: some View {
-        Section("Alarm Behaviour") {
+        let colors = ThemeManager.shared.colors
+        return Section("Alarm Behaviour") {
             Toggle("Vibrate", isOn: $vibrate)
+                .toggleStyle(ThemedToggleStyle(colors: colors))
             
             Toggle("Fade In", isOn: $fadeInEnabled)
+                .toggleStyle(ThemedToggleStyle(colors: colors))
             if fadeInEnabled {
                 Picker("Fade In Duration", selection: $fadeInSeconds) {
                     Text("5 s").tag(5)
@@ -334,6 +337,7 @@ struct AlarmEditorView: View {
             .pickerStyle(.menu)
             
             Toggle("Loop Sound", isOn: $loopSound)
+                .toggleStyle(ThemedToggleStyle(colors: colors))
         }
     }
     

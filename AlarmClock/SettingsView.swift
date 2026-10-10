@@ -50,6 +50,7 @@ struct SettingsView: View {
                 
                 Section("Smart Wake") {
                     Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     if smartWakeService.isSmartWakeEnabled {
                         Text("A silent audio loop will run in background to keep app alive for real song playback at alarm time.")
                             .font(.caption)

@@ -335,6 +335,7 @@ extension CustomThemeColors {
         case .primaryText: return primaryText.color
         case .secondaryText: return secondaryText.color
         case .accent: return accent.color
+        case .toggleOn: return toggleOn.color
         case .toggleOff: return toggleOff.color
         case .divider: return divider.color
         case .destructive: return destructive.color

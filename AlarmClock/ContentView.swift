@@ -324,8 +324,9 @@ struct ContentView: View {
                 }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
+            .toggleStyle(ThemedToggleStyle(colors: colors))
         }
+        .listRowBackground(colors.card)
         .contextMenu {
             // Secondary actions
             if let occurrence {
@@ -740,6 +741,7 @@ struct SoundsView: View {
         let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
         let isPlayingThis = preview.playingSoundID == sound.fileName
         let isReferenced = isSoundReferenced(sound)
+        let colors = ThemeManager.shared.colors
         
         return HStack(spacing: 12) {
             // Play/Pause toggle on the left
@@ -796,6 +798,8 @@ struct SoundsView: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+        .listRowBackground(colors.card)
+        .listRowSeparatorTint(colors.divider)
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 // Always do full cleanup: remove from playlists, reset alarms, delete file
