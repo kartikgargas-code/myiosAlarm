@@ -86,18 +86,16 @@ struct DiagnosticsView: View {
             BottomActionsBar(
                 leadingActions: [
                     .icon("Copy", systemImage: "doc.on.doc") {
-                        // Will be replaced with menu-based copy
+                        copyFilteredLog()
                     }
                     .menu(AnyView(
-                        Menu {
+                        Group {
                             ForEach(LogCopySection.allCases) { section in
                                 Button(section.rawValue) {
                                     copySection = section
                                     copyFilteredLog()
                                 }
                             }
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
                         }
                     )),
                     .icon("Clear", systemImage: "trash", destructive: true) { clearLog() },

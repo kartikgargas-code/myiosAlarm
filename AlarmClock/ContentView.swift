@@ -692,6 +692,7 @@ struct SoundsView: View {
             .onDisappear {
                 preview.stop()
             }
+            }
         }
     }
     
