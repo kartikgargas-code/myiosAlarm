@@ -395,7 +395,7 @@ final class AudioProcessingService {
         loudness: AlarmLoudness,
         songCount: Int = 5,
         alarmID: UUID? = nil,
-        maxDuration: TimeInterval? = nil,  // Cap total duration (e.g., 60s for backup alarms)
+        maxDuration: TimeInterval? = nil,  // Cap total duration (e.g., 120s for backup alarms)
         forcedSelection: [UUID]? = nil,  // Arming path passes a freshly rolled selection so each ring differs
         protectedFileNames: Set<String> = []  // Files the armed set still references - never deleted here
     ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {

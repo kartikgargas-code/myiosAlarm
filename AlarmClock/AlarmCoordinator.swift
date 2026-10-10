@@ -16,6 +16,8 @@ final class AlarmCoordinator {
     // Phase 7a: Delayed backup for playlist alarms when Smart Wake is enabled
     // Schedule AlarmKit backup at occurrence.effectiveDate + backupDelaySeconds
     static let backupDelaySeconds = 30
+    // Cap for the backup (safety net) sound duration in seconds
+    static let backupSoundCapSeconds = 120
 
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
@@ -843,14 +845,14 @@ final class AlarmCoordinator {
                         fatalError("Expected playlist sound for backup")
                     }
                     
-                    // Create short floor sound for backup (cap at 60s total duration)
+                    // Create short floor sound for backup (cap at backupSoundCapSeconds total duration)
                     let backupPrecomposedURL: URL
                     do {
                         let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
                             playlistID: playlistID,
                             loudness: alarm.loudness,
                             songCount: 5,
-                            maxDuration: 60,  // Cap total duration at 60s for backup
+                            maxDuration: TimeInterval(AlarmCoordinator.backupSoundCapSeconds),
                             forcedSelection: forcedSelection,
                             protectedFileNames: protectedFileNames
                         )
@@ -919,7 +921,7 @@ final class AlarmCoordinator {
                         format: backupFormat,
                         bytes: backupFileSize ?? 0,
                         duration: backupMetadata?.duration ?? 0,
-                        isCapped: true, // backup is always capped at 60s
+                        isCapped: true, // backup is always capped at backupSoundCapSeconds
                         armedAt: now
                     )
                     lastArmedRecords.append(backupRecord)
@@ -1142,6 +1144,10 @@ final class AlarmCoordinator {
         alarms = engine.alarmsOrderedByNextOccurrence(now: currentDate)
         let earliest = engine.earliestOccurrence(now: currentDate)
         nextOccurrence = earliest
+        
+        // Log the alarm order for debugging
+        let order = alarms.map { "\($0.label)(\($0.id.uuidString.prefix(8)))@\(calculator.nextEffectiveOccurrence(for: $0, after: currentDate)?.effectiveDate.description ?? "none")" }.joined(separator: " -> ")
+        SmartWakeDebugLog.log("ALARM LIST ORDER: \(order)")
         
         // Compute next alarm snapshot for widgets and Lock Screen controls
         if let earliest = earliest {
@@ -1516,7 +1522,7 @@ final class AlarmCoordinator {
     private func newestCappedStitchURL(in dir: URL) -> URL? {
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         let outputExtension = AudioProcessingService.useCAFFormat ? "caf" : "wav"
-        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap60.\(outputExtension)") }
+        let candidates = files.filter { $0.lastPathComponent.hasPrefix("playlist_") && $0.lastPathComponent.hasSuffix("pct_cap120.\(outputExtension)") }
         return candidates.max { lhs, rhs in
             let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast

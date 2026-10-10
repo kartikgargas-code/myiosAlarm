@@ -200,6 +200,8 @@ struct ContentView: View {
                         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["cc-feedback-extension", "cc-feedback"])
                         SmartWakeDebugLog.log("CC FEEDBACK: cleared delivered cc-feedback notifications on foreground")
                     }
+                    // Refresh alarm list order and next-alarm snapshot on foreground
+                    coordinator.publish()
                     checkForActiveRing()
                 } else if newPhase == .background {
                     isAppInForeground = false
@@ -454,6 +456,7 @@ struct SoundsView: View {
     @State private var showingSortOptions = false
     @State private var searchText = ""
     @State private var folderFilter: String? = nil   // nil = All
+    @State private var showingSearch = false
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -545,17 +548,6 @@ struct SoundsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                 } else {
-                    Section {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                folderChip(title: "All", value: nil)
-                                ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
-                                    folderChip(title: folder, value: folder)
-                                }
-                            }.padding(.vertical, 2)
-                        }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    }
                     ForEach(visibleGroups) { group in
                         Section(group.title) { ForEach(group.sounds) { soundRow(sound: $0) } }
                     }
@@ -569,10 +561,38 @@ struct SoundsView: View {
                     }
                 }
             }
-            .searchable(text: $searchText)
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button("All") {
+                            folderFilter = nil
+                        }
+                        ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                            Button(folder) {
+                                folderFilter = folder
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder")
+                            Text(folderFilter ?? "All")
+                        }
+                        .font(.subheadline)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.title3)
+                    }
+                }
+            }
+            .searchable(text: $searchText, isPresented: $showingSearch, prompt: "Search sounds")
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
@@ -796,18 +816,6 @@ struct SoundsView: View {
             }
         }
         return false
-    }
-    
-    @ViewBuilder
-    private func folderChip(title: String, value: String?) -> some View {
-        let isOn = folderFilter == value
-        Button { folderFilter = value } label: {
-            Text(title).font(.subheadline)
-                .foregroundStyle(isOn ? ThemeManager.shared.colors.accent : ThemeManager.shared.colors.secondaryText)
-                .padding(.horizontal, 14).padding(.vertical, 7)
-                .background(Capsule().fill(ThemeManager.shared.colors.accent.opacity(isOn ? 0.22 : 0.08)))
-                .overlay(Capsule().stroke(ThemeManager.shared.colors.accent.opacity(isOn ? 0.9 : 0.25), lineWidth: 1))
-        }.buttonStyle(.plain)
     }
     
     private func importSound(from url: URL) async {
