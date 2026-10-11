@@ -687,7 +687,7 @@ final class AudioProcessingService {
 
             songLoop: for soundID in selectedSoundIDs {
                 guard let sound = importedSounds.first(where: { $0.id == soundID }),
-                      let soundURL = SoundLibrary.shared.resolvedURL(for: sound),
+                      let soundURL = await SoundLibrary.shared.resolvedURL(for: sound),
                       fileManager.fileExists(atPath: soundURL.path) else {
                     continue
                 }
