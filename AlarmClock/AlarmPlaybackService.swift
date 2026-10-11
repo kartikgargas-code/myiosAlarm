@@ -1120,6 +1120,12 @@ final class AlarmPlaybackService: NSObject {
             os_log(.error, log: log, "Failed to restore mixable audio session: %{public}s", error.localizedDescription)
             SmartWakeDebugLog.log("PLAYBACK: failed to restore mixable session: \(error.localizedDescription)")
         }
+        
+        // Refresh next-alarm snapshot for Lock Screen widget after alarm stops
+        if let coordinator = AlarmCoordinator.sharedInstance {
+            coordinator.publishSnapshot()
+            SmartWakeDebugLog.log("PLAYBACK: requested next-alarm snapshot refresh after stop (reason: \(reason))")
+        }
     }
 
     /// Advance to next track in playlist

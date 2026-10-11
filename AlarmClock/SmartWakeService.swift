@@ -201,6 +201,11 @@ final class SmartWakeService {
                             // the floor ring UI) — no takeover is possible anymore.
                             SmartWakeDebugLog.log("SNOOZE-WATCH: kit snooze alarm gone (user stopped?), clearing takeover context")
                             AlarmPlaybackService.shared.consumeSnoozeForTakeover()
+                            // Refresh next-alarm snapshot for Lock Screen widget after snooze alarm stops
+                            if let coordinator = AlarmCoordinator.sharedInstance {
+                                coordinator.publishSnapshot()
+                                SmartWakeDebugLog.log("SNOOZE-WATCH: requested next-alarm snapshot refresh after snooze stop")
+                            }
                         } else {
                             // Waiting for the snooze alarm to fire; log on phase
                             // change or every 30s (was every tick — flooded log).
@@ -236,6 +241,14 @@ final class SmartWakeService {
                         // No alerting alarms - clear the song name
                         if _alertingSongName != nil {
                             _alertingSongName = nil
+                        }
+                        // If we had alerting alarms before and now have none, an alarm just stopped.
+                        // Refresh the next-alarm snapshot for Lock Screen widget.
+                        if lastAlertingCount > 0 {
+                            if let coordinator = AlarmCoordinator.sharedInstance {
+                                coordinator.publishSnapshot()
+                                SmartWakeDebugLog.log("SMART WAKE: alerting went 0 -> 0, requested next-alarm snapshot refresh")
+                            }
                         }
                     }
                 } catch {
