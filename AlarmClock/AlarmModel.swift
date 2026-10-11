@@ -378,6 +378,17 @@ public struct AlarmTime: Codable, Equatable, Hashable {
         self.minute = minute
         self.second = second
     }
+    
+    private enum CodingKeys: String, CodingKey {
+        case hour, minute, second
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hour = try container.decode(Int.self, forKey: .hour)
+        minute = try container.decode(Int.self, forKey: .minute)
+        second = try container.decodeIfPresent(Int.self, forKey: .second) ?? 0
+    }
 }
 
 public struct AlarmOccurrenceOverride: Codable, Equatable {
