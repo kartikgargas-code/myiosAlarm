@@ -437,7 +437,8 @@ struct ContentView: View {
     private func timeText(_ time: AlarmTime) -> String {
         let date = Calendar.current.date(from: DateComponents(hour: time.hour, minute: time.minute, second: time.second)) ?? .now
         if time.second > 0 {
-            return date.formatted(date: .omitted, time: .complete)
+            // Explicit fields so the timezone (e.g. "GMT...") is not appended by .complete
+            return date.formatted(.dateTime.hour().minute().second())
         }
         return date.formatted(date: .omitted, time: .shortened)
     }
@@ -619,182 +620,204 @@ struct SoundsView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 headerRow
-                
-                // Sounds list
-                List {
-                    // Playlists section at TOP
-                    if !SoundLibrary.shared.playlists.isEmpty {
-                        Section("Playlists") {
-                            ForEach(SoundLibrary.shared.playlists) { playlist in
-                                playlistRow(playlist: playlist)
-                            }
-                            Button {
-                                showingPlaylistCreator = true
-                            } label: {
-                                Label("Create New Playlist", systemImage: "plus.circle.fill")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                        }
-                    }
-                    
-                    // Import actions at top for easy access
-                    Section("Import") {
-                        Button {
-                            pickerMode = .files
-                            showingDocumentPicker = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                                Text("Import Audio from Files")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                        }
+                soundsList
+            }
+        }
+        .sheet(item: $playlistToEdit) { playlist in
+            makeEditorSheet(playlist)
+        }
+        .sheet(isPresented: $showingPlaylistCreator) {
+            makeCreatorSheet()
+        }
+    }
 
-                    Button {
-                        pickerMode = .folder
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder.badge.plus")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import Audio Folder as Playlist")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
-                    }
+    // Kept small: the compiler type-checks each computed view on its own.
+    private var soundsList: some View {
+        List {
+            playlistsSection
+            importSection
+            importedSoundsSection
+        }
+        .scrollContentBackground(.hidden)
+        .background(ThemeManager.shared.colors.background)
+        .navigationTitle("Sounds")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Rename Playlist", isPresented: $showingRenameAlert, presenting: playlistToRename) { playlist in
+            TextField("Playlist name", text: $renameText)
+            Button("Cancel", role: .cancel) { }
+            Button("Rename") {
+                let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !newName.isEmpty {
+                    SoundLibrary.shared.updatePlaylist(playlist, newName: newName)
                 }
-                
-                if SoundLibrary.shared.importedSounds.isEmpty {
-                    Section("Imported Sounds") {
-                        Text("No imported sounds yet. Tap 'Import Audio from Files' to add sounds.")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            }
+        } message: { _ in
+            Text("Enter a new name for this playlist")
+        }
+        .safeAreaInset(edge: .bottom) { bottomBar }
+        .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
+            Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes every imported track from the app and resets any alarm using one to Default.")
+        }
+        .confirmationDialog("Delete folder \"\(folderToDelete ?? "")\"?",
+            isPresented: Binding(get: { folderToDelete != nil }, set: { if !$0 { folderToDelete = nil } }),
+            titleVisibility: .visible) {
+            Button("Delete Folder", role: .destructive) {
+                if let f = folderToDelete { Task { await coordinator.deleteImportedSounds(inFolder: f) } }
+                folderToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { folderToDelete = nil }
+        } message: {
+            Text("Deletes every track in this folder and removes its playlist.")
+        }
+        .onChange(of: SoundLibrary.shared.importedFolders) { _, folders in
+            if let f = folderFilter, !folders.contains(f) { folderFilter = nil }
+        }
+        .fileImporter(
+            isPresented: $showingDocumentPicker,
+            allowedContentTypes: pickerMode == .files ? [.mp3, .m4a, .wav, .aac, .aiff] : [.folder],
+            allowsMultipleSelection: pickerMode == .files
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if pickerMode == .files {
+                    guard !urls.isEmpty else { return }
+                    for url in urls {
+                        Task { await importSound(from: url) }
                     }
                 } else {
-                    ForEach(visibleGroups) { group in
-                        Section(group.title) { ForEach(group.sounds) { soundRow(sound: $0) } }
-                    }
+                    // Folder mode
+                    guard let url = urls.first else { return }
+                    Task { await importFolder(from: url) }
                 }
-                
-                if let importError {
-                    Section("Import Error") {
-                        Text(importError)
-                            .font(.footnote)
-                            .foregroundStyle(ThemeManager.shared.colors.destructive)
-                    }
+            case .failure(let error):
+                importError = "Picker failed: \(error.localizedDescription)"
+            }
+        }
+        .onDisappear {
+            preview.stop()
+        }
+    }
+
+    @ViewBuilder
+    private var playlistsSection: some View {
+        if !SoundLibrary.shared.playlists.isEmpty {
+            Section("Playlists") {
+                ForEach(SoundLibrary.shared.playlists) { playlist in
+                    playlistRow(playlist: playlist)
                 }
-            }
-            .scrollContentBackground(.hidden)
-            .background(ThemeManager.shared.colors.background)
-            .navigationTitle("Sounds")
-            .navigationBarTitleDisplayMode(.inline)
-            .alert("Rename Playlist", isPresented: $showingRenameAlert, presenting: playlistToRename) { playlist in
-                TextField("Playlist name", text: $renameText)
-                Button("Cancel", role: .cancel) { }
-                Button("Rename") {
-                    let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !newName.isEmpty {
-                        SoundLibrary.shared.updatePlaylist(playlist, newName: newName)
-                    }
+                Button {
+                    showingPlaylistCreator = true
+                } label: {
+                    Label("Create New Playlist", systemImage: "plus.circle.fill")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
-            } message: { _ in
-                Text("Enter a new name for this playlist")
-            }
-            .safeAreaInset(edge: .bottom) {
-                BottomActionsBar(
-                    leadingActions: [
-                        .icon("Sort", systemImage: "arrow.up.arrow.down") { showingSortOptions = true }
-                            .contextMenu(AnyView(
-                                Group {
-                                    Button("Delete All Tracks", role: .destructive) { showingDeleteAll = true }
-                                    if !SoundLibrary.shared.importedFolders.isEmpty {
-                                        ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
-                                            Button("Delete \(folder)", role: .destructive) { folderToDelete = folder }
-                                        }
-                                    }
-                                }
-                            ))
-                            .popover(AnyView(
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(SoundSortOption.allCases) { option in
-                                        Button {
-                                            sortOptionRaw = option.rawValue
-                                            showingSortOptions = false
-                                        } label: {
-                                            HStack {
-                                                Text(option.rawValue)
-                                                Spacer(minLength: 24)
-                                                if sortOption == option { Image(systemName: "checkmark") }
-                                            }
-                                            .padding(.vertical, 10)
-                                            .padding(.horizontal, 14)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .frame(minWidth: 220)
-                                .presentationCompactAdaptation(.popover)
-                            ), presented: $showingSortOptions)
-                    ],
-                    trailingActions: [
-                        .icon("Done", systemImage: "checkmark") { dismiss() }
-                    ]
-                )
-            }
-            .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
-                Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Removes every imported track from the app and resets any alarm using one to Default.")
-            }
-            .confirmationDialog("Delete folder \"\(folderToDelete ?? "")\"?",
-                isPresented: Binding(get: { folderToDelete != nil }, set: { if !$0 { folderToDelete = nil } }),
-                titleVisibility: .visible) {
-                Button("Delete Folder", role: .destructive) {
-                    if let f = folderToDelete { Task { await coordinator.deleteImportedSounds(inFolder: f) } }
-                    folderToDelete = nil
-                }
-                Button("Cancel", role: .cancel) { folderToDelete = nil }
-            } message: {
-                Text("Deletes every track in this folder and removes its playlist.")
-            }
-            .onChange(of: SoundLibrary.shared.importedFolders) { _, folders in
-                if let f = folderFilter, !folders.contains(f) { folderFilter = nil }
-            }
-            .fileImporter(
-                isPresented: $showingDocumentPicker,
-                allowedContentTypes: pickerMode == .files ? [.mp3, .m4a, .wav, .aac, .aiff] : [.folder],
-                allowsMultipleSelection: pickerMode == .files
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    if pickerMode == .files {
-                        guard !urls.isEmpty else { return }
-                        for url in urls {
-                            Task { await importSound(from: url) }
-                        }
-                    } else {
-                        // Folder mode
-                        guard let url = urls.first else { return }
-                        Task { await importFolder(from: url) }
-                    }
-                case .failure(let error):
-                    importError = "Picker failed: \(error.localizedDescription)"
-                }
-            }
-            .onDisappear {
-                preview.stop()
             }
         }
     }
-    .sheet(item: $playlistToEdit) { playlist in
-        makeEditorSheet(playlist)
+
+    private var importSection: some View {
+        Section("Import") {
+            Button {
+                pickerMode = .files
+                showingDocumentPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Import Audio from Files")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
+            }
+
+            Button {
+                pickerMode = .folder
+                showingDocumentPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "folder.badge.plus")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Import Audio Folder as Playlist")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
+            }
+        }
     }
-    .sheet(isPresented: $showingPlaylistCreator) {
-        makeCreatorSheet()
+
+    @ViewBuilder
+    private var importedSoundsSection: some View {
+        if SoundLibrary.shared.importedSounds.isEmpty {
+            Section("Imported Sounds") {
+                Text("No imported sounds yet. Tap 'Import Audio from Files' to add sounds.")
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            }
+        } else {
+            ForEach(visibleGroups) { group in
+                Section(group.title) { ForEach(group.sounds) { soundRow(sound: $0) } }
+            }
+        }
+        if let importError {
+            Section("Import Error") {
+                Text(importError)
+                    .font(.footnote)
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+            }
+        }
     }
-}
+
+    private var bottomBar: some View {
+        BottomActionsBar(
+            leadingActions: [sortButton],
+            trailingActions: [.icon("Done", systemImage: "checkmark") { dismiss() }]
+        )
+    }
+
+    private var sortButton: ActionButton {
+        ActionButton.icon("Sort", systemImage: "arrow.up.arrow.down") { showingSortOptions = true }
+            .contextMenu(sortContextMenu)
+            .popover(sortPopover, presented: $showingSortOptions)
+    }
+
+    private var sortContextMenu: AnyView {
+        AnyView(
+            Group {
+                Button("Delete All Tracks", role: .destructive) { showingDeleteAll = true }
+                if !SoundLibrary.shared.importedFolders.isEmpty {
+                    ForEach(SoundLibrary.shared.importedFolders, id: \.self) { folder in
+                        Button("Delete \(folder)", role: .destructive) { folderToDelete = folder }
+                    }
+                }
+            }
+        )
+    }
+
+    private var sortPopover: AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(SoundSortOption.allCases) { option in
+                    Button {
+                        sortOptionRaw = option.rawValue
+                        showingSortOptions = false
+                    } label: {
+                        HStack {
+                            Text(option.rawValue)
+                            Spacer(minLength: 24)
+                            if sortOption == option { Image(systemName: "checkmark") }
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(minWidth: 220)
+            .presentationCompactAdaptation(.popover)
+        )
+    }
 
 private func makeEditorSheet(_ playlist: Playlist) -> some View {
     PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
@@ -909,7 +932,6 @@ private func makeCreatorSheet() -> some View {
             
             Button {
                 playlistToEdit = playlist
-                showingPlaylistEditor = true
             } label: {
                 Image(systemName: "pencil")
                     .foregroundStyle(colors.accent)
@@ -920,7 +942,6 @@ private func makeCreatorSheet() -> some View {
         .contentShape(Rectangle())
         .onTapGesture {
             playlistToEdit = playlist
-            showingPlaylistEditor = true
         }
         .padding(.vertical, 4)
         .listRowBackground(colors.card)
