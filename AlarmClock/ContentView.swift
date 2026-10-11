@@ -804,20 +804,12 @@ struct SoundsView: View {
         }
     }
     .sheet(item: $playlistToEdit) { playlist in
-        playlistEditorSheet(playlist)
+        PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
     }
     .sheet(isPresented: $showingPlaylistCreator) {
-        playlistCreatorSheet
-    }
-}
-
-private var playlistEditorSheet: some View {
-    PlaylistEditorView(playlist: playlistToEdit!, alarms: coordinator.alarms)
-}
-
-private var playlistCreatorSheet: some View {
-    PlaylistCreatorView { name, soundIDs in
-        let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
+        PlaylistCreatorView { name, soundIDs in
+            let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
+        }
     }
 }
     
