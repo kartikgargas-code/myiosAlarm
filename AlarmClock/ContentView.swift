@@ -804,12 +804,20 @@ struct SoundsView: View {
         }
     }
     .sheet(item: $playlistToEdit) { playlist in
-        PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
+        editorSheet(for: playlist)
     }
     .sheet(isPresented: $showingPlaylistCreator) {
-        PlaylistCreatorView { name, soundIDs in
-            let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
-        }
+        creatorSheet
+    }
+}
+
+private func editorSheet(for playlist: Playlist) -> some View {
+    PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
+}
+
+private var creatorSheet: some View {
+    PlaylistCreatorView { name, soundIDs in
+        let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
     }
 }
     
