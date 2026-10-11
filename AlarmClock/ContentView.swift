@@ -632,23 +632,9 @@ struct SoundsView: View {
                             Button {
                                 showingPlaylistCreator = true
                             } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                                        .frame(width: 44, height: 44)
-                                        .background(ThemeManager.shared.colors.accent.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Create New Playlist")
-                                            .font(.body)
-                                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                    }
-                                }
-                                .padding(.vertical, 4)
+                                Label("Create New Playlist", systemImage: "plus.circle.fill")
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     
