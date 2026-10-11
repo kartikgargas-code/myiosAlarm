@@ -59,6 +59,9 @@ struct ContentView: View {
                 .scrollContentBackground(.hidden)
                 .background(ThemeManager.shared.colors.background)
                 .navigationTitle("myNextAlarm")
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: 100)
+                }
                 .overlay(alignment: .bottomLeading) {
                     Button {
                         editorPresentation = EditorPresentation(id: UUID(), alarm: nil)
@@ -432,7 +435,10 @@ struct ContentView: View {
     }
 
     private func timeText(_ time: AlarmTime) -> String {
-        let date = Calendar.current.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
+        let date = Calendar.current.date(from: DateComponents(hour: time.hour, minute: time.minute, second: time.second)) ?? .now
+        if time.second > 0 {
+            return date.formatted(date: .omitted, time: .complete)
+        }
         return date.formatted(date: .omitted, time: .shortened)
     }
 
@@ -471,6 +477,10 @@ struct SoundsView: View {
     @State private var searchText = ""
     @State private var folderFilter: String? = nil   // nil = All
     @State private var showingSearch = false
+    // Playlist rename
+    @State private var playlistToRename: Playlist? = nil
+    @State private var renameText = ""
+    @State private var showingRenameAlert = false
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -609,6 +619,15 @@ struct SoundsView: View {
                 
                 // Sounds list
                 List {
+                    // Playlists section at TOP
+                    if !SoundLibrary.shared.playlists.isEmpty {
+                        Section("Playlists") {
+                            ForEach(SoundLibrary.shared.playlists) { playlist in
+                                playlistRow(playlist: playlist)
+                            }
+                        }
+                    }
+                    
                     // Import actions at top for easy access
                     Section("Import") {
                         Button {
@@ -655,20 +674,23 @@ struct SoundsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.destructive)
                     }
                 }
-                
-                // Playlists section
-                if !SoundLibrary.shared.playlists.isEmpty {
-                    Section("Playlists") {
-                        ForEach(SoundLibrary.shared.playlists) { playlist in
-                            playlistRow(playlist: playlist)
-                        }
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Sounds")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Rename Playlist", isPresented: $showingRenameAlert, presenting: playlistToRename) { playlist in
+                TextField("Playlist name", text: $renameText)
+                Button("Cancel", role: .cancel) { }
+                Button("Rename") {
+                    let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !newName.isEmpty {
+                        SoundLibrary.shared.updatePlaylist(playlist, newName: newName)
+                    }
+                }
+            } message: { _ in
+                Text("Enter a new name for this playlist")
+            }
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
@@ -861,20 +883,9 @@ struct SoundsView: View {
             Spacer()
             
             Button {
-                let newName = playlist.name
-                let alert = UIAlertController(title: "Rename Playlist", message: nil, preferredStyle: .alert)
-                alert.addTextField { $0.text = playlist.name }
-                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                alert.addAction(UIAlertAction(title: "Rename", style: .default) { _ in
-                    if let text = alert.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !text.isEmpty {
-                        SoundLibrary.shared.updatePlaylist(playlist, newName: text)
-                    }
-                })
-                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let root = scene.windows.first?.rootViewController {
-                    root.present(alert, animated: true)
-                }
+                playlistToRename = playlist
+                renameText = playlist.name
+                showingRenameAlert = true
             } label: {
                 Image(systemName: "pencil")
                     .foregroundStyle(colors.accent)

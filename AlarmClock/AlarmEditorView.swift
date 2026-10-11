@@ -54,7 +54,7 @@ struct AlarmEditorView: View {
         let now = Date.now
         let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
         let time = existingAlarm?.time ?? AlarmTime(hour: nowComponents.hour ?? 7, minute: nowComponents.minute ?? 0)
-        let selectedTime = calendar.date(from: DateComponents(hour: time.hour, minute: time.minute)) ?? .now
+        let selectedTime = calendar.date(from: DateComponents(hour: time.hour, minute: time.minute, second: time.second)) ?? .now
         _label = State(initialValue: existingAlarm?.label ?? "")
         _selectedTime = State(initialValue: selectedTime)
         _repeatRule = State(initialValue: existingAlarm?.repeatRule ?? .daily)
@@ -117,8 +117,15 @@ struct AlarmEditorView: View {
     }
     @ViewBuilder
     private var scheduleFields: some View {
-        DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-            .datePickerStyle(.wheel)
+        Section("Time") {
+            // Custom picker with hour, minute, and second
+            HStack {
+                Text("Time")
+                Spacer()
+                TimePickerWithSeconds(selection: $selectedTime)
+                    .labelsHidden()
+            }
+        }
         TextField("Label", text: $label)
         Picker("Repeat", selection: repeatSelection) {
             Text("Never").tag(RepeatSelection.never)
@@ -424,8 +431,8 @@ struct AlarmEditorView: View {
         }
     }
     private func makeAlarm() -> AlarmRecord {
-        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: selectedTime)
-        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0)
+        let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute, .second], from: selectedTime)
+        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0, second: components.second ?? 0)
         let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
         
         // Diagnostic line to track what's happening
@@ -613,5 +620,87 @@ struct RandomModeNextSongView: View {
         // For display purposes, just return the first sound
         // The actual random selection happens at scheduling time
         return playlist.soundIDs.first
+    }
+}
+
+/// Custom time picker with hour, minute, and second wheels
+struct TimePickerWithSeconds: View {
+    @Binding var selection: Date
+    private let calendar = Calendar.autoupdatingCurrent
+    
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                // Hour picker
+                Picker("Hour", selection: hourBinding) {
+                    ForEach(0..<24) { hour in
+                        Text(String(format: "%02d", hour)).tag(hour)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(width: geometry.size.width / 3)
+                .clipped()
+                
+                // Minute picker
+                Picker("Minute", selection: minuteBinding) {
+                    ForEach(0..<60) { minute in
+                        Text(String(format: "%02d", minute)).tag(minute)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(width: geometry.size.width / 3)
+                .clipped()
+                
+                // Second picker
+                Picker("Second", selection: secondBinding) {
+                    ForEach(0..<60) { second in
+                        Text(String(format: "%02d", second)).tag(second)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(width: geometry.size.width / 3)
+                .clipped()
+            }
+        }
+        .frame(height: 150)
+    }
+    
+    private var hourBinding: Binding<Int> {
+        Binding(
+            get: { calendar.component(.hour, from: selection) },
+            set: { newHour in
+                var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
+                components.hour = newHour
+                if let newDate = calendar.date(from: components) {
+                    selection = newDate
+                }
+            }
+        )
+    }
+    
+    private var minuteBinding: Binding<Int> {
+        Binding(
+            get: { calendar.component(.minute, from: selection) },
+            set: { newMinute in
+                var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
+                components.minute = newMinute
+                if let newDate = calendar.date(from: components) {
+                    selection = newDate
+                }
+            }
+        )
+    }
+    
+    private var secondBinding: Binding<Int> {
+        Binding(
+            get: { calendar.component(.second, from: selection) },
+            set: { newSecond in
+                var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
+                components.second = newSecond
+                if let newDate = calendar.date(from: components) {
+                    selection = newDate
+                }
+            }
+        )
     }
 }

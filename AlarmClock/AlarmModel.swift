@@ -371,6 +371,13 @@ public enum AlarmRepeatRule: Codable, Equatable, Hashable {
 public struct AlarmTime: Codable, Equatable, Hashable {
     public var hour: Int
     public var minute: Int
+    public var second: Int
+    
+    public init(hour: Int, minute: Int, second: Int = 0) {
+        self.hour = hour
+        self.minute = minute
+        self.second = second
+    }
 }
 
 public struct AlarmOccurrenceOverride: Codable, Equatable {
