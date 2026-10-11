@@ -31,6 +31,9 @@ struct AlarmClockApp: App {
         let b = info?["CFBundleVersion"] as? String ?? "?"
         let stamp = info?["AlarmClockBuildStamp"] as? String ?? "unknown"
         SmartWakeDebugLog.log("BUILD: v\(v) (\(b)) commit=\(stamp)")
+        
+        // Log previous day's silent loop total
+        SmartWakeService.shared.logPreviousDayTotal()
     }
     
     var body: some Scene {

@@ -197,7 +197,7 @@ final class AlarmPlaybackService: NSObject {
             SmartWakeDebugLog.log("PLAYBACK queued track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
             
             // Start playing the first track
-            playTrack(at: 0)
+            playTrack(at: 0, skippedCount: 0)
             
         } catch {
             let nsError = error as NSError
@@ -343,7 +343,7 @@ final class AlarmPlaybackService: NSObject {
                 if let trackName = currentTrack, let index = selectedSoundIDs.firstIndex(where: { soundID in 
                     SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == trackName 
                 }) {
-                    playTrack(at: index)
+                    playTrack(at: index, skippedCount: 0)
                 }
             }
             
@@ -370,7 +370,7 @@ final class AlarmPlaybackService: NSObject {
                 if let trackName = currentTrackName, let index = selectedSoundIDs.firstIndex(where: { soundID in 
                     SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.name == currentTrackName 
                 }) {
-                    playTrack(at: currentTrackIndex)
+                    playTrack(at: currentTrackIndex, skippedCount: 0)
                 }
             } catch {
                 SmartWakeDebugLog.log("PRIMARY PROMOTE REVERT failed: \(error.localizedDescription)")
@@ -468,11 +468,19 @@ final class AlarmPlaybackService: NSObject {
     }
 
     /// Play a track at the given index in selectedSoundIDs
-    private func playTrack(at index: Int) {
+    private func playTrack(at index: Int, skippedCount: Int = 0) {
         guard index < selectedSoundIDs.count else {
-            // Completed full playlist cycle - loop back to start
+            // Completed full playlist cycle - check if we've skipped all tracks
+            if skippedCount >= selectedSoundIDs.count {
+                // All tracks in the playlist are unavailable - fall back to default alarm sound
+                os_log(.error, log: log, "PLAYBACK: all tracks unavailable, falling back to default alarm sound")
+                SmartWakeDebugLog.log("PLAYBACK: all tracks unavailable, falling back to default alarm sound")
+                playDefaultAlarmSound()
+                return
+            }
+            // Loop back to start but track skipped count
             currentTrackIndex = 0
-            playTrack(at: 0)
+            playTrack(at: 0, skippedCount: skippedCount)
             return
         }
 
@@ -482,23 +490,17 @@ final class AlarmPlaybackService: NSObject {
             SmartWakeDebugLog.log("PLAYBACK: track \(index) failed - sound not found in library, skipping")
             // Skip broken track, advance to next
             currentTrackIndex = index + 1
-            playTrack(at: currentTrackIndex)
+            playTrack(at: currentTrackIndex, skippedCount: skippedCount + 1)
             return
         }
 
-        guard let soundsDir = SoundLibrary.shared.soundsDirectory else {
-            lastError = "Library/Sounds directory unavailable"
-            os_log(.error, log: log, "Sounds directory unavailable")
-            return
-        }
-
-        let localURL = sound.localURL(soundsDirectory: soundsDir)
-        guard let localURL, fileManager.fileExists(atPath: localURL.path) else {
-            os_log(.error, log: log, "Sound file missing for %{public}s (%{public}s), skipping", sound.name, sound.fileName)
-            SmartWakeDebugLog.log("PLAYBACK: track \(index) failed - file missing (\(sound.fileName)), skipping")
+        // Use resolvedURL which handles both copied and linked sounds
+        guard let localURL = SoundLibrary.shared.resolvedURL(for: sound) else {
+            os_log(.error, log: log, "Sound file unavailable for %{public}s (%{public}s, linked=%{public}d), skipping", sound.name, sound.fileName, sound.isLinked ? 1 : 0)
+            SmartWakeDebugLog.log("PLAYBACK: skipped unavailable track \"\(sound.name)\" (linked=\(sound.isLinked))")
             // Skip missing file, advance to next
             currentTrackIndex = index + 1
-            playTrack(at: currentTrackIndex)
+            playTrack(at: currentTrackIndex, skippedCount: skippedCount + 1)
             return
         }
 
@@ -572,7 +574,70 @@ final class AlarmPlaybackService: NSObject {
             }
             // Skip failed track, advance to next
             currentTrackIndex = index + 1
-            playTrack(at: currentTrackIndex)
+            playTrack(at: currentTrackIndex, skippedCount: skippedCount + 1)
+        }
+    }
+    
+    /// Play the default alarm sound as fallback
+    private func playDefaultAlarmSound() {
+        guard let defaultURL = SoundPreviewService.bundledSoundURL(for: "bright.wav") else {
+            os_log(.error, log: log, "PLAYBACK: default alarm sound not available")
+            SmartWakeDebugLog.log("PLAYBACK: default alarm sound not available")
+            isPlaying = false
+            stop()
+            return
+        }
+        
+        do {
+            let newPlayer = try AVAudioPlayer(contentsOf: defaultURL)
+            newPlayer.numberOfLoops = 0
+            let targetVolume = currentLoudness?.gainFactor ?? 1.0
+            
+            if currentFadeInEnabled {
+                newPlayer.volume = 0.0
+            } else {
+                newPlayer.volume = targetVolume
+            }
+            newPlayer.delegate = self
+            newPlayer.prepareToPlay()
+            
+            guard newPlayer.play() else {
+                logSessionDump("play() FALSE (default)")
+                throw NSError(domain: "AlarmPlayback", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to start default playback"])
+            }
+            
+            player = newPlayer
+            currentTrackIndex = -1 // Mark as default sound
+            currentTrackName = "Default Alarm"
+            isPlaying = true
+            lastError = nil
+            consecutiveFailures = 0
+            
+            os_log(.info, log: log, "Now playing: Default Alarm (fallback)")
+            SmartWakeDebugLog.log("PLAYBACK started default alarm sound (fallback)")
+            
+            if currentFadeInEnabled {
+                startFadeIn(targetVolume: targetVolume, duration: currentFadeInSeconds)
+            }
+            
+            if currentVibrate {
+                startVibration()
+            }
+            
+            if let silenceMinutes = currentSilenceAfterMinutes {
+                scheduleSilenceAfter(minutes: silenceMinutes)
+            }
+            
+            publishNowPlayingInfo(for: ImportedSound(id: UUID(), name: "Default Alarm", fileName: "bright.wav", duration: nil, dateAdded: Date()), player: newPlayer, displayName: "Default Alarm")
+            
+            setupRemoteCommands()
+            
+        } catch {
+            lastError = error.localizedDescription
+            os_log(.error, log: log, "Failed to play default alarm sound: %{public}s", error.localizedDescription)
+            SmartWakeDebugLog.log("PLAYBACK: default alarm sound failed to start: \(error.localizedDescription)")
+            isPlaying = false
+            stop()
         }
     }
 
@@ -1071,6 +1136,13 @@ final class AlarmPlaybackService: NSObject {
         os_log(.info, log: log, "stop() called (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("PLAYBACK stopped (reason: \(reason))")
         
+        // End security-scoped access for linked sounds
+        if let soundID = currentTrackIndex >= 0 && currentTrackIndex < selectedSoundIDs.count ? selectedSoundIDs[currentTrackIndex] : nil,
+           let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }),
+           sound.isLinked {
+            SoundLibrary.shared.endAccess(for: sound)
+        }
+        
         // TASK 4: Clean up behaviour-specific state
         stopVibration()
         silenceAfterTask?.cancel()
@@ -1141,14 +1213,14 @@ final class AlarmPlaybackService: NSObject {
             // TASK 4: Loop Sound - if false, stop after one pass; if true, loop back
             if currentLoopSound {
                 currentTrackIndex = 0
-                playTrack(at: currentTrackIndex)
+                playTrack(at: currentTrackIndex, skippedCount: 0)
             } else {
                 SmartWakeDebugLog.log("PLAYBACK: loopSound=false, stopping after one pass")
                 stop(reason: "loopSound=false")
                 return
             }
         } else {
-            playTrack(at: currentTrackIndex)
+            playTrack(at: currentTrackIndex, skippedCount: 0)
         }
     }
 
@@ -1265,7 +1337,7 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
             SmartWakeDebugLog.log("PLAYBACK decode error: \(errorDesc)")
             // Skip failed track
             self.currentTrackIndex += 1
-            self.playTrack(at: self.currentTrackIndex)
+            self.playTrack(at: self.currentTrackIndex, skippedCount: 0)
         }
     }
 }

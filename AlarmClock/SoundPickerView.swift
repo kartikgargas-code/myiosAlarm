@@ -77,14 +77,14 @@ struct SoundPickerView: View {
             return SoundPreviewService.bundledSoundURL(for: BuiltInSound.fileName(for: name) ?? "")
         case .imported(let id):
             if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
-                return sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                return SoundLibrary.shared.resolvedURL(for: sound)
             }
             return nil
         case .random(let playlistID):
             if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                let firstSoundID = playlist.selectedSoundIDs.first,
                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
-                return sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                return SoundLibrary.shared.resolvedURL(for: sound)
             }
             return nil
         case .precomposedPlaylist(let playlistID, _):
@@ -183,14 +183,14 @@ struct SoundPickerView: View {
                 Section("Imported Sounds") {
                     ForEach(SoundLibrary.shared.importedSounds.filter { sound in
                         // Skip sounds that no longer exist on disk
-                        guard let url = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory) else { return false }
+                        guard let url = SoundLibrary.shared.resolvedURL(for: sound) else { return false }
                         return FileManager.default.fileExists(atPath: url.path)
                     }) { sound in
                         soundRow(
                             sound: .imported(sound.id),
                             label: sound.name,
                             description: "",
-                            previewURL: sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                            previewURL: SoundLibrary.shared.resolvedURL(for: sound)
                         )
                     }
                 }
@@ -334,7 +334,7 @@ struct SoundPickerView: View {
         // Get first song preview URL for the play button
         let firstSoundID = playlist.selectedSoundIDs.first
         let firstPreviewURL = firstSoundID.flatMap { soundID in
-            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })?.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID }).flatMap { SoundLibrary.shared.resolvedURL(for: $0) }
         }
 
         return Button {
@@ -342,7 +342,7 @@ struct SoundPickerView: View {
             // Play first song as preview
             if let firstSoundID = playlist.selectedSoundIDs.first,
                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
-               let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory) {
+               let previewURL = SoundLibrary.shared.resolvedURL(for: sound) {
                 preview.play(url: previewURL, id: randomSound.id)
             }
         } label: {
@@ -572,8 +572,7 @@ struct PlaylistEditorView: View {
                             Button {
                                 if previewService.playingSoundID == sound.fileName {
                                     previewService.stop()
-                                } else if let url = sound.localURL(
-                                    soundsDirectory: SoundLibrary.shared.soundsDirectory) {
+                                } else if let url = SoundLibrary.shared.resolvedURL(for: sound) {
                                     previewService.play(url: url, id: sound.fileName)
                                 }
                             } label: {

@@ -36,6 +36,10 @@ final class SmartWakeService {
     // Track intentional stops (takeover, snooze) to avoid logging as death
     private var intentionalStop = false
     
+    // Silent loop run time tracking
+    private var silentLoopStartTime: Date?
+    private let silentLoopSecondsByDayKey = "silentLoopSecondsByDay"
+    
     // Transition arming
     private var transitionCheckTask: Task<Void, Never>?
     private var armedOccurrences: Set<String> = [] // Composite keys: "alarmID|occurrenceKey"
@@ -262,11 +266,18 @@ final class SmartWakeService {
                         intentionalStop = false
                     } else {
                         SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false \(silentLoopDiagnostics())")
+                        // Log run time for DIED case
+                        if let startTime = silentLoopStartTime {
+                            logSilentLoopRunTime(reason: "DIED - silent loop died unexpectedly", startTime: startTime)
+                            silentLoopStartTime = nil
+                        }
                         scheduleSilentLoopRestart()
                     }
                     lastLoopRunning = false
                 } else if !lastLoopRunning && isRunning {
                     lastLoopRunning = true
+                    // Loop restarted - record new start time
+                    silentLoopStartTime = Date()
                 }
                 
                 // Update status text only when it changes to prevent render churn
@@ -550,6 +561,7 @@ final class SmartWakeService {
             }
             player = newPlayer
             isSessionActive = true
+            silentLoopStartTime = Date() // Record start time
             os_log(.info, log: log, "Smart Wake silent loop started")
             SmartWakeDebugLog.log("SILENT LOOP started (session active)")
 
@@ -625,6 +637,12 @@ final class SmartWakeService {
 
     /// Stop the background audio session
     func stop() {
+        // Log run time before stopping
+        if let startTime = silentLoopStartTime {
+            logSilentLoopRunTime(reason: "user toggled OFF", startTime: startTime)
+            silentLoopStartTime = nil
+        }
+        
         statusTickTask?.cancel()
         statusTickTask = nil
         player?.stop()
@@ -646,6 +664,12 @@ final class SmartWakeService {
     /// Stop only the silent player, keeping the audio session active and observers registered
     /// Used when transitioning to real alarm playback
     func stopSilentPlayerOnly(reason: String = "transition to in-app playback") {
+        // Log run time before stopping
+        if let startTime = silentLoopStartTime {
+            logSilentLoopRunTime(reason: reason, startTime: startTime)
+            silentLoopStartTime = nil
+        }
+        
         os_log(.info, log: log, "stopSilentPlayerOnly() called - stopping silent loop, keeping session active (reason: %{public}s)", reason)
         SmartWakeDebugLog.log("SILENT LOOP stopped (\(reason))")
         intentionalStop = true
@@ -1428,6 +1452,65 @@ final class SmartWakeService {
             return (precomposedSound, newOverride)
         case .precomposedPlaylist:
             return (alarm.sound, nil)
+        }
+    }
+    
+    // MARK: - Silent Loop Run Time Logging
+    
+    private func logSilentLoopRunTime(reason: String, startTime: Date) {
+        let elapsed = Date().timeIntervalSince(startTime)
+        let hours = Int(elapsed) / 3600
+        let minutes = (Int(elapsed) % 3600) / 60
+        let seconds = Int(elapsed) % 60
+        
+        let timeString: String
+        if hours > 0 {
+            timeString = "\(hours)h \(minutes)m \(seconds)s"
+        } else if minutes > 0 {
+            timeString = "\(minutes)m \(seconds)s"
+        } else {
+            timeString = "\(seconds)s"
+        }
+        
+        os_log(.info, log: log, "SILENT LOOP ran %{public}s (%{public}s)", timeString, reason)
+        SmartWakeDebugLog.log("SILENT LOOP ran \(timeString) (\(reason))")
+        
+        // Accumulate per-day total
+        let dateKey = dateFormatter.string(from: startTime)
+        var dailyTotals = UserDefaults.standard.dictionary(forKey: silentLoopSecondsByDayKey) as? [String: Double] ?? [:]
+        dailyTotals[dateKey, default: 0] += elapsed
+        UserDefaults.standard.set(dailyTotals, forKey: silentLoopSecondsByDayKey)
+        
+        // Check if we crossed into a new day
+        let todayKey = dateFormatter.string(from: Date())
+        if dateKey != todayKey {
+            // Day boundary crossed - log the daily total for the previous day
+            logDailyTotal(for: dateKey, total: dailyTotals[dateKey] ?? 0)
+        }
+    }
+    
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone.current
+        return formatter
+    }()
+    
+    private func logDailyTotal(for dateKey: String, total: Double) {
+        let hours = Int(total) / 3600
+        let minutes = (Int(total) % 3600) / 60
+        let timeString = hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+        os_log(.info, log: log, "SILENT LOOP DAILY TOTAL: %{public}s = %{public}s", dateKey, timeString)
+        SmartWakeDebugLog.log("SILENT LOOP DAILY TOTAL: \(dateKey) = \(timeString)")
+    }
+    
+    /// Call at app launch to log the previous day's total
+    func logPreviousDayTotal() {
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let yesterdayKey = dateFormatter.string(from: yesterday)
+        let dailyTotals = UserDefaults.standard.dictionary(forKey: silentLoopSecondsByDayKey) as? [String: Double] ?? [:]
+        if let total = dailyTotals[yesterdayKey], total > 0 {
+            logDailyTotal(for: yesterdayKey, total: total)
         }
     }
 }

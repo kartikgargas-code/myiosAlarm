@@ -17,6 +17,9 @@ struct DiagnosticsView: View {
     // Imported sounds stats
     @State private var importedSoundsCount = 0
     @State private var importedSoundsMB: Double = 0
+    @State private var linkedSoundsCount = 0
+    @State private var copiedSoundsCount = 0
+    @State private var copiedSoundsMB: Double = 0
     @State private var orphanedFiles: [AudioProcessingService.OrphanedFile] = []
     @State private var armedFileNames: [String] = []
     @State private var lastPruneDate: Date? = nil
@@ -167,6 +170,10 @@ struct DiagnosticsView: View {
                 .font(.caption.weight(.semibold))
             Text("Total: \(importedSoundsCount) files (\(String(format: "%.1f", importedSoundsMB)) MB)")
                 .font(.caption.monospaced())
+            Text("Linked files: \(linkedSoundsCount) (0 MB, stored on phone)")
+                .font(.caption.monospaced())
+            Text("Copied files: \(copiedSoundsCount) (\(String(format: "%.1f", copiedSoundsMB)) MB)")
+                .font(.caption.monospaced())
             
             // Orphaned files
             if !orphanedFiles.isEmpty {
@@ -219,6 +226,25 @@ struct DiagnosticsView: View {
         importedSoundsCount = importedStats.fileCount
         importedSoundsMB = Double(importedStats.totalBytes) / 1_048_576.0
         orphanedFiles = importedStats.orphanedFiles
+        
+        // Calculate linked vs copied sounds stats
+        let linkedSounds = SoundLibrary.shared.importedSounds.filter { $0.isLinked }
+        let copiedSounds = SoundLibrary.shared.importedSounds.filter { !$0.isLinked }
+        linkedSoundsCount = linkedSounds.count
+        copiedSoundsCount = copiedSounds.count
+        
+        // Calculate size of copied sounds only
+        var copiedTotalBytes: Int64 = 0
+        if let soundsDir = SoundLibrary.shared.soundsDirectory {
+            for sound in copiedSounds {
+                if let url = sound.localURL(soundsDirectory: soundsDir),
+                   let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+                   let size = attrs[.size] as? Int64 {
+                    copiedTotalBytes += size
+                }
+            }
+        }
+        copiedSoundsMB = Double(copiedTotalBytes) / 1_048_576.0
         
         armedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames.sorted() ?? []
         lastPruneDate = AlarmCoordinator.sharedInstance?.lastStitchPruneDate

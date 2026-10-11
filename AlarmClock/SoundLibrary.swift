@@ -11,6 +11,7 @@ struct ImportedSound: Identifiable, Codable, Hashable {
     var duration: TimeInterval?
     var dateAdded: Date
     var folder: String?  // Which imported folder this sound came from
+    var isLinked: Bool = false  // true = linked to original file (bookmark), false = copied to Library/Sounds
 
     init(
         id: UUID = UUID(),
@@ -18,7 +19,8 @@ struct ImportedSound: Identifiable, Codable, Hashable {
         fileName: String,
         duration: TimeInterval? = nil,
         dateAdded: Date = Date(),
-        folder: String? = nil
+        folder: String? = nil,
+        isLinked: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -26,12 +28,24 @@ struct ImportedSound: Identifiable, Codable, Hashable {
         self.duration = duration
         self.dateAdded = dateAdded
         self.folder = folder
+        self.isLinked = isLinked
     }
 
     func localURL(soundsDirectory: URL?) -> URL? {
         guard let soundsDirectory else { return nil }
         return soundsDirectory.appendingPathComponent(fileName)
     }
+}
+
+/// Persisted record for a linked sound (bookmark to original file location)
+struct LinkedSoundRecord: Codable, Identifiable {
+    let id: UUID
+    var name: String          // display name
+    var fileName: String      // original file's lastPathComponent (display only)
+    var duration: TimeInterval?
+    var dateAdded: Date
+    var folder: String?
+    var bookmark: Data
 }
 
 enum SoundLibraryError: LocalizedError, Equatable {
@@ -97,10 +111,12 @@ final class SoundLibrary {
 
     private(set) var importedSounds: [ImportedSound] = []
     private(set) var playlists: [Playlist] = []
+    private(set) var linkedRecords: [LinkedSoundRecord] = []
     private let fileManager = FileManager.default
     private let displayNameKey = "importedSoundDisplayNames"
     private let durationKey = "importedSoundDurations"
     private let playlistKey = "playlists"
+    private let linkedSoundsKey = "linkedSounds"
 
     var soundsDirectory: URL? {
         // AlarmKit custom sounds must live in the app container Library/Sounds.
@@ -123,14 +139,20 @@ final class SoundLibrary {
 
     /// Reload imported sounds from disk — used by backup/restore
     func loadSounds() {
-        guard let dir = soundsDirectory else { return }
+        // Load linked records from UserDefaults
+        loadLinkedRecords()
+        
+        guard let dir = soundsDirectory else { 
+            // Even if soundsDirectory is nil, we still want linked records
+            return 
+        }
         do {
             let files = try fileManager.contentsOfDirectory(
                 at: dir,
                 includingPropertiesForKeys: [.creationDateKey, .fileSizeKey]
             )
             let displayNames = savedDisplayNames()
-            importedSounds = files.compactMap { url in
+            let copiedSounds = files.compactMap { url in
                 let ext = url.pathExtension.lowercased()
                 guard ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains(ext) else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
@@ -150,12 +172,138 @@ final class SoundLibrary {
                     name: pretty,
                     fileName: fileName,
                     duration: savedDurations()[fileName],
-                    dateAdded: creationDate
+                    dateAdded: creationDate,
+                    isLinked: false
                 )
             }.sorted { $0.dateAdded > $1.dateAdded }
+            
+            // Merge: copied sounds first, then linked records
+            importedSounds = copiedSounds + linkedRecords.map { record in
+                ImportedSound(
+                    id: record.id,
+                    name: record.name,
+                    fileName: record.fileName,
+                    duration: record.duration,
+                    dateAdded: record.dateAdded,
+                    folder: record.folder,
+                    isLinked: true
+                )
+            }.sorted { $0.dateAdded > $1.dateAdded }
+            
             backfillMissingDurations()
         } catch {
-            importedSounds = []
+            // Keep linked records even if disk scan fails
+            importedSounds = linkedRecords.map { record in
+                ImportedSound(
+                    id: record.id,
+                    name: record.name,
+                    fileName: record.fileName,
+                    duration: record.duration,
+                    dateAdded: record.dateAdded,
+                    folder: record.folder,
+                    isLinked: true
+                )
+            }.sorted { $0.dateAdded > $1.dateAdded }
+        }
+    }
+    
+    private func loadLinkedRecords() {
+        guard let data = UserDefaults.standard.data(forKey: linkedSoundsKey) else {
+            linkedRecords = []
+            return
+        }
+        do {
+            let records = try JSONDecoder().decode([LinkedSoundRecord].self, from: data)
+            linkedRecords = records
+        } catch {
+            os_log(.error, log: soundLibraryLog, "Failed to decode linked sounds: %{public}s", error.localizedDescription)
+            linkedRecords = []
+        }
+    }
+    
+    private func saveLinkedRecords() {
+        do {
+            let data = try JSONEncoder().encode(linkedRecords)
+            UserDefaults.standard.set(data, forKey: linkedSoundsKey)
+        } catch {
+            os_log(.error, log: soundLibraryLog, "Failed to encode linked sounds: %{public}s", error.localizedDescription)
+        }
+    }
+    
+    /// Track which URLs have active security-scoped access
+    private var activeSecurityScopedURLs: Set<URL> = []
+    
+    /// URL to read/play this sound from. For linked sounds, resolves the bookmark and
+    /// starts security-scoped access. Returns nil if a linked file can no longer be reached.
+    func resolvedURL(for sound: ImportedSound) -> URL? {
+        if !sound.isLinked {
+            // Copied sound - use the existing localURL method
+            return sound.localURL(soundsDirectory: soundsDirectory)
+        }
+        
+        // Linked sound - resolve bookmark
+        guard let record = linkedRecords.first(where: { $0.id == sound.id }) else {
+            os_log(.error, log: soundLibraryLog, "LINKED: resolve FAILED id=%{public}s %{public}s - record not found", sound.id.uuidString, sound.name)
+            SmartWakeDebugLog.log("LINKED: resolve FAILED id=\(sound.id.uuidString) \(sound.name) - record not found")
+            return nil
+        }
+        
+        var stale = false
+        do {
+            let url = try URL(resolvingBookmarkData: record.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+            
+            if stale {
+                // Bookmark is stale - create a fresh one and save it
+                os_log(.info, log: soundLibraryLog, "LINKED: bookmark stale for id=%{public}s %{public}s - refreshing", sound.id.uuidString, sound.name)
+                SmartWakeDebugLog.log("LINKED: bookmark stale for id=\(sound.id.uuidString) \(sound.name) - refreshing")
+                if let freshBookmark = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+                    if let index = linkedRecords.firstIndex(where: { $0.id == sound.id }) {
+                        linkedRecords[index].bookmark = freshBookmark
+                        saveLinkedRecords()
+                    }
+                }
+            }
+            
+            // Start security-scoped access if not already started
+            if !activeSecurityScopedURLs.contains(url) {
+                let started = url.startAccessingSecurityScopedResource()
+                if started {
+                    activeSecurityScopedURLs.insert(url)
+                } else {
+                    os_log(.error, log: soundLibraryLog, "LINKED: startAccessingSecurityScopedResource FAILED id=%{public}s %{public}s", sound.id.uuidString, sound.name)
+                    SmartWakeDebugLog.log("LINKED: startAccessingSecurityScopedResource FAILED id=\(sound.id.uuidString) \(sound.name)")
+                }
+            }
+            
+            // Verify file exists
+            if fileManager.fileExists(atPath: url.path) {
+                return url
+            } else {
+                os_log(.error, log: soundLibraryLog, "LINKED: resolve FAILED id=%{public}s %{public}s - file not found at path", sound.id.uuidString, sound.name)
+                SmartWakeDebugLog.log("LINKED: resolve FAILED id=\(sound.id.uuidString) \(sound.name) - file not found at path")
+                endAccess(for: sound)
+                return nil
+            }
+        } catch {
+            os_log(.error, log: soundLibraryLog, "LINKED: resolve FAILED id=%{public}s %{public}s - %{public}s", sound.id.uuidString, sound.name, error.localizedDescription)
+            SmartWakeDebugLog.log("LINKED: resolve FAILED id=\(sound.id.uuidString) \(sound.name) - \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Stop security-scoped access for a linked sound's resolved URL
+    func endAccess(for sound: ImportedSound) {
+        guard sound.isLinked,
+              let record = linkedRecords.first(where: { $0.id == sound.id }),
+              var stale = false,
+              let url = try? URL(resolvingBookmarkData: record.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
+            return
+        }
+        
+        if activeSecurityScopedURLs.remove(url) != nil {
+            url.stopAccessingSecurityScopedResource()
+            os_log(.info, log: soundLibraryLog, "LINKED: ended access for id=%{public}s %{public}s", sound.id.uuidString, sound.name)
+            SmartWakeDebugLog.log("LINKED: ended access for id=\(sound.id.uuidString) \(sound.name)")
         }
     }
 
@@ -164,11 +312,10 @@ final class SoundLibrary {
     private func backfillMissingDurations() {
         let targets = importedSounds.filter { $0.duration == nil }
         guard !targets.isEmpty else { return }
-        let dir = soundsDirectory
         Task.detached(priority: .utility) { [weak self] in
             var measured: [(fileName: String, duration: TimeInterval)] = []
             for sound in targets {
-                guard let dir, let url = sound.localURL(soundsDirectory: dir),
+                guard let url = SoundLibrary.shared.resolvedURL(for: sound),
                       FileManager.default.fileExists(atPath: url.path) else { continue }
                 var duration: TimeInterval? = nil
                 if let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
@@ -251,81 +398,80 @@ final class SoundLibrary {
     }
 
     func importMP3(from sourceURL: URL) async throws -> ImportedSound {
-        guard let soundsDir = soundsDirectory else {
-            throw SoundLibraryError.importFailed("Library/Sounds is unavailable.")
-        }
-
-        let baseName = sanitizedFileName(sourceURL.deletingPathExtension().lastPathComponent)
-        let ext = sourceURL.pathExtension.lowercased()
-        let stableFileName = "\(baseName)_\(UUID().uuidString.lowercased()).\(ext)"
-        let destURL = soundsDir.appendingPathComponent(stableFileName)
+        // Start accessing the security-scoped resource
+        let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
+        defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
+        
         let displayName = sourceURL.deletingPathExtension().lastPathComponent
-
-        let copied: (fileName: String, bytes: Int, duration: TimeInterval?) = try await Task.detached(priority: .userInitiated) {
-            let fileManager = FileManager.default
-            let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
-            defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
-
-            try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
-            if fileManager.fileExists(atPath: destURL.path) {
-                try fileManager.removeItem(at: destURL)
+        let fileName = sourceURL.lastPathComponent
+        
+        // Read duration from the audio file without copying
+        var duration: TimeInterval? = nil
+        do {
+            let audioFile = try AVAudioFile(forReading: sourceURL)
+            let sampleRate = audioFile.processingFormat.sampleRate
+            let frameCount = audioFile.length
+            if sampleRate > 0, frameCount > 0 {
+                duration = Double(frameCount) / sampleRate
             }
-            try fileManager.copyItem(at: sourceURL, to: destURL)
-            let size = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-            
-            // Read duration from the audio file. Some MP3s (odd headers/VBR)
-            // defeat AVAudioFile's length estimate; fall back to AVURLAsset.
-            var duration: TimeInterval? = nil
-            do {
-                let audioFile = try AVAudioFile(forReading: destURL)
-                let sampleRate = audioFile.processingFormat.sampleRate
-                let frameCount = audioFile.length
-                if sampleRate > 0, frameCount > 0 {
-                    duration = Double(frameCount) / sampleRate
-                }
-            } catch {
-                // Duration reading failed, try asset fallback below
-            }
-            if duration == nil || duration == 0 {
-                let asset = AVURLAsset(url: destURL)
-                if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
-                    duration = seconds
-                }
-            }
-            
-            return (stableFileName, size, duration)
-        }.value
-
-        let sound = ImportedSound(
-            id: stableID(for: copied.fileName),
-            name: displayName,
-            fileName: copied.fileName,
-            duration: copied.duration,
-            folder: nil  // Single file import - no folder
-        )
-        if let d = copied.duration {
-            setDurationOverride(d, for: copied.fileName)
+        } catch {
+            // Duration reading failed, try asset fallback below
         }
+        if duration == nil || duration == 0 {
+            let asset = AVURLAsset(url: sourceURL)
+            if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
+                duration = seconds
+            }
+        }
+        
+        // Create bookmark for the original file
+        let bookmark: Data
+        do {
+            bookmark = try sourceURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        } catch {
+            throw SoundLibraryError.importFailed("Failed to create bookmark for \(fileName): \(error.localizedDescription)")
+        }
+        
+        // Create linked record
+        let record = LinkedSoundRecord(
+            id: UUID(),
+            name: displayName,
+            fileName: fileName,
+            duration: duration,
+            dateAdded: Date(),
+            folder: nil,
+            bookmark: bookmark
+        )
+        linkedRecords.insert(record, at: 0)
+        saveLinkedRecords()
+        
+        // Create ImportedSound with isLinked = true
+        let sound = ImportedSound(
+            id: record.id,
+            name: displayName,
+            fileName: fileName,
+            duration: duration,
+            dateAdded: record.dateAdded,
+            folder: nil,
+            isLinked: true
+        )
         importedSounds.insert(sound, at: 0)
         return sound
     }
 
     func importFolder(from sourceURL: URL) async throws -> Playlist {
-        guard let soundsDir = soundsDirectory else {
-            throw SoundLibraryError.folderImportFailed("Library/Sounds is unavailable.")
-        }
-
+        // Start accessing the security-scoped resource
         let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
         defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
-
+        
         let folderName = sourceURL.lastPathComponent
+        var linkedRecordsToAdd: [LinkedSoundRecord] = []
         var importedSoundInfos: [(id: UUID, name: String, fileName: String, duration: TimeInterval?)] = []
         var errors: [String] = []
 
         do {
             let fileManager = FileManager.default
-            try fileManager.createDirectory(at: soundsDir, withIntermediateDirectories: true)
-
+            
             let fileURLs = try fileManager.contentsOfDirectory(
                 at: sourceURL,
                 includingPropertiesForKeys: [.creationDateKey, .fileSizeKey],
@@ -336,22 +482,13 @@ final class SoundLibrary {
 
             for sourceFileURL in audioFiles {
                 do {
-                    let baseName = sanitizedFileName(sourceFileURL.deletingPathExtension().lastPathComponent)
-                    let ext = sourceFileURL.pathExtension.lowercased()
-                    let stableFileName = "\(baseName)_\(UUID().uuidString.lowercased()).\(ext)"
-                    let destURL = soundsDir.appendingPathComponent(stableFileName)
                     let displayName = sourceFileURL.deletingPathExtension().lastPathComponent
-
-                    if fileManager.fileExists(atPath: destURL.path) {
-                        try fileManager.removeItem(at: destURL)
-                    }
-                    try fileManager.copyItem(at: sourceFileURL, to: destURL)
-
-                    // Read duration from the audio file (asset fallback for
-                    // MP3s whose length AVAudioFile can't estimate)
+                    let fileName = sourceFileURL.lastPathComponent
+                    
+                    // Read duration from the audio file without copying
                     var duration: TimeInterval? = nil
                     do {
-                        let audioFile = try AVAudioFile(forReading: destURL)
+                        let audioFile = try AVAudioFile(forReading: sourceFileURL)
                         let sampleRate = audioFile.processingFormat.sampleRate
                         let frameCount = audioFile.length
                         if sampleRate > 0, frameCount > 0 {
@@ -361,14 +498,33 @@ final class SoundLibrary {
                         // Duration reading failed, asset fallback below
                     }
                     if duration == nil || duration == 0 {
-                        let asset = AVURLAsset(url: destURL)
+                        let asset = AVURLAsset(url: sourceFileURL)
                         if let seconds = try? await asset.load(.duration).seconds, seconds.isFinite, seconds > 0 {
                             duration = seconds
                         }
                     }
-
-                    let id = stableID(for: stableFileName)
-                    importedSoundInfos.append((id: id, name: displayName, fileName: stableFileName, duration: duration))
+                    
+                    // Create bookmark for the original file
+                    let bookmark: Data
+                    do {
+                        bookmark = try sourceFileURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                    } catch {
+                        errors.append("\(fileName): Failed to create bookmark - \(error.localizedDescription)")
+                        continue
+                    }
+                    
+                    // Create linked record
+                    let record = LinkedSoundRecord(
+                        id: UUID(),
+                        name: displayName,
+                        fileName: fileName,
+                        duration: duration,
+                        dateAdded: Date(),
+                        folder: folderName,
+                        bookmark: bookmark
+                    )
+                    linkedRecordsToAdd.append(record)
+                    importedSoundInfos.append((id: record.id, name: displayName, fileName: fileName, duration: duration))
                 } catch {
                     errors.append("\(sourceFileURL.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -384,13 +540,22 @@ final class SoundLibrary {
         // Update @MainActor state
         await MainActor.run {
             let importedSoundIDs = importedSoundInfos.map { $0.id }
+            
+            // Add linked records
+            for record in linkedRecordsToAdd {
+                linkedRecords.insert(record, at: 0)
+            }
+            saveLinkedRecords()
+            
+            // Create ImportedSound objects with isLinked = true
             for info in importedSoundInfos {
                 let sound = ImportedSound(
                     id: info.id,
                     name: info.name,
                     fileName: info.fileName,
                     duration: info.duration,
-                    folder: folderName
+                    folder: folderName,
+                    isLinked: true
                 )
                 if let d = info.duration {
                     self.setDurationOverride(d, for: info.fileName)
@@ -473,15 +638,28 @@ final class SoundLibrary {
     func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
         guard !isReferenced(sound, by: alarms) else { return }
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
-        if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
-            try? fileManager.removeItem(at: localURL)
+        
+        if sound.isLinked {
+            // Linked sound - remove bookmark and end access, DON'T delete original file
+            endAccess(for: sound)
+            if let index = linkedRecords.firstIndex(where: { $0.id == sound.id }) {
+                linkedRecords.remove(at: index)
+                saveLinkedRecords()
+            }
+        } else {
+            // Copied sound - delete the copy from Library/Sounds
+            if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
+                try? fileManager.removeItem(at: localURL)
+            }
         }
+        
         removeDisplayNameOverride(for: sound.fileName)
         importedSounds.removeAll { $0.id == sound.id }
 
         // Remove from any playlists
         for i in playlists.indices {
             playlists[i].soundIDs.removeAll { $0 == sound.id }
+            playlists[i].selectedSoundIDs.removeAll { $0 == sound.id }
         }
         savePlaylists()
     }
@@ -495,26 +673,36 @@ final class SoundLibrary {
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
         SmartWakeDebugLog.log("SOUND DELETE: removeProcessedSounds ran for id=\(soundID.uuidString) file=\(fileName)")
         
-        // Delete the actual sound file with verification
-        var deleteError: String?
-        var verifiedGone = false
-        if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
-            let path = localURL.path
-            do {
-                try fileManager.removeItem(at: localURL)
-                verifiedGone = !fileManager.fileExists(atPath: path)
-            } catch {
-                deleteError = error.localizedDescription
-                verifiedGone = !fileManager.fileExists(atPath: path)
+        if sound.isLinked {
+            // Linked sound - remove bookmark and end access, DON'T delete original file
+            endAccess(for: sound)
+            if let index = linkedRecords.firstIndex(where: { $0.id == soundID }) {
+                linkedRecords.remove(at: index)
+                saveLinkedRecords()
             }
+            SmartWakeDebugLog.log("SOUND DELETE: id=\(soundID.uuidString) file=\(fileName) LINKED - removed bookmark only")
         } else {
-            deleteError = "soundsDirectory is nil, localURL is nil"
+            // Copied sound - delete the copy from Library/Sounds
+            var deleteError: String?
+            var verifiedGone = false
+            if let localURL = sound.localURL(soundsDirectory: soundsDirectory) {
+                let path = localURL.path
+                do {
+                    try fileManager.removeItem(at: localURL)
+                    verifiedGone = !fileManager.fileExists(atPath: path)
+                } catch {
+                    deleteError = error.localizedDescription
+                    verifiedGone = !fileManager.fileExists(atPath: path)
+                }
+            } else {
+                deleteError = "soundsDirectory is nil, localURL is nil"
+            }
+            
+            // Log the deletion result
+            let verifiedStatus = verifiedGone ? "gone" : "STILL PRESENT"
+            let errMsg = deleteError ?? "none"
+            SmartWakeDebugLog.log("SOUND DELETE: id=\(soundID.uuidString) file=\(fileName) verified=\(verifiedStatus) path=\(sound.localURL(soundsDirectory: soundsDirectory)?.path ?? "nil") err=\(errMsg)")
         }
-        
-        // Log the deletion result
-        let verifiedStatus = verifiedGone ? "gone" : "STILL PRESENT"
-        let errMsg = deleteError ?? "none"
-        SmartWakeDebugLog.log("SOUND DELETE: id=\(soundID.uuidString) file=\(fileName) verified=\(verifiedStatus) path=\(sound.localURL(soundsDirectory: soundsDirectory)?.path ?? "nil") err=\(errMsg)")
         
         removeDisplayNameOverride(for: fileName)
         importedSounds.removeAll { $0.id == soundID }
@@ -541,7 +729,7 @@ final class SoundLibrary {
         guard let sound = importedSounds.first(where: { $0.id == id }) else {
             throw SoundLibraryError.importedSoundNotFound(id)
         }
-        let url = sound.localURL(soundsDirectory: soundsDirectory)
+        let url = resolvedURL(for: sound)
         guard let url, fileManager.fileExists(atPath: url.path) else {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
@@ -608,12 +796,25 @@ final class SoundLibrary {
         Array(Set(importedSounds.compactMap { $0.folder })).sorted()
     }
     
-    /// Remove the physical sound file and any processed variants
+    /// Remove the physical sound file and any processed variants (for copied sounds only)
+    /// For linked sounds, removes the bookmark and ends access but does NOT delete the original file
     private func purgeSoundFiles(_ sound: ImportedSound) {
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
-        if let url = sound.localURL(soundsDirectory: soundsDirectory) {
-            try? fileManager.removeItem(at: url)
+        
+        if sound.isLinked {
+            // Linked sound - remove bookmark and end access, DON'T delete original file
+            endAccess(for: sound)
+            if let index = linkedRecords.firstIndex(where: { $0.id == sound.id }) {
+                linkedRecords.remove(at: index)
+                saveLinkedRecords()
+            }
+        } else {
+            // Copied sound - delete the copy from Library/Sounds
+            if let url = sound.localURL(soundsDirectory: soundsDirectory) {
+                try? fileManager.removeItem(at: url)
+            }
         }
+        
         removeDisplayNameOverride(for: sound.fileName)
     }
     

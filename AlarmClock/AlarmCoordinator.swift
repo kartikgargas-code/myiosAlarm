@@ -1824,7 +1824,7 @@ final class AlarmCoordinator {
         
         // Check imported sounds
         if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == soundName }) {
-            soundURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+            soundURL = SoundLibrary.shared.resolvedURL(for: sound)
             soundID = sound.fileName
         }
         
@@ -1837,7 +1837,7 @@ final class AlarmCoordinator {
         // If still not found, try to find by file name (imported sounds use fileName)
         if soundURL == nil {
             if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.fileName.hasPrefix(soundName) || $0.name == soundName }) {
-                soundURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+                soundURL = SoundLibrary.shared.resolvedURL(for: sound)
                 soundID = sound.fileName
             }
         }

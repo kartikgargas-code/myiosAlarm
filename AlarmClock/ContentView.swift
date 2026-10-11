@@ -851,7 +851,7 @@ private func makeCreatorSheet() -> some View {
 }
     
     func soundRow(sound: ImportedSound) -> some View {
-        let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
+        let previewURL = SoundLibrary.shared.resolvedURL(for: sound)
         let isPlayingThis = preview.playingSoundID == sound.fileName
         let isReferenced = isSoundReferenced(sound)
         let colors = ThemeManager.shared.colors

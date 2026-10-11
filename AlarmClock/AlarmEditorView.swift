@@ -234,18 +234,16 @@ struct AlarmEditorView: View {
         case .builtIn(let name):
             return SoundPreviewService.bundledSoundURL(for: name)
         case .imported(let id):
-            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }),
-               let soundsDir = SoundLibrary.shared.soundsDirectory {
-                return sound.localURL(soundsDirectory: soundsDir)
+            if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+                return SoundLibrary.shared.resolvedURL(for: sound)
             }
             return nil
         case .random(let playlistID):
             // For random playlists, pick the first sound
             if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                let firstSoundID = playlist.soundIDs.first,
-               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
-               let soundsDir = SoundLibrary.shared.soundsDirectory {
-                return sound.localURL(soundsDirectory: soundsDir)
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return SoundLibrary.shared.resolvedURL(for: sound)
             }
             return nil
         case .precomposedPlaylist(let playlistID, _):
@@ -253,9 +251,8 @@ struct AlarmEditorView: View {
             // Fall back to first sound in the playlist
             if let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
                let firstSoundID = playlist.soundIDs.first,
-               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
-               let soundsDir = SoundLibrary.shared.soundsDirectory {
-                return sound.localURL(soundsDirectory: soundsDir)
+               let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }) {
+                return SoundLibrary.shared.resolvedURL(for: sound)
             }
             return nil
         }
