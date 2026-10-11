@@ -633,71 +633,92 @@ struct SoundsView: View {
 
     // Kept small: the compiler type-checks each computed view on its own.
     private var soundsList: some View {
+        soundsListBase
+            .onChange(of: SoundLibrary.shared.importedFolders) { _, folders in
+                if let f = folderFilter, !folders.contains(f) { folderFilter = nil }
+            }
+            .fileImporter(
+                isPresented: $showingDocumentPicker,
+                allowedContentTypes: pickerContentTypes,
+                allowsMultipleSelection: pickerMode == .files
+            ) { result in
+                handlePickedFiles(result)
+            }
+            .onDisappear {
+                preview.stop()
+            }
+    }
+
+    private var soundsListBase: some View {
+        soundsListContent
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle("Sounds")
+            .navigationBarTitleDisplayMode(.inline)
+            .alert("Rename Playlist", isPresented: $showingRenameAlert, presenting: playlistToRename) { playlist in
+                TextField("Playlist name", text: $renameText)
+                Button("Cancel", role: .cancel) { }
+                Button("Rename") {
+                    let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !newName.isEmpty {
+                        SoundLibrary.shared.updatePlaylist(playlist, newName: newName)
+                    }
+                }
+            } message: { _ in
+                Text("Enter a new name for this playlist")
+            }
+            .safeAreaInset(edge: .bottom) { bottomBar }
+            .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
+                Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Removes every imported track from the app and resets any alarm using one to Default.")
+            }
+            .confirmationDialog("Delete folder \"\(folderToDelete ?? "")\"?",
+                isPresented: Binding(get: { folderToDelete != nil }, set: { if !$0 { folderToDelete = nil } }),
+                titleVisibility: .visible) {
+                Button("Delete Folder", role: .destructive) {
+                    if let f = folderToDelete { Task { await coordinator.deleteImportedSounds(inFolder: f) } }
+                    folderToDelete = nil
+                }
+                Button("Cancel", role: .cancel) { folderToDelete = nil }
+            } message: {
+                Text("Deletes every track in this folder and removes its playlist.")
+            }
+    }
+
+    private var soundsListContent: some View {
         List {
             playlistsSection
             importSection
             importedSoundsSection
         }
-        .scrollContentBackground(.hidden)
-        .background(ThemeManager.shared.colors.background)
-        .navigationTitle("Sounds")
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("Rename Playlist", isPresented: $showingRenameAlert, presenting: playlistToRename) { playlist in
-            TextField("Playlist name", text: $renameText)
-            Button("Cancel", role: .cancel) { }
-            Button("Rename") {
-                let newName = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !newName.isEmpty {
-                    SoundLibrary.shared.updatePlaylist(playlist, newName: newName)
+    }
+
+    // Explicit identifiers keep the type-checker off the slow path.
+    private var pickerContentTypes: [UTType] {
+        if pickerMode == .files {
+            return ["public.mp3", "public.mpeg-4-audio", "com.microsoft.waveform-audio", "public.aiff-audio", "public.aac-audio"]
+                .compactMap { UTType($0) }
+        }
+        return [.folder]
+    }
+
+    private func handlePickedFiles(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            if pickerMode == .files {
+                guard !urls.isEmpty else { return }
+                for url in urls {
+                    Task { await importSound(from: url) }
                 }
+            } else {
+                // Folder mode
+                guard let url = urls.first else { return }
+                Task { await importFolder(from: url) }
             }
-        } message: { _ in
-            Text("Enter a new name for this playlist")
-        }
-        .safeAreaInset(edge: .bottom) { bottomBar }
-        .confirmationDialog("Delete all tracks?", isPresented: $showingDeleteAll, titleVisibility: .visible) {
-            Button("Delete All Tracks", role: .destructive) { Task { await coordinator.deleteAllImportedSounds() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Removes every imported track from the app and resets any alarm using one to Default.")
-        }
-        .confirmationDialog("Delete folder \"\(folderToDelete ?? "")\"?",
-            isPresented: Binding(get: { folderToDelete != nil }, set: { if !$0 { folderToDelete = nil } }),
-            titleVisibility: .visible) {
-            Button("Delete Folder", role: .destructive) {
-                if let f = folderToDelete { Task { await coordinator.deleteImportedSounds(inFolder: f) } }
-                folderToDelete = nil
-            }
-            Button("Cancel", role: .cancel) { folderToDelete = nil }
-        } message: {
-            Text("Deletes every track in this folder and removes its playlist.")
-        }
-        .onChange(of: SoundLibrary.shared.importedFolders) { _, folders in
-            if let f = folderFilter, !folders.contains(f) { folderFilter = nil }
-        }
-        .fileImporter(
-            isPresented: $showingDocumentPicker,
-            allowedContentTypes: pickerMode == .files ? [.mp3, .m4a, .wav, .aac, .aiff] : [.folder],
-            allowsMultipleSelection: pickerMode == .files
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if pickerMode == .files {
-                    guard !urls.isEmpty else { return }
-                    for url in urls {
-                        Task { await importSound(from: url) }
-                    }
-                } else {
-                    // Folder mode
-                    guard let url = urls.first else { return }
-                    Task { await importFolder(from: url) }
-                }
-            case .failure(let error):
-                importError = "Picker failed: \(error.localizedDescription)"
-            }
-        }
-        .onDisappear {
-            preview.stop()
+        case .failure(let error):
+            importError = "Picker failed: \(error.localizedDescription)"
         }
     }
 
