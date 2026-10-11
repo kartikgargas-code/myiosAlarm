@@ -625,49 +625,56 @@ struct TimePickerWithSeconds: View {
     private let calendar = Calendar.autoupdatingCurrent
     
     var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                // Hour picker (1-12 for 12-hour format)
-                Picker("Hour", selection: hour12Binding) {
-                    ForEach(1..<13) { hour in
-                        Text(String(format: "%02d", hour)).tag(hour)
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 4)
-                .clipped()
-                
-                // Minute picker
-                Picker("Minute", selection: minuteBinding) {
-                    ForEach(0..<60) { minute in
-                        Text(String(format: "%02d", minute)).tag(minute)
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 4)
-                .clipped()
-                
-                // Second picker
-                Picker("Second", selection: secondBinding) {
-                    ForEach(0..<60) { second in
-                        Text(String(format: "%02d", second)).tag(second)
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 4)
-                .clipped()
-                
-                // AM/PM picker
-                Picker("AM/PM", selection: amPmBinding) {
-                    Text("AM").tag(false)
-                    Text("PM").tag(true)
-                }
-                .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 4)
-                .clipped()
-            }
+        HStack(spacing: 0) {
+            hourPicker
+            minutePicker
+            secondPicker
+            amPmPicker
         }
         .frame(height: 150)
+    }
+    
+    private var hourPicker: some View {
+        Picker("Hour", selection: hour12Binding) {
+            ForEach(1..<13) { hour in
+                Text(String(format: "%02d", hour)).tag(hour)
+            }
+        }
+        .pickerStyle(.wheel)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+    
+    private var minutePicker: some View {
+        Picker("Minute", selection: minuteBinding) {
+            ForEach(0..<60) { minute in
+                Text(String(format: "%02d", minute)).tag(minute)
+            }
+        }
+        .pickerStyle(.wheel)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+    
+    private var secondPicker: some View {
+        Picker("Second", selection: secondBinding) {
+            ForEach(0..<60) { second in
+                Text(String(format: "%02d", second)).tag(second)
+            }
+        }
+        .pickerStyle(.wheel)
+        .frame(maxWidth: .infinity)
+        .clipped()
+    }
+    
+    private var amPmPicker: some View {
+        Picker("AM/PM", selection: amPmBinding) {
+            Text("AM").tag(false)
+            Text("PM").tag(true)
+        }
+        .pickerStyle(.wheel)
+        .frame(maxWidth: .infinity)
+        .clipped()
     }
     
     // Convert 24-hour to 12-hour for display
