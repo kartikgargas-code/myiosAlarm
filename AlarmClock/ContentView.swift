@@ -483,7 +483,6 @@ struct SoundsView: View {
     @State private var showingRenameAlert = false
     // Playlist editor/creator
     @State private var playlistToEdit: Playlist? = nil
-    @State private var showingPlaylistEditor = false
     @State private var showingPlaylistCreator = false
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
@@ -790,18 +789,18 @@ struct SoundsView: View {
         }
     }
     .sheet(item: $playlistToEdit) { playlist in
-        editorSheet(for: playlist)
+        makeEditorSheet(playlist)
     }
     .sheet(isPresented: $showingPlaylistCreator) {
-        creatorSheet
+        makeCreatorSheet()
     }
 }
 
-private func editorSheet(for playlist: Playlist) -> some View {
+private func makeEditorSheet(_ playlist: Playlist) -> some View {
     PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
 }
 
-private var creatorSheet: some View {
+private func makeCreatorSheet() -> some View {
     PlaylistCreatorView { name, soundIDs in
         let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
     }
