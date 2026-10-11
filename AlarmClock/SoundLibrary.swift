@@ -152,7 +152,7 @@ final class SoundLibrary {
                 includingPropertiesForKeys: [.creationDateKey, .fileSizeKey]
             )
             let displayNames = savedDisplayNames()
-            let copiedSounds = files.compactMap { url in
+            let copiedSounds: [ImportedSound] = files.compactMap { (url: URL) -> ImportedSound? in
                 let ext = url.pathExtension.lowercased()
                 guard ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains(ext) else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
@@ -294,9 +294,11 @@ final class SoundLibrary {
     /// Stop security-scoped access for a linked sound's resolved URL
     func endAccess(for sound: ImportedSound) {
         guard sound.isLinked,
-              let record = linkedRecords.first(where: { $0.id == sound.id }),
-              var stale = false,
-              let url = try? URL(resolvingBookmarkData: record.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
+              let record = linkedRecords.first(where: { $0.id == sound.id }) else {
+            return
+        }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: record.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) else {
             return
         }
         
@@ -315,7 +317,7 @@ final class SoundLibrary {
         Task.detached(priority: .utility) { [weak self] in
             var measured: [(fileName: String, duration: TimeInterval)] = []
             for sound in targets {
-                guard let url = SoundLibrary.shared.resolvedURL(for: sound),
+                guard let url = await SoundLibrary.shared.resolvedURL(for: sound),
                       FileManager.default.fileExists(atPath: url.path) else { continue }
                 var duration: TimeInterval? = nil
                 if let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
