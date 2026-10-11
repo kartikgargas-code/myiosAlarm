@@ -118,13 +118,9 @@ struct AlarmEditorView: View {
     @ViewBuilder
     private var scheduleFields: some View {
         Section("Time") {
-            // Custom picker with hour, minute, and second
-            HStack {
-                Text("Time")
-                Spacer()
-                TimePickerWithSeconds(selection: $selectedTime)
-                    .labelsHidden()
-            }
+            // Custom picker with hour, minute, second, and AM/PM
+            TimePickerWithSeconds(selection: $selectedTime)
+                .labelsHidden()
         }
         TextField("Label", text: $label)
         Picker("Repeat", selection: repeatSelection) {
@@ -623,7 +619,7 @@ struct RandomModeNextSongView: View {
     }
 }
 
-/// Custom time picker with hour, minute, and second wheels
+/// Custom time picker with hour, minute, second, and AM/PM wheels
 struct TimePickerWithSeconds: View {
     @Binding var selection: Date
     private let calendar = Calendar.autoupdatingCurrent
@@ -631,14 +627,14 @@ struct TimePickerWithSeconds: View {
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
-                // Hour picker
-                Picker("Hour", selection: hourBinding) {
-                    ForEach(0..<24) { hour in
+                // Hour picker (1-12 for 12-hour format)
+                Picker("Hour", selection: hour12Binding) {
+                    ForEach(1..<13) { hour in
                         Text(String(format: "%02d", hour)).tag(hour)
                     }
                 }
                 .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 3)
+                .frame(width: geometry.size.width / 4)
                 .clipped()
                 
                 // Minute picker
@@ -648,7 +644,7 @@ struct TimePickerWithSeconds: View {
                     }
                 }
                 .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 3)
+                .frame(width: geometry.size.width / 4)
                 .clipped()
                 
                 // Second picker
@@ -658,19 +654,34 @@ struct TimePickerWithSeconds: View {
                     }
                 }
                 .pickerStyle(.wheel)
-                .frame(width: geometry.size.width / 3)
+                .frame(width: geometry.size.width / 4)
+                .clipped()
+                
+                // AM/PM picker
+                Picker("AM/PM", selection: amPmBinding) {
+                    Text("AM").tag(false)
+                    Text("PM").tag(true)
+                }
+                .pickerStyle(.wheel)
+                .frame(width: geometry.size.width / 4)
                 .clipped()
             }
         }
         .frame(height: 150)
     }
     
-    private var hourBinding: Binding<Int> {
+    // Convert 24-hour to 12-hour for display
+    private var hour12Binding: Binding<Int> {
         Binding(
-            get: { calendar.component(.hour, from: selection) },
-            set: { newHour in
+            get: {
+                let hour24 = calendar.component(.hour, from: selection)
+                return hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24)
+            },
+            set: { newHour12 in
                 var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
-                components.hour = newHour
+                let isPM = calendar.component(.hour, from: selection) >= 12
+                let hour24 = (isPM ? 12 : 0) + (newHour12 % 12)
+                components.hour = hour24
                 if let newDate = calendar.date(from: components) {
                     selection = newDate
                 }
@@ -697,6 +708,24 @@ struct TimePickerWithSeconds: View {
             set: { newSecond in
                 var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
                 components.second = newSecond
+                if let newDate = calendar.date(from: components) {
+                    selection = newDate
+                }
+            }
+        )
+    }
+    
+    private var amPmBinding: Binding<Bool> {
+        Binding(
+            get: { calendar.component(.hour, from: selection) >= 12 },
+            set: { newIsPM in
+                var components = calendar.dateComponents([.hour, .minute, .second], from: selection)
+                let currentHour24 = components.hour ?? 0
+                let currentIsPM = currentHour24 >= 12
+                if newIsPM != currentIsPM {
+                    // Toggle AM/PM: add/subtract 12 hours
+                    components.hour = (currentHour24 + 12) % 24
+                }
                 if let newDate = calendar.date(from: components) {
                     selection = newDate
                 }

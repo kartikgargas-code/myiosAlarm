@@ -131,7 +131,8 @@ final class SoundLibrary {
             )
             let displayNames = savedDisplayNames()
             importedSounds = files.compactMap { url in
-                guard url.pathExtension.lowercased() == "mp3" else { return nil }
+                let ext = url.pathExtension.lowercased()
+                guard ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains(ext) else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 let fileName = url.lastPathComponent
@@ -331,9 +332,9 @@ final class SoundLibrary {
                 options: [.skipsHiddenFiles]
             )
 
-            let mp3Files = fileURLs.filter { $0.pathExtension.lowercased() == "mp3" }
+            let audioFiles = fileURLs.filter { ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains($0.pathExtension.lowercased()) }
 
-            for sourceFileURL in mp3Files {
+            for sourceFileURL in audioFiles {
                 do {
                     let baseName = sanitizedFileName(sourceFileURL.deletingPathExtension().lastPathComponent)
                     let ext = sourceFileURL.pathExtension.lowercased()

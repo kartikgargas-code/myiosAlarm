@@ -481,6 +481,10 @@ struct SoundsView: View {
     @State private var playlistToRename: Playlist? = nil
     @State private var renameText = ""
     @State private var showingRenameAlert = false
+    // Playlist editor/creator
+    @State private var playlistToEdit: Playlist? = nil
+    @State private var showingPlaylistEditor = false
+    @State private var showingPlaylistCreator = false
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -625,6 +629,26 @@ struct SoundsView: View {
                             ForEach(SoundLibrary.shared.playlists) { playlist in
                                 playlistRow(playlist: playlist)
                             }
+                            Button {
+                                showingPlaylistCreator = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .frame(width: 44, height: 44)
+                                        .background(ThemeManager.shared.colors.accent.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Create New Playlist")
+                                            .font(.body)
+                                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     
@@ -637,7 +661,7 @@ struct SoundsView: View {
                             HStack {
                                 Image(systemName: "plus.circle.fill")
                                     .foregroundStyle(ThemeManager.shared.colors.accent)
-                                Text("Import MP3 from Files")
+                                Text("Import Audio from Files")
                                     .foregroundStyle(ThemeManager.shared.colors.accent)
                             }
                         }
@@ -649,7 +673,7 @@ struct SoundsView: View {
                         HStack {
                             Image(systemName: "folder.badge.plus")
                                 .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import MP3 Folder as Playlist")
+                            Text("Import Audio Folder as Playlist")
                                 .foregroundStyle(ThemeManager.shared.colors.accent)
                         }
                     }
@@ -657,7 +681,7 @@ struct SoundsView: View {
                 
                 if SoundLibrary.shared.importedSounds.isEmpty {
                     Section("Imported Sounds") {
-                        Text("No imported sounds yet. Tap 'Import MP3 from Files' to add sounds.")
+                        Text("No imported sounds yet. Tap 'Import Audio from Files' to add sounds.")
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
@@ -755,7 +779,7 @@ struct SoundsView: View {
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,
-                allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
+                allowedContentTypes: pickerMode == .files ? [.mp3, .m4a, .wav, .aac, .aiff] : [.folder],
                 allowsMultipleSelection: pickerMode == .files
             ) { result in
                 switch result {
@@ -777,9 +801,17 @@ struct SoundsView: View {
             .onDisappear {
                 preview.stop()
             }
-            }
         }
     }
+    .sheet(item: $playlistToEdit) { playlist in
+        PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
+    }
+    .sheet(isPresented: $showingPlaylistCreator) {
+        PlaylistCreatorView { name, soundIDs in
+            let _ = SoundLibrary.shared.createPlaylist(name: name, soundIDs: soundIDs)
+        }
+    }
+}
     
     func soundRow(sound: ImportedSound) -> some View {
         let previewURL = sound.localURL(soundsDirectory: SoundLibrary.shared.soundsDirectory)
@@ -883,15 +915,19 @@ struct SoundsView: View {
             Spacer()
             
             Button {
-                playlistToRename = playlist
-                renameText = playlist.name
-                showingRenameAlert = true
+                playlistToEdit = playlist
+                showingPlaylistEditor = true
             } label: {
                 Image(systemName: "pencil")
                     .foregroundStyle(colors.accent)
                     .font(.title3)
             }
             .buttonStyle(.plain)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            playlistToEdit = playlist
+            showingPlaylistEditor = true
         }
         .padding(.vertical, 4)
         .listRowBackground(colors.card)
