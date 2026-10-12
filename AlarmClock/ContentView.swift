@@ -284,63 +284,15 @@ struct ContentView: View {
         let colors = ThemeManager.shared.colors
         let occurrence = coordinator.occurrence(for: alarm.id)
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
-        let isCompact = ThemeManager.shared.isCompactModeEnabled
 
         return HStack(spacing: 12) {
-            // Alarm details - tapping opens editor
-            Button {
-                SmartWakeDebugLog.log("EDITOR OPEN: tapped \(alarm.id.uuidString)")
-                editorPresentation = EditorPresentation(id: alarm.id, alarm: alarm)
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(timeText(alarm.time))
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(colors.primaryText)
-                    Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
-                        .font(.subheadline)
-                        .foregroundStyle(colors.primaryText)
-                    
-                    if !isCompact {
-                        Text(alarm.repeatRule.displayName)
-                            .font(.caption)
-                            .foregroundStyle(colors.accent)
-                        if let occurrence {
-                            HStack(spacing: 4) {
-                                if let skipped = skippedOccurrence {
-                                    Label("Skipped", systemImage: "slash.circle.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(colors.accent)
-                                } else if occurrence.isAdjusted {
-                                    Label(adjustmentDescription(occurrence), systemImage: "clock.badge.checkmark.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(colors.accent)
-                                } else {
-                                    Text("Next: \(occurrence.effectiveDate.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption)
-                                        .foregroundStyle(colors.accent)
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            // Toggle ONLY changes enabled state
-            Toggle("Enabled", isOn: Binding(
-                get: { pendingEnabled[alarm.id] ?? alarm.isEnabled },
-                set: { enabled in
-                    pendingEnabled[alarm.id] = enabled
-                    Task {
-                        await coordinator.setEnabled(enabled, id: alarm.id)
-                        pendingEnabled[alarm.id] = nil
-                    }
-                }
-            ))
-            .labelsHidden()
-            .toggleStyle(ThemedToggleStyle(colors: colors))
+            // Left column: time, countdown, repeat, skip/adjusted message
+            alarmRowLeftColumn(alarm, occurrence: occurrence, skippedOccurrence: skippedOccurrence)
+            
+            Spacer()
+            
+            // Right column: name top, toggle bottom
+            alarmRowRightColumn(alarm, colors: colors)
         }
         .listRowBackground(colors.card)
         .contextMenu {
@@ -400,6 +352,84 @@ struct ContentView: View {
             Button("Delete", role: .destructive) {
                 Task { await coordinator.delete(id: alarm.id) }
             }
+        }
+    }
+    
+    private func alarmRowLeftColumn(_ alarm: AlarmRecord, occurrence: AlarmOccurrence?, skippedOccurrence: AlarmOccurrence?) -> some View {
+        let colors = ThemeManager.shared.colors
+        
+        return VStack(alignment: .leading, spacing: 2) {
+            // Big time
+            Text(timeText(alarm.time))
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(colors.primaryText)
+            
+            // Live countdown
+            if let occurrence {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let remaining = occurrence.effectiveDate.timeIntervalSince(context.date)
+                    if remaining > 0 {
+                        Text("rings in \(countdownText(remaining: remaining))")
+                            .font(.caption2)
+                            .foregroundStyle(colors.accent)
+                    }
+                }
+            }
+            
+            // Repeat text (always shown)
+            Text(alarm.repeatRule.displayName)
+                .font(.caption)
+                .foregroundStyle(colors.accent)
+            
+            // Skipped or adjusted message
+            if let skipped = skippedOccurrence {
+                Label("Skipped", systemImage: "slash.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(colors.accent)
+            } else if let occurrence, occurrence.isAdjusted {
+                Label("\(adjustmentDescription(occurrence)) → \(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))", systemImage: "clock.badge.checkmark.fill")
+                    .font(.caption2)
+                    .foregroundStyle(colors.accent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeManager.Colors) -> some View {
+        return VStack(alignment: .trailing, spacing: 8) {
+            // Name top-right
+            Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
+                .font(.subheadline)
+                .foregroundStyle(colors.primaryText)
+            
+            // Toggle bottom-right (empty label to avoid "Enabled" text)
+            Toggle("", isOn: Binding(
+                get: { pendingEnabled[alarm.id] ?? alarm.isEnabled },
+                set: { enabled in
+                    pendingEnabled[alarm.id] = enabled
+                    Task {
+                        await coordinator.setEnabled(enabled, id: alarm.id)
+                        pendingEnabled[alarm.id] = nil
+                    }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(ThemedToggleStyle(colors: colors))
+        }
+    }
+    
+    private func countdownText(remaining: TimeInterval) -> String {
+        let totalSeconds = Int(remaining)
+        if totalSeconds < 3600 {
+            // Under 1 hour: Xm Ys
+            let minutes = totalSeconds / 60
+            let seconds = totalSeconds % 60
+            return "\(minutes)m \(seconds)s"
+        } else {
+            // 1 hour+: Xh Ym
+            let hours = totalSeconds / 3600
+            let minutes = (totalSeconds % 3600) / 60
+            return "\(hours)h \(minutes)m"
         }
     }
 
