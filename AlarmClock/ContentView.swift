@@ -395,7 +395,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
-    private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeManager.Colors) -> some View {
+    private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeColors) -> some View {
         return VStack(alignment: .trailing, spacing: 8) {
             // Name top-right
             Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
