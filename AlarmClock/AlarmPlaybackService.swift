@@ -40,6 +40,8 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
+    // Track which track indices have been recorded for history in the current ring
+    private var recordedTrackIndices: Set<Int> = []
     // Snapshot for snooze takeover: lets SmartWakeService restart the playlist
     // when the snoozed AlarmKit alarm fires while our process is still alive.
     private(set) var snoozeTakeoverContext: (alarm: AlarmRecord, playlistID: UUID, occurrenceKey: String)?
@@ -160,6 +162,7 @@ final class AlarmPlaybackService: NSObject {
             currentAlarm = alarm
             currentOccurrence = occurrence
             currentTrackIndex = 0
+            recordedTrackIndices.removeAll() // Reset recorded track indices for new ring
             coordinator = AlarmCoordinator.sharedInstance // Will need access to coordinator for play history
             
             // TASK 4: Capture alarm behaviour options for in-app playback
@@ -536,6 +539,12 @@ final class AlarmPlaybackService: NSObject {
             os_log(.info, log: log, "Now playing: %{public}s (index %{public}d/%{public}d) volume=%{public}.2f (loudness %{public}d%%)", 
                    displayTrackName, index + 1, selectedSoundIDs.count, newPlayer.volume, currentLoudness?.percentage ?? 100)
             SmartWakeDebugLog.log("PLAYBACK started track \(index + 1): \(displayTrackName) volume=\(String(format: "%.2f", newPlayer.volume)) (loudness \(currentLoudness?.percentage ?? 100)%)")
+            
+            // Record history at track START (not finish) - only once per track per ring
+            if !recordedTrackIndices.contains(index) {
+                recordedTrackIndices.insert(index)
+                recordHistoryForCurrentTrack()
+            }
             
             // TASK 4: Fade In - ramp volume from 0 to target over fadeInSeconds
             if currentFadeInEnabled {
@@ -1321,9 +1330,7 @@ extension AlarmPlaybackService: AVAudioPlayerDelegate {
             os_log(.info, log: self.log, "Track finished successfully, advancing to next")
             SmartWakeDebugLog.log("PLAYBACK finished track: \(self.currentTrackName ?? "unknown"), advancing")
 
-            // Per-song history: one entry per fully completed track.
-            self.recordHistoryForCurrentTrack()
-
+            // History is now recorded at track START (playTrack), not at finish.
             // Advance to next track
             self.advanceToNextTrack()
         }
