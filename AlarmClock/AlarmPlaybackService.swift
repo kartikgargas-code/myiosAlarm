@@ -1011,6 +1011,14 @@ final class AlarmPlaybackService: NSObject {
                 UNUserNotificationCenter.current().add(request) { error in
                     if let error = error {
                         SmartWakeDebugLog.log("SNOOZE notification failed: \(error.localizedDescription)")
+                    } else {
+                        SmartWakeDebugLog.log("SNOOZE notification posted")
+                        // Auto-hide notification after ~1 minute (best effort)
+                        Task {
+                            try? await Task.sleep(nanoseconds: 60_000_000_000)
+                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["SNOOZE-\(snoozeID.uuidString)"])
+                            SmartWakeDebugLog.log("SNOOZE notification auto-hidden after 60s")
+                        }
                     }
                 }
                 
