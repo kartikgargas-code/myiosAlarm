@@ -82,7 +82,7 @@ struct ContentView: View {
                             ThemeManager.shared.setCompactMode(newValue)
                         } label: {
                             HStack {
-                                Text(ThemeManager.shared.isCompactModeEnabled ? "Disable Compact List" : "Enable Compact List")
+                                Text(ThemeManager.shared.isCompactModeEnabled ? "Extended" : "Compact")
                                 if ThemeManager.shared.isCompactModeEnabled {
                                     Image(systemName: "checkmark")
                                 }
@@ -286,8 +286,14 @@ struct ContentView: View {
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
 
         return HStack(spacing: 12) {
-            // Left column: time, countdown, repeat, skip/adjusted message
-            alarmRowLeftColumn(alarm, occurrence: occurrence, skippedOccurrence: skippedOccurrence)
+            // Left column: time, countdown, repeat, skip/adjusted message - tap to edit
+            Button {
+                SmartWakeDebugLog.log("EDITOR OPEN: tapped \(alarm.id.uuidString)")
+                editorPresentation = EditorPresentation(id: alarm.id, alarm: alarm)
+            } label: {
+                alarmRowLeftColumn(alarm, occurrence: occurrence, skippedOccurrence: skippedOccurrence)
+            }
+            .buttonStyle(.plain)
             
             Spacer()
             
@@ -296,10 +302,20 @@ struct ContentView: View {
         }
         .listRowBackground(colors.card)
         .contextMenu {
-            // Secondary actions
+            // Reordered: Skip Next/Undo Skip at TOP, then -10/Reset/+10, Duplicate, Custom Time, Delete
             if let occurrence {
-                Button("Custom Time…") {
-                    controlsAlarm = alarm
+                // Skip Next / Undo Skip at very top
+                if let skipped = skippedOccurrence {
+                    Button("Undo Skip") {
+                        Task { await coordinator.undoSkip(id: alarm.id) }
+                    }
+                } else {
+                    Button {
+                        Task { await coordinator.skipNext(id: alarm.id) }
+                    } label: {
+                        Label("Skip Next", systemImage: "forward.end")
+                            .tint(Color(red: 1.0, green: 0.494, blue: 0.616))
+                    }
                 }
                 
                 Divider()
@@ -324,39 +340,45 @@ struct ContentView: View {
                 
                 Divider()
                 
-                if let skipped = skippedOccurrence {
-                    Button("Undo Skip") {
-                        Task { await coordinator.undoSkip(id: alarm.id) }
-                    }
-                } else {
-                    Button {
-                        Task { await coordinator.skipNext(id: alarm.id) }
-                    } label: {
-                        Label("Skip Next", systemImage: "forward.end")
-                            .tint(Color(red: 1.0, green: 0.72, blue: 0.0))
-                    }
+                Button {
+                    Task { await coordinator.duplicate(id: alarm.id) }
+                } label: {
+                    Label("Duplicate", systemImage: "doc.on.doc")
+                        .tint(.yellow)
                 }
-            }
-            
-            Divider()
-            
-            Button {
-                Task { await coordinator.duplicate(id: alarm.id) }
-            } label: {
-                Label("Duplicate", systemImage: "doc.on.doc")
-                    .tint(.yellow)
-            }
-            
-            Divider()
-            
-            Button("Delete", role: .destructive) {
-                Task { await coordinator.delete(id: alarm.id) }
+                
+                Divider()
+                
+                Button("Custom Time…") {
+                    controlsAlarm = alarm
+                }
+                
+                Divider()
+                
+                Button("Delete", role: .destructive) {
+                    Task { await coordinator.delete(id: alarm.id) }
+                }
+            } else {
+                // No occurrence - just Duplicate and Delete
+                Button {
+                    Task { await coordinator.duplicate(id: alarm.id) }
+                } label: {
+                    Label("Duplicate", systemImage: "doc.on.doc")
+                        .tint(.yellow)
+                }
+                
+                Divider()
+                
+                Button("Delete", role: .destructive) {
+                    Task { await coordinator.delete(id: alarm.id) }
+                }
             }
         }
     }
     
     private func alarmRowLeftColumn(_ alarm: AlarmRecord, occurrence: AlarmOccurrence?, skippedOccurrence: AlarmOccurrence?) -> some View {
         let colors = ThemeManager.shared.colors
+        let isCompact = ThemeManager.shared.isCompactModeEnabled
         
         return VStack(alignment: .leading, spacing: 2) {
             // Big time
@@ -369,34 +391,61 @@ struct ContentView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let remaining = occurrence.effectiveDate.timeIntervalSince(context.date)
                     if remaining > 0 {
-                        Text("rings in \(countdownText(remaining: remaining))")
-                            .font(.caption2)
-                            .foregroundStyle(colors.accent)
+                        countdownView(remaining: remaining, colors: colors)
                     }
                 }
             }
             
-            // Repeat text (always shown)
-            Text(alarm.repeatRule.displayName)
-                .font(.caption)
-                .foregroundStyle(colors.accent)
-            
-            // Skipped or adjusted message
-            if let skipped = skippedOccurrence {
-                Label("Skipped", systemImage: "slash.circle.fill")
-                    .font(.caption2)
+            // Non-compact: show repeat text and skip/adjusted message
+            if !isCompact {
+                // Repeat text
+                Text(alarm.repeatRule.displayName)
+                    .font(.caption)
                     .foregroundStyle(colors.accent)
-            } else if let occurrence, occurrence.isAdjusted {
-                Label("\(adjustmentDescription(occurrence)) → \(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))", systemImage: "clock.badge.checkmark.fill")
-                    .font(.caption2)
-                    .foregroundStyle(colors.accent)
+                
+                // Skipped or adjusted message
+                if let skipped = skippedOccurrence {
+                    Label("Skipped", systemImage: "slash.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(colors.accent)
+                } else if let occurrence, occurrence.isAdjusted {
+                    Label("\(adjustmentDescription(occurrence)) → \(occurrence.effectiveDate.formatted(date: .omitted, time: .shortened))", systemImage: "clock.badge.checkmark.fill")
+                        .font(.caption2)
+                        .foregroundStyle(colors.accent)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
+    private func countdownView(remaining: TimeInterval, colors: ThemeColors) -> some View {
+        let totalSeconds = Int(remaining)
+        if totalSeconds < 3600 {
+            // Under 1 hour: Xm Ys (no trailing "s")
+            let minutes = totalSeconds / 60
+            let seconds = totalSeconds % 60
+            return Text("\(minutes)m ")
+                .font(.subheadline)
+                .foregroundStyle(colors.primaryText)
+                + Text("\(seconds)")
+                .font(.subheadline)
+                .foregroundStyle(colors.accent)
+        } else {
+            // 1 hour+: Xh Ym Ys
+            let hours = totalSeconds / 3600
+            let minutes = (totalSeconds % 3600) / 60
+            let seconds = totalSeconds % 60
+            return Text("\(hours)h \(minutes)m ")
+                .font(.subheadline)
+                .foregroundStyle(colors.primaryText)
+                + Text("\(seconds)")
+                .font(.subheadline)
+                .foregroundStyle(colors.accent)
+        }
+    }
+    
     private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeColors) -> some View {
-        return VStack(alignment: .trailing, spacing: 8) {
+        return VStack(alignment: .trailing, spacing: 14) {
             // Name top-right
             Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
                 .font(.subheadline)
