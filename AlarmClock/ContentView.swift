@@ -279,6 +279,7 @@ struct ContentView: View {
         let colors = ThemeManager.shared.colors
         let occurrence = coordinator.occurrence(for: alarm.id)
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
+        let isNext = coordinator.nextOccurrence?.alarmID == alarm.id
 
         return HStack(spacing: 12) {
             // Left column: time, countdown, repeat, skip/adjusted message - tap to edit
@@ -286,7 +287,7 @@ struct ContentView: View {
                 SmartWakeDebugLog.log("EDITOR OPEN: tapped \(alarm.id.uuidString)")
                 editorPresentation = EditorPresentation(id: alarm.id, alarm: alarm)
             } label: {
-                alarmRowLeftColumn(alarm, occurrence: occurrence, skippedOccurrence: skippedOccurrence)
+                alarmRowLeftColumn(alarm, occurrence: occurrence, skippedOccurrence: skippedOccurrence, isNext: isNext)
             }
             .buttonStyle(.plain)
             
@@ -371,7 +372,7 @@ struct ContentView: View {
         }
     }
     
-    private func alarmRowLeftColumn(_ alarm: AlarmRecord, occurrence: AlarmOccurrence?, skippedOccurrence: AlarmOccurrence?) -> some View {
+    private func alarmRowLeftColumn(_ alarm: AlarmRecord, occurrence: AlarmOccurrence?, skippedOccurrence: AlarmOccurrence?, isNext: Bool) -> some View {
         let colors = ThemeManager.shared.colors
         let isCompact = ThemeManager.shared.isCompactModeEnabled
         
@@ -386,7 +387,7 @@ struct ContentView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     let remaining = occurrence.effectiveDate.timeIntervalSince(context.date)
                     if remaining > 0 {
-                        countdownView(remaining: remaining, colors: colors)
+                        countdownView(remaining: remaining, colors: colors, showSeconds: isNext)
                     }
                 }
             }
@@ -414,7 +415,7 @@ struct ContentView: View {
     }
     
     @ViewBuilder
-    private func countdownView(remaining: TimeInterval, colors: ThemeColors) -> some View {
+    private func countdownView(remaining: TimeInterval, colors: ThemeColors, showSeconds: Bool) -> some View {
         let totalSeconds = Int(remaining)
         if totalSeconds < 3600 {
             // Under 1 hour: Xm Ys (no trailing "s")
@@ -424,22 +425,38 @@ struct ContentView: View {
                 Text("\(minutes)m ")
                     .font(.subheadline)
                     .foregroundStyle(colors.accent)
-                // Seconds with slide-up animation
-                Text("\(seconds)")
-                    .font(.subheadline)
-                    .foregroundStyle(colors.toggleOn)
-                    .id(seconds)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.25), value: seconds)
-                    .frame(minWidth: 16, alignment: .leading) // Reserve space to prevent layout shift
+                // Seconds with smooth morph animation
+                if showSeconds {
+                    Text("\(seconds)")
+                        .font(.subheadline)
+                        .foregroundStyle(colors.toggleOn)
+                        .contentTransition(.numericText(countsDown: true))
+                        .animation(.snappy(duration: 0.3), value: seconds)
+                        .frame(minWidth: 16, alignment: .leading) // Reserve space to prevent layout shift
+                }
             }
         } else {
-            // 1 hour+: Xh Ym (NO seconds)
+            // 1 hour+: Xh Ym (with seconds only if showSeconds)
             let hours = totalSeconds / 3600
             let minutes = (totalSeconds % 3600) / 60
-            Text("\(hours)h \(minutes)m")
-                .font(.subheadline)
-                .foregroundStyle(colors.accent)
+            if showSeconds {
+                let seconds = totalSeconds % 60
+                HStack(spacing: 0) {
+                    Text("\(hours)h \(minutes)m ")
+                        .font(.subheadline)
+                        .foregroundStyle(colors.accent)
+                    Text("\(seconds)")
+                        .font(.subheadline)
+                        .foregroundStyle(colors.toggleOn)
+                        .contentTransition(.numericText(countsDown: true))
+                        .animation(.snappy(duration: 0.3), value: seconds)
+                        .frame(minWidth: 16, alignment: .leading)
+                }
+            } else {
+                Text("\(hours)h \(minutes)m")
+                    .font(.subheadline)
+                    .foregroundStyle(colors.accent)
+            }
         }
     }
     
