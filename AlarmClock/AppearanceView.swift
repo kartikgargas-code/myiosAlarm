@@ -55,14 +55,35 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Alarm List") {
-                    Toggle("Compact Mode", isOn: Binding(
-                        get: { ThemeManager.shared.isCompactModeEnabled },
-                        set: { ThemeManager.shared.setCompactMode($0) }
-                    ))
-                    Text("When enabled, each alarm row shows only the time and label - no repeat rule or 'Next:' line.")
-                        .font(.footnote)
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                Section("Predefined Themes") {
+                    ForEach(ThemeManager.shared.availableThemes) { theme in
+                        Button {
+                            ThemeManager.shared.selectTheme(theme)
+                        } label: {
+                            HStack(spacing: 16) {
+                                themePreview(theme.colors)
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(theme.rawValue)
+                                        .font(.body)
+                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                }
+
+                                Spacer()
+
+                                if ThemeManager.shared.currentTheme == theme {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .font(.title2)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 Section("Buttons") {
