@@ -58,9 +58,8 @@ struct HistoryView: View {
                 Button("Delete Song", role: .destructive) {
                     coordinator.confirmDeleteSoundFile()
                 }
-            } message: { playlists in
-                let names = playlists.map { $0.name }.joined(separator: ", ")
-                return Text("This song is in playlist\(playlists.count == 1 ? "" : "s"): \(names).\n\nDeleting will remove it from the playlist\(playlists.count == 1 ? "" : "s"), reset any alarm using it to Default, and delete the MP3 file.\n\nContinue?")
+            } message: { _ in
+                Text("Delete this song?")
             }
         }
     }
