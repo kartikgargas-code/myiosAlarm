@@ -40,6 +40,11 @@ final class SmartWakeService {
     private var silentLoopStartTime: Date?
     private let silentLoopSecondsByDayKey = "silentLoopSecondsByDay"
     
+    // Alerting time tracking (for Diagnostics proxy)
+    private var alertingStartTime: Date?
+    private var accumulatedAlertingSeconds: TimeInterval = 0
+    private let alertingSecondsKey = "smartWakeAlertingSeconds"
+    
     // Transition arming
     private var transitionCheckTask: Task<Void, Never>?
     private var armedOccurrences: Set<String> = [] // Composite keys: "alarmID|occurrenceKey"
@@ -226,6 +231,24 @@ final class SmartWakeService {
                     if alertingCount != lastAlertingCount {
                         let scenePhase = UIApplication.shared.applicationState
                         SmartWakeDebugLog.log("SCENE -> \(scenePhaseString(scenePhase)) alerting=\(alertingCount)")
+                        
+                        // Track alerting time for Diagnostics proxy
+                        if alertingCount > 0 && lastAlertingCount == 0 {
+                            // Alerting started
+                            alertingStartTime = Date()
+                        } else if alertingCount == 0 && lastAlertingCount > 0 {
+                            // Alerting ended - accumulate the duration
+                            if let startTime = alertingStartTime {
+                                let duration = Date().timeIntervalSince(startTime)
+                                accumulatedAlertingSeconds += duration
+                                // Persist to UserDefaults
+                                var daily = UserDefaults.standard.dictionary(forKey: alertingSecondsKey) as? [String: Double] ?? [:]
+                                let dateKey = dateFormatter.string(from: Date())
+                                daily[dateKey, default: 0] += duration
+                                UserDefaults.standard.set(daily, forKey: alertingSecondsKey)
+                                alertingStartTime = nil
+                            }
+                        }
                         lastAlertingCount = alertingCount
                     }
                     if !alerting.isEmpty {
@@ -1513,5 +1536,21 @@ final class SmartWakeService {
         if let total = dailyTotals[yesterdayKey], total > 0 {
             logDailyTotal(for: yesterdayKey, total: total)
         }
+    }
+    
+    /// Get the total alerting time for a specific date (for Diagnostics)
+    func getAlertingSeconds(for dateKey: String? = nil) -> Double {
+        let key = dateKey ?? dateFormatter.string(from: Date())
+        let daily = UserDefaults.standard.dictionary(forKey: alertingSecondsKey) as? [String: Double] ?? [:]
+        return daily[key] ?? 0
+    }
+    
+    /// Get today's alerting seconds so far (including current alerting session if active)
+    func getCurrentAlertingSeconds() -> Double {
+        var total = getAlertingSeconds()
+        if let startTime = alertingStartTime {
+            total += Date().timeIntervalSince(startTime)
+        }
+        return total
     }
 }

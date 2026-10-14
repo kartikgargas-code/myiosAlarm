@@ -27,6 +27,7 @@ struct DiagnosticsView: View {
     @State private var showUTCNotice = true
     @State private var buildFingerprint: String? = nil
     @State private var armedRecords: [AlarmCoordinator.ArmedAlarmRecord] = []
+    @State private var alertingTimeSeconds: Double = 0
     
     @State private var copySection: LogCopySection = .everything
     
@@ -76,6 +77,11 @@ struct DiagnosticsView: View {
                 
                 // 3. Loop Alive/Dead
                 loopStatusSection
+                
+                Divider()
+                
+                // 4. AlarmKit alerting time proxy
+                alarmKitAlertingTimeSection
                 
                 Divider()
                 
@@ -398,7 +404,29 @@ struct DiagnosticsView: View {
         }
     }
     
-    // MARK: - Section 4: Log Lines
+    // MARK: - Section 4: AlarmKit alerting time proxy
+    private var alarmKitAlertingTimeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("AlarmKit Alerting Time (proxy)")
+                .font(.subheadline.weight(.semibold))
+            
+            // Today's total (including current session if active)
+            let todayTotal = SmartWakeService.shared.getCurrentAlertingSeconds()
+            let hours = Int(todayTotal) / 3600
+            let minutes = (Int(todayTotal) % 3600) / 60
+            let timeString = hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+            
+            Text("Today: \(timeString)")
+                .font(.caption.monospaced())
+                .foregroundStyle(.primary)
+            
+            Text("Time spent in AlarmKit alerting state (not battery). Derived from SCENE -> alerting transitions.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+    
+    // MARK: - Section 5: Log Lines
     private var logSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
