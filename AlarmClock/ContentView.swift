@@ -461,7 +461,7 @@ struct ContentView: View {
     }
     
     private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeColors) -> some View {
-        return VStack(alignment: .trailing, spacing: 14) {
+        return VStack(alignment: .trailing, spacing: 22) {
             // Name top-right
             Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
                 .font(.subheadline)
@@ -480,6 +480,7 @@ struct ContentView: View {
             ))
             .labelsHidden()
             .toggleStyle(ThemedToggleStyle(colors: colors))
+            .padding(.top, 6)
         }
     }
     
