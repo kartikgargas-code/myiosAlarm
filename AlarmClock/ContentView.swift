@@ -421,18 +421,13 @@ struct ContentView: View {
             // Under 1 hour: Xm Ys (no trailing "s")
             let minutes = totalSeconds / 60
             let seconds = totalSeconds % 60
-            HStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text("\(minutes)m ")
                     .font(.subheadline)
                     .foregroundStyle(colors.accent)
-                // Seconds with smooth morph animation
+                // Seconds with crisp melt swap (cross-dissolve old → new)
                 if showSeconds {
-                    Text("\(seconds)")
-                        .font(.subheadline)
-                        .foregroundStyle(colors.toggleOn)
-                        .contentTransition(.numericText(countsDown: true))
-                        .animation(.snappy(duration: 0.3), value: seconds)
-                        .frame(minWidth: 16, alignment: .leading) // Reserve space to prevent layout shift
+                    MeltSecondsView(seconds: seconds, color: colors.toggleOn)
                 }
             }
         } else {
@@ -441,21 +436,55 @@ struct ContentView: View {
             let minutes = (totalSeconds % 3600) / 60
             if showSeconds {
                 let seconds = totalSeconds % 60
-                HStack(spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(hours)h \(minutes)m ")
                         .font(.subheadline)
                         .foregroundStyle(colors.accent)
-                    Text("\(seconds)")
-                        .font(.subheadline)
-                        .foregroundStyle(colors.toggleOn)
-                        .contentTransition(.numericText(countsDown: true))
-                        .animation(.snappy(duration: 0.3), value: seconds)
-                        .frame(minWidth: 16, alignment: .leading)
+                    MeltSecondsView(seconds: seconds, color: colors.toggleOn)
                 }
             } else {
                 Text("\(hours)h \(minutes)m")
                     .font(.subheadline)
                     .foregroundStyle(colors.accent)
+            }
+        }
+    }
+    
+    // Crisp cross-dissolve for seconds digit changes
+    struct MeltSecondsView: View {
+        let seconds: Int
+        let color: Color
+        
+        @State private var previousSeconds: Int = -1
+        @State private var showPrevious = false
+        
+        var body: some View {
+            ZStack {
+                // Previous seconds fading out
+                if showPrevious, previousSeconds >= 0 {
+                    Text("\(previousSeconds)")
+                        .font(.subheadline)
+                        .foregroundStyle(color)
+                        .opacity(showPrevious ? 1 : 0)
+                        .scaleEffect(showPrevious ? 1 : 1.1)
+                        .animation(.easeOut(duration: 0.35), value: showPrevious)
+                }
+                // Current seconds fading in
+                Text("\(seconds)")
+                    .font(.subheadline)
+                    .foregroundStyle(color)
+                    .opacity(showPrevious ? 0 : 1)
+                    .scaleEffect(showPrevious ? 0.9 : 1)
+                    .animation(.easeIn(duration: 0.35).delay(0.05), value: showPrevious)
+            }
+            .frame(minWidth: 20, alignment: .leading) // Stable width to prevent layout shift
+            .onChange(of: seconds) { oldValue, newValue in
+                previousSeconds = oldValue
+                showPrevious = true
+                // Fade out old, fade in new
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    showPrevious = false
+                }
             }
         }
     }
