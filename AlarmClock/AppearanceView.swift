@@ -55,71 +55,6 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Predefined Themes") {
-                    ForEach(ThemeManager.shared.availableThemes) { theme in
-                        Button {
-                            ThemeManager.shared.selectTheme(theme)
-                        } label: {
-                            HStack(spacing: 16) {
-                                themePreview(theme.colors)
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(theme.rawValue)
-                                        .font(.body)
-                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                }
-
-                                Spacer()
-
-                                if ThemeManager.shared.currentTheme == theme {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                                        .font(.title2)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                Section("Buttons") {
-                    HStack {
-                        Spacer()
-                        Button("Test") {}
-                            .appButtonChrome(shape: .capsule)
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                    
-                    SliderSettingRow(title: "Glow Size", value: glowRadiusSlider, range: 0...20, step: 1) { "\(Int($0))" }
-                    SliderSettingRow(title: "Lume", value: glowOpacitySlider, range: 0...100, step: 5) { "\(Int($0))%" }
-                    SliderSettingRow(title: "Spread", value: glowSpreadSlider, range: 0...20, step: 1) { "\(Int($0))" }
-                    SliderSettingRow(title: "Border", value: outlineSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
-                    SliderSettingRow(title: "Ring", value: outerRingSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
-                    SliderSettingRow(title: "Edge", value: textOutlineSlider, range: 0...3, step: 0.5) { String(format: "%.1f", $0) }
-                }
-
-                Section("Text Size") {
-                    Picker("Interface Text Size", selection: Binding(
-                        get: { ThemeManager.shared.interfaceTextSize },
-                        set: { ThemeManager.shared.setInterfaceTextSize($0) }
-                    )) {
-                        Text("Small").tag(DynamicTypeSize.medium)
-                        Text("Default").tag(DynamicTypeSize.xLarge)
-                        Text("Large").tag(DynamicTypeSize.xxLarge)
-                        Text("Extra Large").tag(DynamicTypeSize.xxxLarge)
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(ThemeManager.shared.colors.accent)
-                    Text("Changes the text size across the entire app (sheets included). Requires supported semantic font styles.")
-                        .font(.footnote)
-                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                }
-
                 Section("My Themes") {
                     ForEach(ThemeManager.shared.userThemes) { userTheme in
                         Button {
@@ -214,8 +149,52 @@ struct AppearanceView: View {
                     }
                 }
 
+                Section("Buttons") {
+                    HStack {
+                        Spacer()
+                        Button("Test") {}
+                            .appButtonChrome(shape: .capsule)
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                    
+                    SliderSettingRow(title: "Glow Size", value: glowRadiusSlider, range: 0...20, step: 1) { "\(Int($0))" }
+                    SliderSettingRow(title: "Lume", value: glowOpacitySlider, range: 0...100, step: 5) { "\(Int($0))%" }
+                    SliderSettingRow(title: "Spread", value: glowSpreadSlider, range: 0...20, step: 1) { "\(Int($0))" }
+                    SliderSettingRow(title: "Border", value: outlineSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
+                    SliderSettingRow(title: "Ring", value: outerRingSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
+                    SliderSettingRow(title: "Edge", value: textOutlineSlider, range: 0...3, step: 0.5) { String(format: "%.1f", $0) }
+                }
+
+                Section("Text Size") {
+                    Picker("Interface Text Size", selection: Binding(
+                        get: { ThemeManager.shared.interfaceTextSize },
+                        set: { ThemeManager.shared.setInterfaceTextSize($0) }
+                    )) {
+                        Text("Small").tag(DynamicTypeSize.medium)
+                        Text("Default").tag(DynamicTypeSize.xLarge)
+                        Text("Large").tag(DynamicTypeSize.xxLarge)
+                        Text("Extra Large").tag(DynamicTypeSize.xxxLarge)
+                    }
+                    .pickerStyle(.segmented)
+                    .tint(ThemeManager.shared.colors.accent)
+                    Text("Changes the text size across the entire app (sheets included). Requires supported semantic font styles.")
+                        .font(.footnote)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+
                 Section {
                     Text("Theme changes apply immediately across the app. No restart required.")
+                        .font(.footnote)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+
+                Section("Alarm List") {
+                    Toggle("Compact Mode", isOn: Binding(
+                        get: { ThemeManager.shared.isCompactModeEnabled },
+                        set: { ThemeManager.shared.setCompactMode($0) }
+                    ))
+                    Text("When enabled, each alarm row shows only the time and label - no repeat rule or 'Next:' line.")
                         .font(.footnote)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
