@@ -442,25 +442,26 @@ final class SmartWakeService {
     private func startIfAlarmArmedInternal() async {
         guard let coordinator = self.coordinator else {
             os_log(.error, log: log, "No coordinator available for Smart Wake")
-            SmartWakeDebugLog.log("START attempt: NO coordinator â€” cannot check alarms")
+            SmartWakeDebugLog.log("START attempt: NO coordinator — cannot check alarms")
             return
         }
 
         let now = Date()
-        let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
 
-        // Check if any alarm is armed and due soon
+        // Keep the loop alive whenever Smart Wake is enabled AND there is at least
+        // one enabled alarm (regardless of how far away it is). The loop is the
+        // whole point of Smart Wake; a far-away next alarm must not switch it off.
         let upcoming = coordinator.alarms.filter { alarm in
             guard alarm.isEnabled else { return false }
             if let occurrence = coordinator.occurrence(for: alarm.id) {
-                return occurrence.effectiveDate <= soon && occurrence.effectiveDate > now
+                return occurrence.effectiveDate > now
             }
             return false
         }
 
         guard !upcoming.isEmpty else {
-            os_log(.info, log: log, "No upcoming alarm within 8h; not starting Smart Wake")
-            SmartWakeDebugLog.log("START attempt: declined â€” no enabled alarm within 8h (alarms: \(coordinator.alarms.count))")
+            os_log(.info, log: log, "No enabled alarm with future occurrence; not starting Smart Wake")
+            SmartWakeDebugLog.log("START attempt: declined — no enabled alarm with future occurrence (alarms: \(coordinator.alarms.count))")
             return
         }
 
@@ -475,7 +476,7 @@ final class SmartWakeService {
     func startIfReadyForeground() async {
         // Same guard as startIfAlarmArmedInternal, but safe to call from foreground
         guard let coordinator = self.coordinator else {
-            SmartWakeDebugLog.log("FOREGROUND START attempt: NO coordinator â€” cannot check alarms")
+            SmartWakeDebugLog.log("FOREGROUND START attempt: NO coordinator — cannot check alarms")
             return
         }
         
@@ -486,7 +487,6 @@ final class SmartWakeService {
         }
         
         let now = Date()
-        let soon = now.addingTimeInterval(8 * 3600) // Within next 8 hours
 
         // A pending snooze keeps the loop alive even though the alarm's NEXT
         // occurrence is nil (one-time) or ~24h away (daily): the snoozed
@@ -497,17 +497,18 @@ final class SmartWakeService {
             return
         }
 
-        // Check if any alarm is armed and due soon
+        // Keep the loop alive whenever Smart Wake is enabled AND there is at least
+        // one enabled alarm with a future occurrence (regardless of how far away).
         let upcoming = coordinator.alarms.filter { alarm in
             guard alarm.isEnabled else { return false }
             if let occurrence = coordinator.occurrence(for: alarm.id) {
-                return occurrence.effectiveDate <= soon && occurrence.effectiveDate > now
+                return occurrence.effectiveDate > now
             }
             return false
         }
 
         guard !upcoming.isEmpty else {
-            SmartWakeDebugLog.log("FOREGROUND START attempt: declined — no enabled alarm within 8h (alarms: \(coordinator.alarms.count))", force: true)
+            SmartWakeDebugLog.log("FOREGROUND START attempt: declined — no enabled alarm with future occurrence (alarms: \(coordinator.alarms.count))", force: true)
             return
         }
         
