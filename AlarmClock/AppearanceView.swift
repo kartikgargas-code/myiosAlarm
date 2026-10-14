@@ -219,6 +219,7 @@ struct AppearanceView: View {
             }
             .sheet(isPresented: $showingThemeEditor) {
                 UserThemeEditorView(editingTheme: editingTheme)
+                    .id(editingThemeID)
             }
         }
     }

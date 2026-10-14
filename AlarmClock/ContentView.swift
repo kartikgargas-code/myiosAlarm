@@ -81,12 +81,7 @@ struct ContentView: View {
                             let newValue = !ThemeManager.shared.isCompactModeEnabled
                             ThemeManager.shared.setCompactMode(newValue)
                         } label: {
-                            HStack {
-                                Text(ThemeManager.shared.isCompactModeEnabled ? "Extended" : "Compact")
-                                if ThemeManager.shared.isCompactModeEnabled {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
+                            Text(ThemeManager.shared.isCompactModeEnabled ? "Extended" : "Compact")
                         }
                     }
                 }
@@ -418,27 +413,31 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     
+    @ViewBuilder
     private func countdownView(remaining: TimeInterval, colors: ThemeColors) -> some View {
         let totalSeconds = Int(remaining)
         if totalSeconds < 3600 {
             // Under 1 hour: Xm Ys (no trailing "s")
             let minutes = totalSeconds / 60
             let seconds = totalSeconds % 60
-            return Text("\(minutes)m ")
-                .font(.subheadline)
-                .foregroundStyle(colors.primaryText)
-                + Text("\(seconds)")
-                .font(.subheadline)
-                .foregroundStyle(colors.accent)
+            HStack(spacing: 0) {
+                Text("\(minutes)m ")
+                    .font(.subheadline)
+                    .foregroundStyle(colors.accent)
+                // Seconds with slide-up animation
+                Text("\(seconds)")
+                    .font(.subheadline)
+                    .foregroundStyle(colors.toggleOn)
+                    .id(seconds)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(.easeInOut(duration: 0.25), value: seconds)
+                    .frame(minWidth: 16, alignment: .leading) // Reserve space to prevent layout shift
+            }
         } else {
-            // 1 hour+: Xh Ym Ys
+            // 1 hour+: Xh Ym (NO seconds)
             let hours = totalSeconds / 3600
             let minutes = (totalSeconds % 3600) / 60
-            let seconds = totalSeconds % 60
-            return Text("\(hours)h \(minutes)m ")
-                .font(.subheadline)
-                .foregroundStyle(colors.primaryText)
-                + Text("\(seconds)")
+            Text("\(hours)h \(minutes)m")
                 .font(.subheadline)
                 .foregroundStyle(colors.accent)
         }
