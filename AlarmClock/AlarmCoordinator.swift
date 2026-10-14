@@ -18,10 +18,6 @@ final class AlarmCoordinator {
     static let backupDelaySeconds = 30
     // Cap for the backup (safety net) sound duration in seconds (used for in-app playlist)
     static let backupSoundCapSeconds = 120
-    // Cap for the AlarmKit custom sound file duration in seconds.
-    // iOS appears to truncate custom alarm sounds to ~30s, so we cap the
-    // stitched backup file at this length to avoid producing files that get truncated.
-    static let alarmKitSoundCapSeconds = 30
 
     private(set) var alarms: [AlarmRecord] = []
     private(set) var nextOccurrence: AlarmOccurrence?
@@ -871,7 +867,6 @@ final class AlarmCoordinator {
                     }
                     
                     // Create short floor sound for backup (cap at backupSoundCapSeconds total duration)
-                    // Also create a separate AlarmKit-capped version at alarmKitSoundCapSeconds
                     let backupPrecomposedURL: URL
                     do {
                         let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
@@ -894,10 +889,10 @@ final class AlarmCoordinator {
                         warnings.append("\(label): backup sound unavailable, using default")
                     }
                     
-                    // Log the actual stitched file duration for comparison with iOS ~30s cap
+                    // Log the actual stitched file duration
                     if !backupPrecomposedURL.path.isEmpty,
                        let backupMeta = AudioProcessingService.shared.audioMetadata(for: backupPrecomposedURL) {
-                        SmartWakeDebugLog.log("ALARM KIT SOUND: stitched backup duration=\(String(format: "%.1f", backupMeta.duration))s (iOS cap ~30s)")
+                        SmartWakeDebugLog.log("ALARM KIT SOUND: stitched backup duration=\(String(format: "%.1f", backupMeta.duration))s")
                     }
                     
                     var processedFileName: String
@@ -905,33 +900,15 @@ final class AlarmCoordinator {
                         // Fallback to classic-bell
                         processedFileName = "classic-bell.wav"
                     } else {
-                        // The backupPrecomposedURL is capped at backupSoundCapSeconds (120s).
-                        // We need to create a separate AlarmKit-capped version at alarmKitSoundCapSeconds (30s)
-                        // since iOS truncates custom alarm sounds to ~30s.
-                        let alarmKitCappedURL: URL
-                        do {
-                            let alarmKitTuple = try await AudioProcessingService.shared.precomposePlaylist(
-                                playlistID: playlistID,
-                                loudness: alarm.loudness,
-                                songCount: 5,
-                                maxDuration: TimeInterval(AlarmCoordinator.alarmKitSoundCapSeconds),
-                                forcedSelection: backupForcedSelection,
-                                protectedFileNames: protectedFileNames
-                            )
-                            alarmKitCappedURL = alarmKitTuple.0
-                        } catch {
-                            // Fallback: use the original backup file if capping fails
-                            alarmKitCappedURL = backupPrecomposedURL
-                        }
-                        
-                        // Copy the AlarmKit-capped file to Library/Sounds
-                        processedFileName = alarmKitCappedURL.lastPathComponent
+                        // Use the backupPrecomposedURL (capped at backupSoundCapSeconds = 120s)
+                        // directly for the AlarmKit sound
+                        processedFileName = backupPrecomposedURL.lastPathComponent
                         let soundsDir = SoundLibrary.shared.soundsDirectory!
                         let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
                         
                         if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
                             try await Task.detached(priority: .utility) {
-                                try FileManager.default.copyItem(at: alarmKitCappedURL, to: alarmKitURL)
+                                try FileManager.default.copyItem(at: backupPrecomposedURL, to: alarmKitURL)
                             }.value
                         }
                     }
