@@ -735,6 +735,15 @@ final class SoundLibrary {
         guard let url, fileManager.fileExists(atPath: url.path) else {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
+        // If the sound is linked (not copied to Library/Sounds), materialize a copy
+        // so AlarmKit can find it by name inside the app container.
+        if sound.isLinked, let soundsDir = soundsDirectory {
+            let dest = soundsDir.appendingPathComponent(sound.fileName)
+            if !fileManager.fileExists(atPath: dest.path) {
+                try? fileManager.copyItem(at: url, to: dest)
+                SmartWakeDebugLog.log("LINKED: materialised Library/Sounds copy for alarm sound \(sound.fileName)")
+            }
+        }
         return sound.fileName
     }
 
