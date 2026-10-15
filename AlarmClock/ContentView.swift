@@ -23,6 +23,7 @@ struct ContentView: View {
     static var isAppInForegroundStatic: Bool = true
 
     @State private var showingSettings = false
+    @State private var showingFullscreenClock = false
     
     var body: some View {
         NavigationStack {
@@ -99,6 +100,21 @@ struct ContentView: View {
                     .padding(.trailing, 20)
                     .padding(.bottom, 34)
                     .contentShape(Circle())
+                }
+                .overlay(alignment: .bottom) {
+                    Button {
+                        showingFullscreenClock = true
+                    } label: {
+                        Image(systemName: "clock")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .frame(width: 56, height: 56)
+                            .appButtonChrome(shape: .circle, size: 56)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 34)
+                    .contentShape(Circle())
+                    .accessibilityLabel("Clock")
                 }
                 
                 // Now Ringing banner as pinned overlay
@@ -178,6 +194,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(coordinator: coordinator)
+            }
+            .fullScreenCover(isPresented: $showingFullscreenClock) {
+                FullscreenClockView()
             }
             .task {
                 if authorizationModel.authorizationDescription == "Authorized" {
