@@ -21,6 +21,7 @@ struct MorphSecondsView: View {
     let color: Color
     var style: MorphSecondsStyle = .goo
     var font: Font = .subheadline
+    var gooBlur: CGFloat = 2.5
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var previous: Int?
@@ -71,8 +72,8 @@ struct MorphSecondsView: View {
                 .monospacedDigit()
                 .opacity(progress)
         }
-        .blur(radius: 2.5)
-        .drawingGroup()
+        .blur(radius: gooBlur)
+        .colorEffect(Shader("gooThreshold", Float(0.5), Float(0.25)))
     }
 
     private var dripDigit: some View {
