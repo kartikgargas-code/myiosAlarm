@@ -47,7 +47,8 @@ struct FullscreenClockView: View {
                         color: ThemeManager.shared.colors.accent,
                         style: ThemeManager.shared.secondsMorphStyle,
                         font: .system(size: 96, weight: .thin, design: .rounded),
-                        gooBlur: 3
+                        canvasWidth: 150,
+                        canvasHeight: 132
                     )
                 }
                 .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)

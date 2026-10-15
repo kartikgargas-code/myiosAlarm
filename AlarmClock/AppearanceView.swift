@@ -376,7 +376,9 @@ struct PreviewSecondsView: View {
             seconds: currentSecond,
             color: ThemeManager.shared.colors.accent,
             style: ThemeManager.shared.secondsMorphStyle,
-            font: .title3.monospacedDigit()
+            font: .title3.monospacedDigit(),
+            canvasWidth: 36,
+            canvasHeight: 30
         )
         .frame(minWidth: 40, alignment: .trailing)
         .onAppear {

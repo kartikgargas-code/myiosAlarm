@@ -21,11 +21,13 @@ struct MorphSecondsView: View {
     let color: Color
     var style: MorphSecondsStyle = .goo
     var font: Font = .subheadline
-    var gooBlur: CGFloat = 2.5
+    var canvasWidth: CGFloat = 26
+    var canvasHeight: CGFloat = 22
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var previous: Int?
     @State private var progress: Double = 1
+    @State private var transitionStart: Date?
 
     var body: some View {
         digitView(reduceMotion ? MorphSecondsStyle.fade : style)
@@ -33,10 +35,16 @@ struct MorphSecondsView: View {
             .onChange(of: seconds) { oldValue, _ in
                 previous = oldValue
                 progress = 0
+                transitionStart = Date()
                 withAnimation(.easeInOut(duration: 0.35)) {
                     progress = 1
                 }
             }
+    }
+
+    private func gooProgress(asOf date: Date) -> Double {
+        guard let start = transitionStart else { return 1 }
+        return min(max(date.timeIntervalSince(start) / 0.35, 0), 1)
     }
 
     @ViewBuilder
@@ -58,22 +66,35 @@ struct MorphSecondsView: View {
     }
 
     private var gooDigit: some View {
-        ZStack {
-            if let previous {
-                Text("\(previous)")
-                    .font(font)
-                    .foregroundStyle(color)
-                    .monospacedDigit()
-                    .opacity(1 - progress)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            Canvas { context, size in
+                let t = gooProgress(asOf: timeline.date)
+                let drop = size.height * 0.12
+
+                // Order is load-bearing: blur is applied to the raw draw first,
+                // then alphaThreshold re-solidifies it, so shapes MERGE like liquid.
+                context.addFilter(.alphaThreshold(min: 0.5))
+                context.addFilter(.blur(radius: max(2, size.height * 0.055)))
+
+                context.opacity = 1 - t
+                if let previous {
+                    context.draw(
+                        Text("\(previous)").font(font).foregroundColor(color),
+                        at: CGPoint(x: size.width / 2, y: size.height / 2 + drop * t),
+                        anchor: .center
+                    )
+                }
+
+                context.opacity = t
+                context.draw(
+                    Text("\(seconds)").font(font).foregroundColor(color),
+                    at: CGPoint(x: size.width / 2, y: size.height / 2 - drop * (1 - t)),
+                    anchor: .center
+                )
             }
-            Text("\(seconds)")
-                .font(font)
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .opacity(progress)
+            .frame(width: canvasWidth, height: canvasHeight)
+            .alignmentGuide(.firstTextBaseline) { _ in canvasHeight * 0.80 }
         }
-        .blur(radius: gooBlur)
-        .drawingGroup()
     }
 
     private var dripDigit: some View {
