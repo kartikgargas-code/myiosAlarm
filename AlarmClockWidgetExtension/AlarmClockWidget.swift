@@ -62,7 +62,8 @@ struct NextAlarmControl: ControlWidget {
         ?? "com.example.alarmclock.next-alarm-control"
 
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: Self.kind) {
+        SmartWakeDebugLog.log("CONTROL CONFIG: NextAlarmControl built, action=SkipNextAlarmIntent")
+        return StaticControlConfiguration(kind: Self.kind) {
             ControlWidgetButton(action: SkipNextAlarmIntent()) {
                 Label("Skip Next", systemImage: "forward.end")
             }
@@ -362,6 +363,7 @@ struct SkipNextAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        SmartWakeDebugLog.log("CONTROL ENTER: skipNext intent ran")
         SmartWakeDebugLog.log("CONTROL: skip next tapped")
         let tok = String(UUID().uuidString.prefix(8))
         SmartWakeDebugLog.log("CC INVOKE action=skipNext tok=\(tok) bundle=\(Bundle.main.bundleIdentifier) pid=\(ProcessInfo.processInfo.processIdentifier)")
