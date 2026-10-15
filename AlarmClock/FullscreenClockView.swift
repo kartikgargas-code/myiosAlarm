@@ -88,7 +88,7 @@ struct FullscreenClockView: View {
         // Get the next alarm from the coordinator's published nextOccurrence
         guard let coordinator = AlarmCoordinator.sharedInstance,
               let nextOccurrence = coordinator.nextOccurrence,
-              let alarm = coordinator.engine.alarm(id: nextOccurrence.alarmID) else {
+              let alarm = coordinator.currentEngine.alarm(id: nextOccurrence.alarmID) else {
             return nil
         }
         
