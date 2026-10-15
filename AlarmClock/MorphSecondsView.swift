@@ -1,12 +1,16 @@
 import SwiftUI
 
 enum MorphSecondsStyle: String, CaseIterable, Identifiable {
-    case fade, goo, drip
+    case fade
+    case goo
+    case drip
+
     var id: String { rawValue }
+
     var label: String {
         switch self {
         case .fade: return "Fade"
-        case .goo:  return "Liquid"
+        case .goo: return "Liquid"
         case .drip: return "Drip"
         }
     }
@@ -19,32 +23,30 @@ struct MorphSecondsView: View {
     var font: Font = .subheadline
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @State private var prevSeconds: Int? = nil
-    @State private var progress: Double = 1.0
+    @State private var previous: Int?
+    @State private var progress: Double = 1
 
     var body: some View {
-        // effective style: fade when Reduce Motion is on
-        let effective: MorphSecondsStyle = reduceMotion ? .fade : style
-        
-        ZStack {
-            switch effective {
-            case .fade:  fadeDigit
-            case .goo:   gooDigit
-            case .drip:  dripDigit
+        digitView(reduceMotion ? MorphSecondsStyle.fade : style)
+            .frame(minWidth: 20, alignment: .leading)
+            .onChange(of: seconds) { oldValue, _ in
+                previous = oldValue
+                progress = 0
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    progress = 1
+                }
             }
-        }
-        .frame(minWidth: 20, alignment: .leading)
-        .onChange(of: seconds) { oldValue, newValue in
-            prevSeconds = oldValue
-            progress = 0.0
-            withAnimation(.easeInOut(duration: 0.35)) {
-                progress = 1.0
-            }
+    }
+
+    @ViewBuilder
+    private func digitView(_ effective: MorphSecondsStyle) -> some View {
+        switch effective {
+        case .fade: fadeDigit
+        case .goo: gooDigit
+        case .drip: dripDigit
         }
     }
 
-    // Fade — exactly the baseline cross-dissolve
     private var fadeDigit: some View {
         Text("\(seconds)")
             .font(font)
@@ -54,15 +56,15 @@ struct MorphSecondsView: View {
             .animation(.easeInOut(duration: 0.35), value: seconds)
     }
 
-    // Goo — liquid merge using blur + opacity cross-fade
     private var gooDigit: some View {
-        let prev = prevSeconds ?? seconds
         ZStack {
-            Text("\(prev)")
-                .font(font)
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .opacity(1.0 - progress)
+            if let previous {
+                Text("\(previous)")
+                    .font(font)
+                    .foregroundStyle(color)
+                    .monospacedDigit()
+                    .opacity(1 - progress)
+            }
             Text("\(seconds)")
                 .font(font)
                 .foregroundStyle(color)
@@ -70,32 +72,27 @@ struct MorphSecondsView: View {
                 .opacity(progress)
         }
         .blur(radius: 2.5)
-        .animation(.easeInOut(duration: 0.35), value: progress)
+        .drawingGroup()
     }
 
-    // Drip — stretch-down + drop-in, no blur
     private var dripDigit: some View {
-        let prev = prevSeconds ?? seconds
         ZStack {
-            Text("\(prev)")
-                .font(font)
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .scaleEffect(y: 1.0 + 0.6 * progress, anchor: .top)
-                .offset(y: 8 * progress)
-                .opacity(1.0 - progress)
+            if let previous {
+                Text("\(previous)")
+                    .font(font)
+                    .foregroundStyle(color)
+                    .monospacedDigit()
+                    .scaleEffect(x: 1, y: 1 + 0.6 * progress, anchor: .top)
+                    .offset(y: 8 * progress)
+                    .opacity(1 - progress)
+            }
             Text("\(seconds)")
                 .font(font)
                 .foregroundStyle(color)
                 .monospacedDigit()
-                .scaleEffect(y: 0.85 + 0.15 * progress, anchor: .bottom)
-                .offset(y: -6 * (1.0 - progress))
+                .scaleEffect(x: 1, y: 0.85 + 0.15 * progress, anchor: .bottom)
+                .offset(y: -6 * (1 - progress))
                 .opacity(progress)
         }
-        .animation(.easeInOut(duration: 0.4), value: progress)
     }
-}
-
-#Preview {
-    MorphSecondsView(seconds: 42, color: .accentColor, style: .goo, font: .system(size: 96, weight: .thin, design: .rounded))
 }
