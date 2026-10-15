@@ -30,7 +30,7 @@ struct FullscreenClockView: View {
                 
                 Spacer()
                 
-                // Large time display with melt seconds
+                // Large time display with morph seconds
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(hoursMinutesString)
                         .font(.system(size: 96, weight: .thin, design: .rounded))
@@ -38,13 +38,12 @@ struct FullscreenClockView: View {
                         .contentTransition(.numericText())
                         .animation(.easeInOut(duration: 0.35), value: hoursMinutesString)
                     
-                    Text(secondsString)
-                        .font(.system(size: 96, weight: .thin, design: .rounded))
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
-                        .monospacedDigit()
-                        .contentTransition(.opacity)
-                        .animation(.easeInOut(duration: 0.35), value: secondsString)
-                        .frame(minWidth: 40, alignment: .leading)
+                    MorphSecondsView(
+                        seconds: Calendar.current.component(.second, from: currentTime),
+                        color: ThemeManager.shared.colors.accent,
+                        style: ThemeManager.shared.secondsMorphStyle,
+                        font: .system(size: 96, weight: .thin, design: .rounded)
+                    )
                 }
                 .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
                 
@@ -75,12 +74,6 @@ struct FullscreenClockView: View {
     private var hoursMinutesString: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: currentTime)
-    }
-    
-    private var secondsString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = ":ss"
         return formatter.string(from: currentTime)
     }
     
