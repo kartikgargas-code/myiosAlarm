@@ -6,10 +6,9 @@ using namespace metal;
 // come close their blurred edges merge into one liquid-looking shape.
 [[ stitchable ]] half4 gooThreshold(float threshold, float edge, half4 color) {
     float a = smoothstep(threshold - edge, threshold + edge, (float)color.a);
-    half3 rgb = half3(0.0h);
-    if (color.a > (half)1e-4) {
-        rgb = color.rgb / color.a;
+    half3 rgb = half3(0.0);
+    if (color.a > half(1e-4)) {
+        rgb = color.rgb / color.a;   // un-premultiply (input is premultiplied)
     }
-    half ha = (half)a;
-    return half4(rgb * ha, ha);
+    return half4(rgb * half(a), half(a));
 }
