@@ -73,7 +73,7 @@ struct MorphSecondsView: View {
                 .opacity(progress)
         }
         .blur(radius: gooBlur)
-        .colorEffect(Shader("gooThreshold", Float(0.5), Float(0.25)))
+        .drawingGroup()
     }
 
     private var dripDigit: some View {
