@@ -19,6 +19,7 @@ final class ThemeManager {
     private let buttonOuterRingKey = "buttonOuterRing"
     private let buttonTextOutlineKey = "buttonTextOutline"
     private let interfaceTextSizeKey = "interfaceTextSize"
+    private let secondsMorphStyleKey = "secondsMorphStyle"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
@@ -38,6 +39,9 @@ final class ThemeManager {
     
     // Interface text size
     var interfaceTextSize: DynamicTypeSize = .xLarge  // default .xLarge (matches previous .system(size: 17))
+    
+    // Seconds morph animation style
+    var secondsMorphStyle: MorphSecondsStyle = .goo
 
     func setCompactMode(_ enabled: Bool) {
         isCompactModeEnabled = enabled
@@ -85,6 +89,11 @@ final class ThemeManager {
         // DynamicTypeSize doesn't have rawValue; store as String
         defaults.set(String(describing: size), forKey: interfaceTextSizeKey)
     }
+    
+    func setSecondsMorphStyle(_ style: MorphSecondsStyle) {
+        secondsMorphStyle = style
+        defaults.set(style.rawValue, forKey: secondsMorphStyleKey)
+    }
 
     private init() {
         isCompactModeEnabled = defaults.bool(forKey: compactModeKey)
@@ -99,6 +108,10 @@ final class ThemeManager {
             interfaceTextSize = size
         } else {
             interfaceTextSize = .xLarge
+        }
+        if let raw = defaults.string(forKey: secondsMorphStyleKey),
+           let style = MorphSecondsStyle(rawValue: raw) {
+            secondsMorphStyle = style
         }
         loadUserThemes()
         loadTheme()

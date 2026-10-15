@@ -183,6 +183,29 @@ struct AppearanceView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
 
+                Section("Seconds Animation") {
+                    Picker("Style", selection: Binding(
+                        get: { ThemeManager.shared.secondsMorphStyle },
+                        set: { ThemeManager.shared.setSecondsMorphStyle($0) }
+                    )) {
+                        ForEach(MorphSecondsStyle.allCases) { style in
+                            Text(style.label).tag(style)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .tint(ThemeManager.shared.colors.accent)
+                    
+                    // Live preview of the selected style
+                    HStack {
+                        Text("Preview")
+                            .font(.body)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                        Spacer()
+                        PreviewSecondsView()
+                            .fixedSize()
+                    }
+                }
+
                 Section {
                     Text("Theme changes apply immediately across the app. No restart required.")
                         .font(.footnote)
@@ -340,6 +363,28 @@ extension CustomThemeColors {
         case .toggleOff: return toggleOff.color
         case .divider: return divider.color
         case .destructive: return destructive.color
+        }
+    }
+}
+
+/// Live ticking seconds preview for the Seconds Animation picker
+struct PreviewSecondsView: View {
+    @State private var currentSecond: Int = 0
+    
+    var body: some View {
+        MorphSecondsView(
+            seconds: currentSecond,
+            color: ThemeManager.shared.colors.accent,
+            style: ThemeManager.shared.secondsMorphStyle,
+            font: .title3.monospacedDigit()
+        )
+        .frame(minWidth: 40, alignment: .trailing)
+        .onAppear {
+            let calendar = Calendar.current
+            currentSecond = calendar.component(.second, from: Date())
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+            currentSecond = Calendar.current.component(.second, from: date)
         }
     }
 }
