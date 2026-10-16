@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AlarmKit
 import AlarmClockShared
 
@@ -10,19 +11,27 @@ struct FullscreenClockView: View {
     @State private var tickStart = Date.distantPast
     @State private var showClockSettings = false
     @AppStorage("fullscreenClockTint") private var clockTint = "accent"
+    @AppStorage("fullscreenClockBackground") private var clockBackground = "appBackground"
+    @AppStorage("fullscreenClockCustomR") private var customRed = -1.0
+    @AppStorage("fullscreenClockCustomG") private var customGreen = -1.0
+    @AppStorage("fullscreenClockCustomB") private var customBlue = -1.0
+    @AppStorage("fullscreenClockCycle") private var colourCycle = false
+    @AppStorage("fullscreenClockCycleSeconds") private var cycleSeconds = 60.0
+    @AppStorage("fullscreenClockMelt") private var meltAmount = 0.02
+    @AppStorage("fullscreenClockSpeed") private var meltDuration = 0.8
+    @AppStorage("fullscreenClockInk") private var meltInk = 0.18
 
 
 
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    private let meltDuration: Double = 0.8
 
 
 
 
     var body: some View {
         ZStack {
-            ThemeManager.shared.colors.background
+            meltScreenColour(clockBackground)
                 .ignoresSafeArea()
 
 
@@ -51,7 +60,10 @@ struct FullscreenClockView: View {
                     previousText: previousClockText,
                     tickStart: tickStart,
                     duration: meltDuration,
-                    color: clockColor
+                    color: meltColour(tint: clockTint, red: customRed, green: customGreen, blue: customBlue),
+                    blurFraction: meltAmount,
+                    ink: meltInk,
+                    cycleSeconds: colourCycle ? cycleSeconds : 0
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -61,43 +73,21 @@ struct FullscreenClockView: View {
                 Spacer(minLength: 0)
 
 
-
-
-                // X bottom left, clock settings bottom right
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            .padding(16)
-                    }
-                    .buttonStyle(.plain)
-
-
-
-
-                    Spacer()
-
-
-
-
-                    Button {
-                        showClockSettings = true
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.title2)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            .padding(16)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             .padding(.horizontal, 20)
         }
         .sheet(isPresented: $showClockSettings) {
-            ClockSettingsSheet(tint: $clockTint)
+            ClockSettingsSheet()
+        }
+        .safeAreaInset(edge: .bottom) {
+            BottomActionsBar(
+                leadingActions: [
+                    .icon("Close", systemImage: "xmark", action: { dismiss() })
+                ],
+                trailingActions: [
+                    .icon("Clock settings", systemImage: "gearshape", action: { showClockSettings = true })
+                ]
+            )
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
@@ -122,17 +112,6 @@ struct FullscreenClockView: View {
 
 
 
-    private var clockColor: Color {
-        switch clockTint {
-        case "white": return .white
-        case "amber": return Color(red: 1.0, green: 0.72, blue: 0.20)
-        case "cyan": return Color(red: 0.25, green: 0.85, blue: 1.0)
-        case "green": return Color(red: 0.35, green: 0.95, blue: 0.55)
-        case "violet": return Color(red: 0.72, green: 0.55, blue: 1.0)
-        case "red": return Color(red: 1.0, green: 0.42, blue: 0.42)
-        default: return ThemeManager.shared.colors.accent
-        }
-    }
 
 
 
@@ -174,8 +153,9 @@ private struct MeltClockView: View {
     let tickStart: Date
     let duration: Double
     let color: Color
-
-
+    let blurFraction: Double
+    let ink: Double
+    let cycleSeconds: Double
 
 
     var body: some View {
@@ -187,6 +167,18 @@ private struct MeltClockView: View {
     }
 
 
+    // Slowly walks the colour round the colour wheel; seconds <= 0 leaves it alone.
+    static func cycled(_ color: Color, seconds: Double, at date: Date) -> Color {
+        guard seconds > 0 else { return color }
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard UIColor(color).getHue(&hue, &saturation, &brightness, &alpha) else { return color }
+        let drift = (date.timeIntervalSince1970 / seconds).truncatingRemainder(dividingBy: 1)
+        let shifted = (Double(hue) + drift).truncatingRemainder(dividingBy: 1)
+        return Color(hue: shifted, saturation: Double(saturation), brightness: Double(brightness))
+    }
 
 
     private func draw(_ context: inout GraphicsContext, size: CGSize, at date: Date) {
@@ -206,7 +198,6 @@ private struct MeltClockView: View {
         guard totalUnits > 0 else { return }
 
 
-        // fit the width, but never let the line take more than ~70% of the height
         let scale = max(0.05, min(size.width * 0.98 / totalUnits, size.height * 0.70 / 1.25))
         let fontSize = 100 * scale
         let font = Font.system(size: fontSize, weight: .thin, design: .rounded).monospacedDigit()
@@ -215,15 +206,13 @@ private struct MeltClockView: View {
         var cursor = max(0, (size.width - totalUnits * scale) / 2)
 
 
-        let t = min(max(date.timeIntervalSince(tickStart) / duration, 0), 1)
+        let t = min(max(date.timeIntervalSince(tickStart) / max(duration, 0.05), 0), 1)
         let previousCharacters = Array(previousText)
+        let paint = MeltClockView.cycled(color, seconds: cycleSeconds, at: date)
 
 
-        // The cut-off must be low: in the middle of a change both glyphs are half strength, and a high
-        // cut-off throws both of them away - that is what made the melt look like a blink/fade.
-        // Constant fill colour is REQUIRED here: the default is black, which is invisible.
-        context.addFilter(.alphaThreshold(min: 0.18, color: color))
-        context.addFilter(.blur(radius: max(1, fontSize * 0.02)))
+        context.addFilter(.alphaThreshold(min: ink, color: paint))
+        context.addFilter(.blur(radius: max(1, fontSize * blurFraction)))
 
 
         for (index, character) in characters.enumerated() {
@@ -234,27 +223,24 @@ private struct MeltClockView: View {
 
 
             if let outgoing {
-                // Both glyphs go into ONE layer, in the same place, with opacities that add up to 1.
-                // The layer as a whole is what gets blurred and cut off, so the two shapes are seen
-                // together and the outline travels from the old digit into the new one.
                 context.drawLayer { layer in
                     layer.blendMode = .plusLighter
                     layer.opacity = 1 - t
                     layer.draw(
-                        Text(String(outgoing)).font(font).foregroundColor(color),
+                        Text(String(outgoing)).font(font).foregroundColor(paint),
                         at: CGPoint(x: cursor, y: top),
                         anchor: .topLeading
                     )
                     layer.opacity = t
                     layer.draw(
-                        Text(String(character)).font(font).foregroundColor(color),
+                        Text(String(character)).font(font).foregroundColor(paint),
                         at: CGPoint(x: cursor, y: top),
                         anchor: .topLeading
                     )
                 }
             } else {
                 context.draw(
-                    Text(String(character)).font(font).foregroundColor(color),
+                    Text(String(character)).font(font).foregroundColor(paint),
                     at: CGPoint(x: cursor, y: top),
                     anchor: .topLeading
                 )
@@ -270,54 +256,120 @@ private struct MeltClockView: View {
 
 
 // Settings button on the clock screen: colour of the numbers.
-private struct ClockTintOption: Identifiable {
+private struct ClockColorOption: Identifiable {
     let id: String
     let name: String
     let color: Color
 }
 
 
-
-
 private struct ClockSettingsSheet: View {
-    @Binding var tint: String
     @Environment(\.dismiss) private var dismiss
 
 
-
-
-    private let options: [ClockTintOption] = [
-        ClockTintOption(id: "accent", name: "App colour", color: ThemeManager.shared.colors.accent),
-        ClockTintOption(id: "white", name: "White", color: .white),
-        ClockTintOption(id: "amber", name: "Amber", color: Color(red: 1.0, green: 0.72, blue: 0.20)),
-        ClockTintOption(id: "cyan", name: "Cyan", color: Color(red: 0.25, green: 0.85, blue: 1.0)),
-        ClockTintOption(id: "green", name: "Green", color: Color(red: 0.35, green: 0.95, blue: 0.55)),
-        ClockTintOption(id: "violet", name: "Violet", color: Color(red: 0.72, green: 0.55, blue: 1.0)),
-        ClockTintOption(id: "red", name: "Red", color: Color(red: 1.0, green: 0.42, blue: 0.42))
+    private let tintOptions: [ClockColorOption] = [
+        ClockColorOption(id: "accent", name: "App colour", color: ThemeManager.shared.colors.accent),
+        ClockColorOption(id: "white", name: "White", color: .white),
+        ClockColorOption(id: "amber", name: "Amber", color: Color(red: 1.0, green: 0.72, blue: 0.20)),
+        ClockColorOption(id: "cyan", name: "Cyan", color: Color(red: 0.25, green: 0.85, blue: 1.0)),
+        ClockColorOption(id: "green", name: "Green", color: Color(red: 0.35, green: 0.95, blue: 0.55)),
+        ClockColorOption(id: "violet", name: "Violet", color: Color(red: 0.72, green: 0.55, blue: 1.0)),
+        ClockColorOption(id: "red", name: "Red", color: Color(red: 1.0, green: 0.42, blue: 0.42))
     ]
 
 
+    private let backgroundOptions: [ClockColorOption] = [
+        ClockColorOption(id: "appBackground", name: "App background", color: ThemeManager.shared.colors.background),
+        ClockColorOption(id: "black", name: "True black", color: .black),
+        ClockColorOption(id: "navy", name: "Deep navy", color: Color(red: 0.02, green: 0.05, blue: 0.13)),
+        ClockColorOption(id: "charcoal", name: "Charcoal", color: Color(red: 0.09, green: 0.09, blue: 0.10)),
+        ClockColorOption(id: "violet", name: "Dark violet", color: Color(red: 0.10, green: 0.05, blue: 0.16)),
+        ClockColorOption(id: "forest", name: "Forest", color: Color(red: 0.03, green: 0.10, blue: 0.07))
+    ]
+
+
+    @AppStorage("fullscreenClockTint") private var clockTint = "accent"
+    @AppStorage("fullscreenClockBackground") private var clockBackground = "appBackground"
+    @AppStorage("fullscreenClockCustomR") private var customRed = -1.0
+    @AppStorage("fullscreenClockCustomG") private var customGreen = -1.0
+    @AppStorage("fullscreenClockCustomB") private var customBlue = -1.0
+    @AppStorage("fullscreenClockCycle") private var colourCycle = false
+    @AppStorage("fullscreenClockCycleSeconds") private var cycleSeconds = 60.0
+    @AppStorage("fullscreenClockMelt") private var meltAmount = 0.02
+    @AppStorage("fullscreenClockSpeed") private var meltDuration = 0.8
+    @AppStorage("fullscreenClockInk") private var meltInk = 0.18
+
+
+    private var chosenColour: Color {
+        meltColour(tint: clockTint, red: customRed, green: customGreen, blue: customBlue)
+    }
+
+
+    private var customColourBinding: Binding<Color> {
+        Binding(
+            get: { chosenColour },
+            set: { newValue in
+                var red: CGFloat = 0
+                var green: CGFloat = 0
+                var blue: CGFloat = 0
+                var alpha: CGFloat = 0
+                if UIColor(newValue).getRed(&red, &green, &blue, &alpha) {
+                    customRed = Double(red)
+                    customGreen = Double(green)
+                    customBlue = Double(blue)
+                }
+            }
+        )
+    }
 
 
     var body: some View {
         NavigationStack {
-            List {
+            Form {
+                Section {
+                    MeltPreview(
+                        color: chosenColour,
+                        blurFraction: meltAmount,
+                        ink: meltInk,
+                        duration: meltDuration,
+                        cycleSeconds: colourCycle ? cycleSeconds : 0
+                    )
+                    .frame(height: 96)
+                    .listRowBackground(Color.clear)
+                }
+
+
                 Section("Number colour") {
-                    ForEach(options) { option in
-                        HStack {
-                            Circle()
-                                .fill(option.color)
-                                .frame(width: 22, height: 22)
-                            Text(option.name)
-                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                            Spacer()
-                            if tint == option.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
+                    ForEach(tintOptions) { option in
+                        colourRow(option, selected: customRed < 0 && clockTint == option.id) {
+                            clockTint = option.id
+                            customRed = -1
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture { tint = option.id }
+                    }
+                    ColorPicker("Any other colour", selection: customColourBinding, supportsOpacity: false)
+                }
+
+
+                Section("Screen colour") {
+                    ForEach(backgroundOptions) { option in
+                        colourRow(option, selected: clockBackground == option.id) {
+                            clockBackground = option.id
+                        }
+                    }
+                }
+
+
+                Section("Animation") {
+                    numberRow("Merging", value: $meltAmount, range: 0.0...0.06, shown: String(format: "%.3f", meltAmount))
+                    numberRow("Speed", value: $meltDuration, range: 0.2...1.6, shown: String(format: "%.1f s", meltDuration))
+                    numberRow("Ink", value: $meltInk, range: 0.08...0.5, shown: String(format: "%.2f", meltInk))
+                }
+
+
+                Section("Colour cycle") {
+                    Toggle("Colour keeps changing", isOn: $colourCycle)
+                    if colourCycle {
+                        numberRow("One full change", value: $cycleSeconds, range: 10...300, shown: String(format: "%.0f s", cycleSeconds))
                     }
                 }
             }
@@ -328,7 +380,104 @@ private struct ClockSettingsSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+
+
+    private func colourRow(_ option: ClockColorOption, selected: Bool, choose: @escaping () -> Void) -> some View {
+        HStack {
+            Circle()
+                .fill(option.color)
+                .frame(width: 22, height: 22)
+                .overlay(Circle().stroke(Color.gray.opacity(0.4), lineWidth: 1))
+            Text(option.name)
+                .foregroundStyle(ThemeManager.shared.colors.primaryText)
+            Spacer()
+            if selected {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { choose() }
+    }
+
+
+    private func numberRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, shown: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(shown)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            }
+            Slider(value: value, in: range)
+        }
+    }
+}
+
+
+// A little living clock at the top of the settings, so the sliders can be tuned while watching.
+private struct MeltPreview: View {
+    let color: Color
+    let blurFraction: Double
+    let ink: Double
+    let duration: Double
+    let cycleSeconds: Double
+
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let date = timeline.date
+            let now = date.timeIntervalSince1970
+            let fraction = now.truncatingRemainder(dividingBy: 1)
+            let start = now - fraction
+            MeltClockView(
+                text: text(for: Date(timeIntervalSince1970: start)),
+                previousText: text(for: Date(timeIntervalSince1970: start - 1)),
+                tickStart: date.addingTimeInterval(-fraction),
+                duration: duration,
+                color: color,
+                blurFraction: blurFraction,
+                ink: ink,
+                cycleSeconds: cycleSeconds
+            )
+        }
+    }
+
+
+    private func text(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm:ss"
+        return formatter.string(from: date)
+    }
+}
+
+
+private func meltColour(tint: String, red: Double, green: Double, blue: Double) -> Color {
+    if red >= 0 {
+        return Color(red: red, green: green, blue: blue)
+    }
+    switch tint {
+    case "white": return .white
+    case "amber": return Color(red: 1.0, green: 0.72, blue: 0.20)
+    case "cyan": return Color(red: 0.25, green: 0.85, blue: 1.0)
+    case "green": return Color(red: 0.35, green: 0.95, blue: 0.55)
+    case "violet": return Color(red: 0.72, green: 0.55, blue: 1.0)
+    case "red": return Color(red: 1.0, green: 0.42, blue: 0.42)
+    default: return ThemeManager.shared.colors.accent
+    }
+}
+
+
+private func meltScreenColour(_ key: String) -> Color {
+    switch key {
+    case "black": return .black
+    case "navy": return Color(red: 0.02, green: 0.05, blue: 0.13)
+    case "charcoal": return Color(red: 0.09, green: 0.09, blue: 0.10)
+    case "violet": return Color(red: 0.10, green: 0.05, blue: 0.16)
+    case "forest": return Color(red: 0.03, green: 0.10, blue: 0.07)
+    default: return ThemeManager.shared.colors.background
     }
 }
 
