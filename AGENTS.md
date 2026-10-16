@@ -58,6 +58,26 @@ After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
 
+<!-- prompt-styles:start -->
+## Two kinds of builder prompt — do NOT repeat the rules below (Kartik pays per token)
+
+Pick the style that matches the chat the prompt is going to. Boilerplate that the builder already has is
+paid for twice, so never pad a prompt with rules it has already read.
+
+**REGULAR prompt — the builder chat is already running and has read this file.**
+- Task only: what changes, in which file, the exact code for the changed parts, the commit message.
+- No "read AGENTS.md", no commit/push/CI-verification recital, no revert policy, no self-check list.
+- Aim for the smallest prompt that still leaves nothing to guess. Prefer targeted edits ("add this after that
+  line", "replace the whole X struct") over pasting a whole file.
+
+**HANDS-OFF prompt — a NEW builder chat, or work nobody will supervise.**
+- Now the workings ARE needed, because that chat has no context: point it at this file, state the starting
+  HEAD + run number, then the task, then: one task/one commit/one push, wait for CI and confirm GREEN from the
+  public API, revert-and-report instead of guess-fixing if it goes red, brace-balance the file, and the
+  self-check list.
+- Still keep it lean: reference this file for anything already written here rather than restating it.
+<!-- prompt-styles:end -->
+
 <!-- builder-discipline:start -->
 ## Builder discipline rules (learned the hard way — follow these)
 
