@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -121,7 +121,32 @@ jobs:
             -project AlarmClock.xcodeproj \
             -scheme AlarmClock \
             -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/test-output.log"
+
+      - name: Report errors to commit comment
+        if: failure()
+        run: |
+          {
+            echo "CI error report for run ${{ github.run_number }} (${{ github.sha }})"
+            echo
+            grep -E "error:|error \}|Failing tests:|Test Case .* failed|Testing failed:" \
+              "$RUNNER_TEMP/test-output.log" 2>/dev/null | sort -u | head -60
+          } > "$RUNNER_TEMP/error-report.txt"
+          python3 - "$RUNNER_TEMP/error-report.txt" <<'PY'
+          import json, sys, urllib.request
+          body = open(sys.argv[1]).read()
+          data = json.dumps({"body": body}).encode()
+          req = urllib.request.Request(
+              "${{ github.api_url }}/repos/${{ github.repository }}/commits/${{ github.sha }}/comments",
+              data=data,
+              headers={
+                  "Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}",
+                  "Accept": "application/vnd.github+json",
+              },
+              method="POST",
+          )
+          urllib.request.urlopen(req)
+          PY
 
       - name: Build unsigned device application
         run: |
