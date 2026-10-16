@@ -91,12 +91,14 @@ struct FullscreenClockView: View {
         }
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
+            AppDelegate.setClockLandscapeAllowed(true)
             currentTime = Date()
             previousClockText = clockString
             tickStart = Date.distantPast
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            AppDelegate.setClockLandscapeAllowed(false)
         }
         .onReceive(timer) { _ in
             let before = clockString

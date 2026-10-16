@@ -46,6 +46,23 @@ struct AlarmClockApp: App {
 
 /// App delegate to handle notification actions
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    @MainActor private static var clockLandscapeAllowed = false
+
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        AppDelegate.clockLandscapeAllowed ? .all : .portrait
+    }
+
+    @MainActor
+    static func setClockLandscapeAllowed(_ allowed: Bool) {
+        clockLandscapeAllowed = allowed
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        let preferences = UIWindowScene.GeometryPreferences.iOS(
+            interfaceOrientations: allowed ? .all : .portrait
+        )
+        scene.requestGeometryUpdate(preferences) { _ in }
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         return true
