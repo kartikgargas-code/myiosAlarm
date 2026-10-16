@@ -194,8 +194,6 @@ private struct MeltClockView: View {
         guard !characters.isEmpty, size.width > 40, size.height > 40 else { return }
 
 
-
-
         let probe = Font.system(size: 100, weight: .thin, design: .rounded).monospacedDigit()
         var units: [CGFloat] = []
         units.reserveCapacity(characters.count)
@@ -208,8 +206,6 @@ private struct MeltClockView: View {
         guard totalUnits > 0 else { return }
 
 
-
-
         // fit the width, but never let the line take more than ~70% of the height
         let scale = max(0.05, min(size.width * 0.98 / totalUnits, size.height * 0.70 / 1.25))
         let fontSize = 100 * scale
@@ -219,19 +215,15 @@ private struct MeltClockView: View {
         var cursor = max(0, (size.width - totalUnits * scale) / 2)
 
 
-
-
         let t = min(max(date.timeIntervalSince(tickStart) / duration, 0), 1)
         let previousCharacters = Array(previousText)
 
 
-
-
+        // The cut-off must be low: in the middle of a change both glyphs are half strength, and a high
+        // cut-off throws both of them away - that is what made the melt look like a blink/fade.
         // Constant fill colour is REQUIRED here: the default is black, which is invisible.
-        context.addFilter(.alphaThreshold(min: 0.35, color: color))
-        context.addFilter(.blur(radius: max(1, fontSize * 0.025)))
-
-
+        context.addFilter(.alphaThreshold(min: 0.18, color: color))
+        context.addFilter(.blur(radius: max(1, fontSize * 0.02)))
 
 
         for (index, character) in characters.enumerated() {
@@ -241,26 +233,25 @@ private struct MeltClockView: View {
                 : nil
 
 
-
-
             if let outgoing {
-                // Both glyphs in the same place; the opacities add up to 1, so the blur sees a
-                // mix of the two shapes and the cut-off edge travels from one into the other.
-                context.opacity = 1 - t
-                context.blendMode = .plusLighter
-                context.draw(
-                    Text(String(outgoing)).font(font).foregroundColor(color),
-                    at: CGPoint(x: cursor, y: top),
-                    anchor: .topLeading
-                )
-                context.opacity = t
-                context.draw(
-                    Text(String(character)).font(font).foregroundColor(color),
-                    at: CGPoint(x: cursor, y: top),
-                    anchor: .topLeading
-                )
-                context.opacity = 1
-                context.blendMode = .normal
+                // Both glyphs go into ONE layer, in the same place, with opacities that add up to 1.
+                // The layer as a whole is what gets blurred and cut off, so the two shapes are seen
+                // together and the outline travels from the old digit into the new one.
+                context.drawLayer { layer in
+                    layer.blendMode = .plusLighter
+                    layer.opacity = 1 - t
+                    layer.draw(
+                        Text(String(outgoing)).font(font).foregroundColor(color),
+                        at: CGPoint(x: cursor, y: top),
+                        anchor: .topLeading
+                    )
+                    layer.opacity = t
+                    layer.draw(
+                        Text(String(character)).font(font).foregroundColor(color),
+                        at: CGPoint(x: cursor, y: top),
+                        anchor: .topLeading
+                    )
+                }
             } else {
                 context.draw(
                     Text(String(character)).font(font).foregroundColor(color),
@@ -268,8 +259,6 @@ private struct MeltClockView: View {
                     anchor: .topLeading
                 )
             }
-
-
 
 
             cursor += units[index] * scale
