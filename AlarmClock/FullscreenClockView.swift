@@ -174,7 +174,7 @@ private struct MeltClockView: View {
         var saturation: CGFloat = 0
         var brightness: CGFloat = 0
         var alpha: CGFloat = 0
-        guard UIColor(color).getHue(&hue, &saturation, &brightness, &alpha) else { return color }
+        guard UIColor(color).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else { return color }
         let drift = (date.timeIntervalSince1970 / seconds).truncatingRemainder(dividingBy: 1)
         let shifted = (Double(hue) + drift).truncatingRemainder(dividingBy: 1)
         return Color(hue: shifted, saturation: Double(saturation), brightness: Double(brightness))
@@ -313,7 +313,7 @@ private struct ClockSettingsSheet: View {
                 var green: CGFloat = 0
                 var blue: CGFloat = 0
                 var alpha: CGFloat = 0
-                if UIColor(newValue).getRed(&red, &green, &blue, &alpha) {
+                if UIColor(newValue).getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
                     customRed = Double(red)
                     customGreen = Double(green)
                     customBlue = Double(blue)
@@ -454,7 +454,7 @@ private struct MeltPreview: View {
 }
 
 
-private func meltColour(tint: String, red: Double, green: Double, blue: Double) -> Color {
+@MainActor private func meltColour(tint: String, red: Double, green: Double, blue: Double) -> Color {
     if red >= 0 {
         return Color(red: red, green: green, blue: blue)
     }
@@ -470,7 +470,7 @@ private func meltColour(tint: String, red: Double, green: Double, blue: Double) 
 }
 
 
-private func meltScreenColour(_ key: String) -> Color {
+@MainActor private func meltScreenColour(_ key: String) -> Color {
     switch key {
     case "black": return .black
     case "navy": return Color(red: 0.02, green: 0.05, blue: 0.13)
