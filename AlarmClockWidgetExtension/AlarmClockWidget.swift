@@ -9,7 +9,6 @@ import CoreFoundation
 import AlarmKit
 import UserNotifications
 
-@MainActor
 private func readBatteryLevel() -> Double? {
     UIDevice.current.isBatteryMonitoringEnabled = true
     let level = UIDevice.current.batteryLevel
