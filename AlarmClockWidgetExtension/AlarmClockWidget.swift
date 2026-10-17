@@ -15,6 +15,17 @@ private func readBatteryLevel() -> Double? {
     return level >= 0 ? Double(level) : nil
 }
 
+private func resolvedAppGroupIdentifier() -> String {
+    let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String
+        ?? "group.com.example.alarmclock"
+    let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+    return resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+}
+
+private func widgetDefaults() -> UserDefaults {
+    UserDefaults(suiteName: resolvedAppGroupIdentifier()) ?? .standard
+}
+
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
 /// WidgetBundle inside the widget extension.
@@ -30,6 +41,7 @@ struct AlarmClockWidgetBundle: WidgetBundle {
     
     var body: some Widget {
         NextAlarmWidget()
+        BatteryWidget()
         NextAlarmLiveActivity()
     }
 }
@@ -55,6 +67,103 @@ struct NextAlarmWidget: Widget {
         .configurationDisplayName("Next Alarm")
         .description("Shows the next scheduled alarm time and name.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// Lock Screen widget showing the phone's battery as a coloured ring.
+struct BatteryWidget: Widget {
+    let kind = "com.example.alarmclock.battery-widget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: BatteryWidgetProvider()) { entry in
+            BatteryWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Battery")
+        .description("Shows your phone's battery level.")
+        .supportedFamilies([.accessoryCircular])
+    }
+}
+
+struct BatteryWidgetEntry: TimelineEntry {
+    let date: Date
+    let level: Double?
+    let showCircle: Bool
+    let showText: Bool
+    let circleScale: Double
+    let textScale: Double
+}
+
+struct BatteryWidgetProvider: TimelineProvider {
+    typealias Entry = BatteryWidgetEntry
+
+    func placeholder(in context: Context) -> BatteryWidgetEntry {
+        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (BatteryWidgetEntry) -> Void) {
+        completion(makeEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
+        // Widgets have a limited daily refresh budget, so refresh every 15 minutes
+        // rather than every minute. The app pushes an immediate reload when the
+        // user changes the settings.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        completion(Timeline(entries: [makeEntry()], policy: .after(nextUpdate)))
+    }
+
+    private func makeEntry() -> BatteryWidgetEntry {
+        let defaults = widgetDefaults()
+        return BatteryWidgetEntry(
+            date: Date(),
+            level: readBatteryLevel(),
+            showCircle: defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true,
+            showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
+            circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
+            textScale: defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0
+        )
+    }
+}
+
+struct BatteryWidgetView: View {
+    let entry: BatteryWidgetEntry
+
+    var body: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            ZStack {
+                if entry.showCircle {
+                    Circle()
+                        .stroke(Color.white.opacity(0.25), lineWidth: ringWidth)
+                    Circle()
+                        .trim(from: 0, to: max(0.001, min(1.0, entry.level ?? 0)))
+                        .stroke(ringColour, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                if entry.showText {
+                    Text(percentText)
+                        .font(.system(size: CGFloat(16 * entry.textScale), weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.4)
+                        .foregroundStyle(.white)
+                }
+            }
+            .padding(6)
+        }
+    }
+
+    private var ringWidth: CGFloat { CGFloat(5 * entry.circleScale) }
+
+    private var ringColour: Color {
+        let level = entry.level ?? 0
+        if level <= 0.20 { return .red }
+        if level <= 0.50 { return .orange }
+        return .green
+    }
+
+    private var percentText: String {
+        guard let level = entry.level else { return "--" }
+        return "\(Int((level * 100).rounded()))%"
     }
 }
 
@@ -212,7 +321,8 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: snapshot.alarmID,
-            batteryLevel: readBatteryLevel()
+            batteryLevel: readBatteryLevel(),
+            nextDate: snapshot.nextOccurrenceDate
         )
         
         return entry
@@ -228,6 +338,7 @@ struct NextAlarmWidgetEntry: TimelineEntry {
     let hasAlarm: Bool
     let alarmID: UUID?
     var batteryLevel: Double? = nil
+    var nextDate: Date? = nil
 }
 
 
@@ -264,22 +375,18 @@ struct NextAlarmWidgetView: View {
     private var accessoryCircularView: some View {
         ZStack {
             AccessoryWidgetBackground()
-            VStack(spacing: 2) {
-                if entry.hasAlarm {
-                    Image(systemName: "alarm.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text(entry.nextTime)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.5)
-                } else {
-                    Image(systemName: "alarm.slash")
-                        .font(.system(size: 16, weight: .bold))
-                    Text("No Alarm")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .minimumScaleFactor(0.5)
-                }
+            if entry.hasAlarm {
+                Text(entry.nextTime)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.4)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+            } else {
+                Text("No Alarm")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .foregroundStyle(.white)
             }
-            .foregroundStyle(.white)
         }
     }
     
@@ -314,8 +421,6 @@ struct NextAlarmWidgetView: View {
                     Spacer()
                 }
             }
-            Text(entry.batteryLevel.map { "Phone \(Int(($0 * 100).rounded()))%" } ?? "Phone --")
-                .font(.caption2)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -323,19 +428,17 @@ struct NextAlarmWidgetView: View {
     
     @ViewBuilder
     private var accessoryInlineView: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "timer")
-            Text(minuteStart, style: .timer)
+        if let nextDate = entry.nextDate, nextDate > entry.date {
+            HStack(spacing: 4) {
+                Image(systemName: "alarm.fill")
+                Text(nextDate, style: .timer)
+            }
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: entry.hasAlarm ? "alarm.fill" : "alarm.slash")
+                Text(entry.hasAlarm ? entry.nextTime : "No alarm")
+            }
         }
-    }
-
-
-    // Re-anchored to the top of the current minute, so it shows the seconds of this minute and
-    // restarts at 0:00. The provider already refreshes once a minute.
-    private var minuteStart: Date {
-        let calendar = Calendar.current
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: entry.date)
-        return calendar.date(from: components) ?? entry.date
     }
 }
 

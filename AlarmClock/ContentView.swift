@@ -1191,7 +1191,7 @@ private struct MeltSeconds: View {
                     ink: meltInk,
                     cycleSeconds: 0
                 )
-                .frame(width: 34, height: 24)
+                .frame(width: 40, height: 28)
                 .frame(minWidth: 20, alignment: .leading)
             }
         }

@@ -2,6 +2,19 @@ import SwiftUI
 import UIKit
 import AlarmKit
 import AlarmClockShared
+import WidgetKit
+
+/// Reads/writes the widget settings in the shared App Group container, so the
+/// Lock Screen battery widget sees the same values the app writes here.
+enum WidgetSettingsStore {
+    static var defaults: UserDefaults {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String
+            ?? "group.com.example.alarmclock"
+        let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let group = resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+        return UserDefaults(suiteName: group) ?? .standard
+    }
+}
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -15,6 +28,10 @@ struct SettingsView: View {
     @State private var shareURL: URL?
     @State private var showingExportAlert = false
     @State private var exportName = ""
+    @AppStorage("widgetBatteryShowCircle", store: WidgetSettingsStore.defaults) private var batteryShowCircle = true
+    @AppStorage("widgetBatteryShowText", store: WidgetSettingsStore.defaults) private var batteryShowText = true
+    @AppStorage("widgetBatteryCircleScale", store: WidgetSettingsStore.defaults) private var batteryCircleScale = 1.0
+    @AppStorage("widgetBatteryTextScale", store: WidgetSettingsStore.defaults) private var batteryTextScale = 1.0
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -23,6 +40,22 @@ struct SettingsView: View {
             List {
                 Section("Appearance") {
                     Button("Appearance") { showingAppearance = true }
+                }
+                Section("Lock Screen battery") {
+                    Toggle("Show the circle", isOn: $batteryShowCircle)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    Toggle("Show the number", isOn: $batteryShowText)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Circle thickness: " + String(format: "%.1f", batteryCircleScale) + "\u{00d7}")
+                            .font(.caption)
+                        Slider(value: $batteryCircleScale, in: 0.5...2.0)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Number size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
+                            .font(.caption)
+                        Slider(value: $batteryTextScale, in: 0.5...2.0)
+                    }
                 }
                 
                 Section("Diagnostics") {
@@ -77,6 +110,9 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
+            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)") { _, _ in
+                WidgetCenter.shared.reloadAllTimelines()
+            }
             .navigationTitle("Settings")
             .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .safeAreaInset(edge: .bottom) {

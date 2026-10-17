@@ -184,7 +184,8 @@ struct MeltClockView: View {
     }
 
 
-    // Slowly walks the colour round the colour wheel; seconds <= 0 leaves it alone.
+    // Holds the colour steady for the whole interval, then fades into a clearly new one.
+    // seconds <= 0 leaves it alone.
     static func cycled(_ color: Color, seconds: Double, at date: Date) -> Color {
         guard seconds > 0 else { return color }
         var hue: CGFloat = 0
@@ -192,15 +193,30 @@ struct MeltClockView: View {
         var brightness: CGFloat = 0
         var alpha: CGFloat = 0
         guard UIColor(color).getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else { return color }
-        let drift = (date.timeIntervalSince1970 / seconds).truncatingRemainder(dividingBy: 1)
-        let shifted = (Double(hue) + drift).truncatingRemainder(dividingBy: 1)
+
+        let fade = min(1.0, seconds * 0.25)
+        let now = date.timeIntervalSince1970
+        let slot = floor(now / seconds)
+        let position = now - slot * seconds
+        let from = (Double(hue) + slot * 0.6180339887498949).truncatingRemainder(dividingBy: 1)
+        let to = (Double(hue) + (slot + 1) * 0.6180339887498949).truncatingRemainder(dividingBy: 1)
+
+        var shifted = from
+        if position > seconds - fade {
+            let progress = (position - (seconds - fade)) / fade
+            let eased = progress * progress * (3 - 2 * progress)
+            var delta = (to - from).truncatingRemainder(dividingBy: 1)
+            if delta > 0.5 { delta -= 1 }
+            if delta < -0.5 { delta += 1 }
+            shifted = (from + delta * eased + 1).truncatingRemainder(dividingBy: 1)
+        }
         return Color(hue: shifted, saturation: Double(saturation), brightness: Double(brightness))
     }
 
 
     private func draw(_ context: inout GraphicsContext, size: CGSize, at date: Date) {
         let characters = Array(text)
-        guard !characters.isEmpty, size.width > 40, size.height > 40 else { return }
+        guard !characters.isEmpty, size.width > 4, size.height > 4 else { return }
 
 
         let probe = Font.system(size: 100, weight: .thin, design: .rounded).monospacedDigit()
@@ -229,7 +245,7 @@ struct MeltClockView: View {
 
 
         context.addFilter(.alphaThreshold(min: ink, color: paint))
-        context.addFilter(.blur(radius: max(1, fontSize * blurFraction)))
+        context.addFilter(.blur(radius: max(0.5, fontSize * blurFraction)))
 
 
         for (index, character) in characters.enumerated() {
@@ -371,7 +387,7 @@ private struct ClockSettingsSheet: View {
                 Section("Colour cycle") {
                     Toggle("Colour keeps changing", isOn: $colourCycle)
                     if colourCycle {
-                        numberRow("One full change", value: $cycleSeconds, range: 10...300, shown: String(format: "%.0f s", cycleSeconds))
+                        numberRow("Changes every", value: $cycleSeconds, range: 10...300, shown: String(format: "%.0f s", cycleSeconds))
                     }
                 }
             }
