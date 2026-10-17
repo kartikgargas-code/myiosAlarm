@@ -446,13 +446,7 @@ struct ContentView: View {
                     .foregroundStyle(colors.accent)
                 // Seconds with crisp melt (cross-dissolve only, no blink)
                 if showSeconds {
-                    Text("\(seconds)")
-                        .font(.subheadline)
-                        .foregroundStyle(colors.toggleOn)
-                        .monospacedDigit()
-                        .contentTransition(.opacity)
-                        .animation(.easeInOut(duration: 0.35), value: seconds)
-                        .frame(minWidth: 20, alignment: .leading)
+                    MeltSeconds(seconds: seconds, color: colors.toggleOn)
                 }
             }
         } else {
@@ -465,13 +459,7 @@ struct ContentView: View {
                     Text("\(hours)h \(minutes)m ")
                         .font(.subheadline)
                         .foregroundStyle(colors.accent)
-                    Text("\(seconds)")
-                        .font(.subheadline)
-                        .foregroundStyle(colors.toggleOn)
-                        .monospacedDigit()
-                        .contentTransition(.opacity)
-                        .animation(.easeInOut(duration: 0.35), value: seconds)
-                        .frame(minWidth: 20, alignment: .leading)
+                    MeltSeconds(seconds: seconds, color: colors.toggleOn)
                 }
             } else {
                 Text("\(hours)h \(minutes)m")
@@ -1163,6 +1151,53 @@ private func makeCreatorSheet() -> some View {
             importError = nil
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"
+        }
+    }
+}
+
+
+// The ticking seconds in an alarm row, drawn with whichever animation is chosen in Appearance.
+private struct MeltSeconds: View {
+    let seconds: Int
+    let color: Color
+
+
+    @State private var previous: Int?
+    @State private var tickStart = Date.distantPast
+    @AppStorage("fullscreenClockSpeed") private var meltDuration = 0.8
+    @AppStorage("fullscreenClockMelt") private var meltAmount = 0.02
+    @AppStorage("fullscreenClockInk") private var meltInk = 0.18
+
+
+    var body: some View {
+        Group {
+            switch ThemeManager.shared.secondsMorphStyle {
+            case .fade:
+                Text("\(seconds)")
+                    .font(.subheadline)
+                    .foregroundStyle(color)
+                    .monospacedDigit()
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.35), value: seconds)
+                    .frame(minWidth: 20, alignment: .leading)
+            case .goo, .drip:
+                MeltClockView(
+                    text: "\(seconds)",
+                    previousText: previous.map { "\($0)" } ?? "\(seconds)",
+                    tickStart: tickStart,
+                    duration: meltDuration * (ThemeManager.shared.secondsMorphStyle == .drip ? 1.6 : 1),
+                    color: color,
+                    blurFraction: meltAmount,
+                    ink: meltInk,
+                    cycleSeconds: 0
+                )
+                .frame(width: 34, height: 24)
+                .frame(minWidth: 20, alignment: .leading)
+            }
+        }
+        .onChange(of: seconds) { oldValue, _ in
+            previous = oldValue
+            tickStart = Date()
         }
     }
 }

@@ -164,7 +164,7 @@ struct FullscreenClockView: View {
 // The whole time is drawn in ONE canvas: it can never wrap, every character shares one
 // baseline, and the size is worked out from the space available, so it fits portrait,
 // landscape and the big landscape font alike.
-private struct MeltClockView: View {
+struct MeltClockView: View {
     let text: String
     let previousText: String
     let tickStart: Date
@@ -215,7 +215,7 @@ private struct MeltClockView: View {
         guard totalUnits > 0 else { return }
 
 
-        let scale = max(0.05, min(size.width * 0.98 / totalUnits, size.height * 0.70 / 1.25))
+        let scale = max(0.05, min(size.width * 0.98 / totalUnits, size.height * 0.70 / 125))
         let fontSize = 100 * scale
         let font = Font.system(size: fontSize, weight: .thin, design: .rounded).monospacedDigit()
         let lineHeight = fontSize * 1.25

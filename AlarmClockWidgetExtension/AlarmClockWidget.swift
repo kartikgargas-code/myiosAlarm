@@ -1,4 +1,5 @@
 import WidgetKit
+import UIKit
 import SwiftUI
 import AppIntents
 import ActivityKit
@@ -7,6 +8,13 @@ import os.log
 import CoreFoundation
 import AlarmKit
 import UserNotifications
+
+@MainActor
+private func readBatteryLevel() -> Double? {
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    let level = UIDevice.current.batteryLevel
+    return level >= 0 ? Double(level) : nil
+}
 
 /// The main widget bundle for the Alarm Clock Lock Screen widget and control.
 /// Apple's WidgetKit architecture hosts both widgets and controls in a single
@@ -23,12 +31,7 @@ struct AlarmClockWidgetBundle: WidgetBundle {
     
     var body: some Widget {
         NextAlarmWidget()
-        NextAlarmControl()
         NextAlarmLiveActivity()
-        // Control Center buttons (headless AppIntents)
-        SkipNextAlarmControl()
-        AlarmMinus10Control()
-        AlarmPlus10Control()
     }
 }
 
@@ -53,23 +56,6 @@ struct NextAlarmWidget: Widget {
         .configurationDisplayName("Next Alarm")
         .description("Shows the next scheduled alarm time and name.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
-    }
-}
-
-/// Lock Screen bottom-area control button for the next alarm.
-struct NextAlarmControl: ControlWidget {
-    static let kind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String
-        ?? "com.example.alarmclock.next-alarm-control"
-
-    var body: some ControlWidgetConfiguration {
-        SmartWakeDebugLog.log("CONTROL CONFIG: NextAlarmControl built, action=SkipNextAlarmIntent")
-        return StaticControlConfiguration(kind: Self.kind) {
-            ControlWidgetButton(action: SkipNextAlarmIntent()) {
-                Label("Skip Next", systemImage: "forward.end")
-            }
-        }
-        .displayName("Next Alarm")
-        .description("Skips the next alarm occurrence.")
     }
 }
 
@@ -226,7 +212,8 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             nextTime: formatter.string(from: snapshot.nextOccurrenceDate),
             dateIndicator: dateIndicator,
             hasAlarm: true,
-            alarmID: snapshot.alarmID
+            alarmID: snapshot.alarmID,
+            batteryLevel: readBatteryLevel()
         )
         
         return entry
@@ -241,6 +228,7 @@ struct NextAlarmWidgetEntry: TimelineEntry {
     let dateIndicator: String
     let hasAlarm: Bool
     let alarmID: UUID?
+    var batteryLevel: Double? = nil
 }
 
 
@@ -327,6 +315,8 @@ struct NextAlarmWidgetView: View {
                     Spacer()
                 }
             }
+            Text(entry.batteryLevel.map { "Phone \(Int(($0 * 100).rounded()))%" } ?? "Phone --")
+                .font(.caption2)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -334,22 +324,19 @@ struct NextAlarmWidgetView: View {
     
     @ViewBuilder
     private var accessoryInlineView: some View {
-        if entry.hasAlarm {
-            HStack(spacing: 4) {
-                Image(systemName: "alarm.fill")
-                Text("\(entry.alarmLabel) \(entry.nextTime)")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("(\(entry.dateIndicator))")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            HStack(spacing: 4) {
-                Image(systemName: "alarm.slash")
-                Text("No upcoming alarm")
-                    .font(.system(size: 14, weight: .semibold))
-            }
+        HStack(spacing: 4) {
+            Image(systemName: "timer")
+            Text(minuteStart, style: .timer)
         }
+    }
+
+
+    // Re-anchored to the top of the current minute, so it shows the seconds of this minute and
+    // restarts at 0:00. The provider already refreshes once a minute.
+    private var minuteStart: Date {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: entry.date)
+        return calendar.date(from: components) ?? entry.date
     }
 }
 
@@ -628,51 +615,6 @@ private func queuePendingWidgetAction(_ action: String, reason: String) async th
     postDarwinNotification("com.example.alarmclock.widget.changed")
 }
 
-
-/// Control Widget Button: Skip next alarm
-struct SkipNextAlarmControl: ControlWidget {
-    static let kind = "com.example.alarmclock.control.skip-next"
-    
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: Self.kind) {
-            ControlWidgetButton(action: SkipNextAlarmIntent()) {
-                Label("Skip Next Alarm", systemImage: "forward.end")
-            }
-        }
-        .displayName("Skip Next Alarm")
-        .description("Skip the next alarm occurrence.")
-    }
-}
-
-/// Control Widget Button: Alarm -10 min
-struct AlarmMinus10Control: ControlWidget {
-    static let kind = "com.example.alarmclock.control.minus10"
-    
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: Self.kind) {
-            ControlWidgetButton(action: AlarmMinus10Intent()) {
-                Label("Alarm -10 min", systemImage: "minus.circle")
-            }
-        }
-        .displayName("Alarm -10 min")
-        .description("Move the next alarm 10 minutes earlier.")
-    }
-}
-
-/// Control Widget Button: Alarm +10 min
-struct AlarmPlus10Control: ControlWidget {
-    static let kind = "com.example.alarmclock.control.plus10"
-    
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: Self.kind) {
-            ControlWidgetButton(action: AlarmPlus10Intent()) {
-                Label("Alarm +10 min", systemImage: "plus.circle")
-            }
-        }
-        .displayName("Alarm +10 min")
-        .description("Move the next alarm 10 minutes later.")
-    }
-}
 
 /// Darwin notification bridge for widget-to-app communication
 private func postDarwinNotification(_ name: String) {
