@@ -94,13 +94,15 @@ struct BatteryWidgetEntry: TimelineEntry {
     let textScale: Double
     let showPercentSign: Bool
     let plateOpacity: Double
+    let homeShowCircle: Bool
+    let homeShowText: Bool
 }
 
 struct BatteryWidgetProvider: TimelineProvider {
     typealias Entry = BatteryWidgetEntry
 
     func placeholder(in context: Context) -> BatteryWidgetEntry {
-        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1, showPercentSign: true, plateOpacity: 1)
+        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1, showPercentSign: true, plateOpacity: 1, homeShowCircle: true, homeShowText: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BatteryWidgetEntry) -> Void) {
@@ -125,7 +127,9 @@ struct BatteryWidgetProvider: TimelineProvider {
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
             textScale: defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0,
             showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
-            plateOpacity: defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
+            plateOpacity: defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0,
+            homeShowCircle: defaults.object(forKey: "widgetHomeShowCircle") as? Bool ?? true,
+            homeShowText: defaults.object(forKey: "widgetHomeShowText") as? Bool ?? true
         )
     }
 }
@@ -141,7 +145,7 @@ struct BatteryWidgetView: View {
                     .opacity(entry.plateOpacity)
             }
             ZStack {
-                if entry.showCircle {
+                if showRing {
                     Circle()
                         .inset(by: ringWidth / 2)
                         .stroke(Color.white.opacity(isHomeScreen ? 0.18 : 0.25), lineWidth: ringWidth)
@@ -151,7 +155,7 @@ struct BatteryWidgetView: View {
                         .stroke(ringColour, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                 }
-                if entry.showText {
+                if showNumber {
                     Text(percentText)
                         .font(.system(size: numberSize, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.4)
@@ -163,6 +167,10 @@ struct BatteryWidgetView: View {
     }
 
     private var isHomeScreen: Bool { family == .systemSmall }
+
+    private var showRing: Bool { isHomeScreen ? entry.homeShowCircle : entry.showCircle }
+
+    private var showNumber: Bool { isHomeScreen ? entry.homeShowText : entry.showText }
 
     private var ringWidth: CGFloat { CGFloat((isHomeScreen ? 14 : 5) * entry.circleScale) }
 
@@ -225,24 +233,91 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     }
     
     func getSnapshot(in context: Context, completion: @escaping (NextAlarmWidgetEntry) -> Void) {
-        let entry = loadEntry()
-        completion(entry)
+        completion(loadEntry(at: Date()))
     }
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmWidgetEntry>) -> Void) {
-        let currentDate = Date()
-        let entry = loadEntry()
-        
-        // Use a near-future update policy (1 minute) so WidgetKit re-reads
-        // nextAlarmSnapshot.json every minute and self-heals. This keeps the
-        // Lock Screen widget fresh even if reloadTimelines is missed or delayed.
-        let nextUpdate = Calendar.current.date(byAdding: .second, value: 60, to: currentDate) ?? currentDate
-        
-        let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
-        completion(timeline)
+        let now = Date()
+        var entries: [NextAlarmWidgetEntry] = []
+        // One entry per minute for the next hour, each worked out as of that minute, so the
+        // widget stays correct - and rolls on to the following alarm once one has passed -
+        // without WidgetKit having to reload it.
+        for minute in 0..<60 {
+            if let when = Calendar.current.date(byAdding: .minute, value: minute, to: now) {
+                entries.append(loadEntry(at: when))
+            }
+        }
+        if entries.isEmpty {
+            entries = [loadEntry(at: now)]
+        }
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 60, to: now) ?? now
+        completion(Timeline(entries: entries, policy: .after(nextUpdate)))
     }
     
-    private func loadEntry() -> NextAlarmWidgetEntry {
+    // Worked out from the alarm list itself, as of `date`, so the widget is correct even when
+    // the app has not run for a while and a passed alarm rolls on to the next one.
+    private func loadEntry(at date: Date) -> NextAlarmWidgetEntry {
+        guard let appGroupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) else {
+            return loadEntryFromSnapshot()
+        }
+
+        let alarmsURL = appGroupURL.appendingPathComponent("alarms.json")
+        guard let store = try? JSONAlarmPersistence(fileURL: alarmsURL).load() else {
+            return loadEntryFromSnapshot()
+        }
+
+        let engine = AlarmEngine(snapshot: store)
+        guard let occurrence = engine.earliestOccurrence(now: date),
+              let alarm = engine.alarm(id: occurrence.alarmID), alarm.isEnabled else {
+            return emptyEntry(at: date)
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MMM d"
+
+        let calendar = Calendar.current
+        let dateIndicator: String
+        if calendar.isDate(occurrence.effectiveDate, inSameDayAs: date) {
+            dateIndicator = "Today"
+        } else if calendar.isDate(occurrence.effectiveDate, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: date) ?? date) {
+            dateIndicator = "Tomorrow"
+        } else {
+            dateIndicator = dateFormatter.string(from: occurrence.effectiveDate)
+        }
+
+        let defaults = widgetDefaults()
+        return NextAlarmWidgetEntry(
+            date: date,
+            alarmLabel: alarm.label,
+            nextTime: formatter.string(from: occurrence.effectiveDate),
+            dateIndicator: dateIndicator,
+            hasAlarm: true,
+            alarmID: alarm.id,
+            batteryLevel: readBatteryLevel(),
+            nextDate: occurrence.effectiveDate,
+            showBatteryInline: defaults.object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
+            showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
+            plateOpacity: defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
+        )
+    }
+
+    private func emptyEntry(at date: Date) -> NextAlarmWidgetEntry {
+        NextAlarmWidgetEntry(
+            date: date,
+            alarmLabel: "No upcoming alarm",
+            nextTime: "--:--",
+            dateIndicator: "",
+            hasAlarm: false,
+            alarmID: nil
+        )
+    }
+
+    private func loadEntryFromSnapshot() -> NextAlarmWidgetEntry {
         
         guard let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
@@ -475,8 +550,7 @@ struct NextAlarmWidgetView: View {
     private var dimmedInlineText: String {
         guard entry.showBatteryInline, let level = entry.batteryLevel else { return entry.nextTime }
         let number = "\(Int((level * 100).rounded()))"
-        let percent = entry.showPercentSign ? number + "%" : number
-        return entry.nextTime + " \u{00B7} " + percent
+        return entry.nextTime + " \u{00B7} " + number + "%"
     }
 
     private var nextTimeShort: String {

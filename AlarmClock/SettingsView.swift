@@ -35,6 +35,8 @@ struct SettingsView: View {
     @AppStorage("widgetBatteryShowPercentSign", store: WidgetSettingsStore.defaults) private var batteryShowPercentSign = true
     @AppStorage("widgetBatteryPlateOpacity", store: WidgetSettingsStore.defaults) private var batteryPlateOpacity = 1.0
     @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
+    @AppStorage("widgetHomeShowCircle", store: WidgetSettingsStore.defaults) private var homeShowCircle = true
+    @AppStorage("widgetHomeShowText", store: WidgetSettingsStore.defaults) private var homeShowText = true
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -73,6 +75,13 @@ struct SettingsView: View {
 
                 Section("One-line widget") {
                     Toggle("Also show the battery", isOn: $inlineShowBattery)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                }
+
+                Section("Home Screen widget") {
+                    Toggle("Show the circle", isOn: $homeShowCircle)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    Toggle("Show the percentage", isOn: $homeShowText)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                 }
                 
@@ -128,7 +137,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)") { _, _ in
+            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }
             .navigationTitle("Settings")
