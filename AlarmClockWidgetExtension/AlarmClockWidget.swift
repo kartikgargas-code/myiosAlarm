@@ -78,7 +78,6 @@ struct BatteryWidget: Widget {
         StaticConfiguration(kind: kind, provider: BatteryWidgetProvider()) { entry in
             BatteryWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetRenderingMode(.fullColor)
         }
         .configurationDisplayName("Battery")
         .description("Shows your phone's battery level.")
