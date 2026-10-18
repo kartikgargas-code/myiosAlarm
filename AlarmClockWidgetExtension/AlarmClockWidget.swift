@@ -81,7 +81,7 @@ struct BatteryWidget: Widget {
         }
         .configurationDisplayName("Battery")
         .description("Shows your phone's battery level.")
-        .supportedFamilies([.accessoryCircular])
+        .supportedFamilies([.accessoryCircular, .systemSmall])
     }
 }
 
@@ -93,13 +93,14 @@ struct BatteryWidgetEntry: TimelineEntry {
     let circleScale: Double
     let textScale: Double
     let showPercentSign: Bool
+    let plateOpacity: Double
 }
 
 struct BatteryWidgetProvider: TimelineProvider {
     typealias Entry = BatteryWidgetEntry
 
     func placeholder(in context: Context) -> BatteryWidgetEntry {
-        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1, showPercentSign: true)
+        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1, showPercentSign: true, plateOpacity: 1)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BatteryWidgetEntry) -> Void) {
@@ -123,22 +124,27 @@ struct BatteryWidgetProvider: TimelineProvider {
             showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
             textScale: defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0,
-            showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true
+            showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
+            plateOpacity: defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
         )
     }
 }
 
 struct BatteryWidgetView: View {
+    @Environment(\.widgetFamily) private var family
     let entry: BatteryWidgetEntry
 
     var body: some View {
         ZStack {
-            AccessoryWidgetBackground()
+            if !isHomeScreen {
+                AccessoryWidgetBackground()
+                    .opacity(entry.plateOpacity)
+            }
             ZStack {
                 if entry.showCircle {
                     Circle()
                         .inset(by: ringWidth / 2)
-                        .stroke(Color.white.opacity(0.25), lineWidth: ringWidth)
+                        .stroke(Color.white.opacity(isHomeScreen ? 0.18 : 0.25), lineWidth: ringWidth)
                     Circle()
                         .inset(by: ringWidth / 2)
                         .trim(from: 0, to: max(0.001, min(1.0, entry.level ?? 0)))
@@ -147,16 +153,20 @@ struct BatteryWidgetView: View {
                 }
                 if entry.showText {
                     Text(percentText)
-                        .font(.system(size: CGFloat(16 * entry.textScale), weight: .semibold, design: .rounded))
+                        .font(.system(size: numberSize, weight: .semibold, design: .rounded))
                         .minimumScaleFactor(0.4)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(isHomeScreen ? Color.primary : Color.white)
                 }
             }
-            .padding(2)
+            .padding(isHomeScreen ? 16 : 2)
         }
     }
 
-    private var ringWidth: CGFloat { CGFloat(5 * entry.circleScale) }
+    private var isHomeScreen: Bool { family == .systemSmall }
+
+    private var ringWidth: CGFloat { CGFloat((isHomeScreen ? 14 : 5) * entry.circleScale) }
+
+    private var numberSize: CGFloat { CGFloat((isHomeScreen ? 46 : 16) * entry.textScale) }
 
     private var ringColour: Color {
         let level = entry.level ?? 0
@@ -329,7 +339,8 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             batteryLevel: readBatteryLevel(),
             nextDate: snapshot.nextOccurrenceDate,
             showBatteryInline: widgetDefaults().object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
-            showPercentSign: widgetDefaults().object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true
+            showPercentSign: widgetDefaults().object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
+            plateOpacity: widgetDefaults().object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
         )
         
         return entry
@@ -348,6 +359,7 @@ struct NextAlarmWidgetEntry: TimelineEntry {
     var nextDate: Date? = nil
     var showBatteryInline: Bool = false
     var showPercentSign: Bool = true
+    var plateOpacity: Double = 1.0
 }
 
 
@@ -385,9 +397,11 @@ struct NextAlarmWidgetView: View {
     private var accessoryCircularView: some View {
         ZStack {
             AccessoryWidgetBackground()
+                .opacity(entry.plateOpacity)
             if entry.hasAlarm {
-                Text(entry.nextTime)
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                (Text(nextTimeShort).font(.system(size: 20, weight: .bold, design: .rounded))
+                    + Text(nextTimeSuffix.isEmpty ? "" : " " + nextTimeSuffix)
+                        .font(.system(size: 9, weight: .semibold, design: .rounded)))
                     .minimumScaleFactor(0.4)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white)
@@ -415,8 +429,9 @@ struct NextAlarmWidgetView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(entry.nextTime)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    (Text(nextTimeShort).font(.system(size: 18, weight: .bold, design: .rounded))
+                        + Text(nextTimeSuffix.isEmpty ? "" : " " + nextTimeSuffix)
+                            .font(.system(size: 10, weight: .bold, design: .rounded)))
                         .foregroundStyle(.primary)
                 }
             } else {
@@ -442,12 +457,9 @@ struct NextAlarmWidgetView: View {
             HStack(spacing: 4) {
                 Image(systemName: "alarm.fill")
                 if luminanceReduced {
-                    Text(entry.nextTime)
+                    Text(dimmedInlineText)
                 } else {
                     Text(nextDate, style: .timer)
-                }
-                if entry.showBatteryInline {
-                    Text(inlineBatteryText)
                 }
             }
         } else {
@@ -458,10 +470,22 @@ struct NextAlarmWidgetView: View {
         }
     }
 
-    private var inlineBatteryText: String {
-        guard let level = entry.batteryLevel else { return "| --" }
+    // The one-line widget renders a single string, so while the screen is dimmed the alarm
+    // time and the battery are combined into one line.
+    private var dimmedInlineText: String {
+        guard entry.showBatteryInline, let level = entry.batteryLevel else { return entry.nextTime }
         let number = "\(Int((level * 100).rounded()))"
-        return entry.showPercentSign ? "| \(number)%" : "| \(number)"
+        let percent = entry.showPercentSign ? number + "%" : number
+        return entry.nextTime + " \u{00B7} " + percent
+    }
+
+    private var nextTimeShort: String {
+        entry.nextTime.split(separator: " ").first.map(String.init) ?? entry.nextTime
+    }
+
+    private var nextTimeSuffix: String {
+        let parts = entry.nextTime.split(separator: " ")
+        return parts.count > 1 ? String(parts[1]) : ""
     }
 }
 

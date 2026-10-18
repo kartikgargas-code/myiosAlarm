@@ -440,7 +440,7 @@ struct ContentView: View {
             // Under 1 hour: Xm Ys (no trailing "s")
             let minutes = totalSeconds / 60
             let seconds = totalSeconds % 60
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
                 Text("\(minutes)m ")
                     .font(.subheadline)
                     .foregroundStyle(colors.accent)
@@ -455,7 +455,7 @@ struct ContentView: View {
             let minutes = (totalSeconds % 3600) / 60
             if showSeconds {
                 let seconds = totalSeconds % 60
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                HStack(alignment: .center, spacing: 0) {
                     Text("\(hours)h \(minutes)m ")
                         .font(.subheadline)
                         .foregroundStyle(colors.accent)

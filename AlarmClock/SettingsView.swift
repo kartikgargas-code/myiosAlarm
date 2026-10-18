@@ -33,6 +33,7 @@ struct SettingsView: View {
     @AppStorage("widgetBatteryCircleScale", store: WidgetSettingsStore.defaults) private var batteryCircleScale = 1.0
     @AppStorage("widgetBatteryTextScale", store: WidgetSettingsStore.defaults) private var batteryTextScale = 1.0
     @AppStorage("widgetBatteryShowPercentSign", store: WidgetSettingsStore.defaults) private var batteryShowPercentSign = true
+    @AppStorage("widgetBatteryPlateOpacity", store: WidgetSettingsStore.defaults) private var batteryPlateOpacity = 1.0
     @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
@@ -61,6 +62,11 @@ struct SettingsView: View {
                         Text("Percentage size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
                             .font(.caption)
                         Slider(value: $batteryTextScale, in: 0.5...3.0)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Plate behind it: " + String(format: "%.0f", batteryPlateOpacity * 100) + "%")
+                            .font(.caption)
+                        Slider(value: $batteryPlateOpacity, in: 0.0...1.0)
                     }
                 }
 
@@ -122,7 +128,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)") { _, _ in
+            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }
             .navigationTitle("Settings")
