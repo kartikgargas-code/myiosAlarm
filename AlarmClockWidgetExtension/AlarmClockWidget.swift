@@ -15,6 +15,31 @@ private func readBatteryLevel() -> Double? {
     return level >= 0 ? Double(level) : nil
 }
 
+private func systemMemoryUsedBytes() -> UInt64? {
+    var stats = vm_statistics64()
+    var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+    let result = withUnsafeMutablePointer(to: &stats) { pointer in
+        pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+            host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)
+        }
+    }
+    guard result == KERN_SUCCESS else { return nil }
+
+    var pageSize: vm_size_t = 0
+    guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else { return nil }
+
+    let page = UInt64(pageSize)
+    let active = UInt64(stats.active_count) * page
+    let inactive = UInt64(stats.inactive_count) * page
+    let wired = UInt64(stats.wire_count) * page
+    let compressed = UInt64(stats.compressor_page_count) * page
+    return active + inactive + wired + compressed
+}
+
+private func systemMemoryTotalBytes() -> UInt64 {
+    ProcessInfo.processInfo.physicalMemory
+}
+
 private func resolvedAppGroupIdentifier() -> String {
     let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String
         ?? "group.com.example.alarmclock"
@@ -42,6 +67,7 @@ struct AlarmClockWidgetBundle: WidgetBundle {
     var body: some Widget {
         NextAlarmWidget()
         BatteryWidget()
+        MemoryWidget()
         NextAlarmLiveActivity()
     }
 }
@@ -67,6 +93,91 @@ struct NextAlarmWidget: Widget {
         .configurationDisplayName("Next Alarm")
         .description("Shows the next scheduled alarm time and name.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline])
+    }
+}
+
+/// Lock Screen widget showing how much of the phone's memory is in use. Tapping it opens the app.
+struct MemoryWidget: Widget {
+    let kind = "com.example.alarmclock.memory-widget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: MemoryWidgetProvider()) { entry in
+            MemoryWidgetView(entry: entry)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Memory")
+        .description("Shows how much of the phone's memory is in use.")
+        .supportedFamilies([.accessoryCircular])
+    }
+}
+
+struct MemoryWidgetEntry: TimelineEntry {
+    let date: Date
+    let usedFraction: Double?
+}
+
+struct MemoryWidgetProvider: TimelineProvider {
+    typealias Entry = MemoryWidgetEntry
+
+    func placeholder(in context: Context) -> MemoryWidgetEntry {
+        MemoryWidgetEntry(date: Date(), usedFraction: 0.62)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (MemoryWidgetEntry) -> Void) {
+        completion(makeEntry())
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<MemoryWidgetEntry>) -> Void) {
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        completion(Timeline(entries: [makeEntry()], policy: .after(nextUpdate)))
+    }
+
+    private func makeEntry() -> MemoryWidgetEntry {
+        MemoryWidgetEntry(date: Date(), usedFraction: memoryUsedFraction())
+    }
+}
+
+func memoryUsedFraction() -> Double? {
+    guard let used = systemMemoryUsedBytes() else { return nil }
+    let total = systemMemoryTotalBytes()
+    guard total > 0 else { return nil }
+    return min(1.0, max(0.0, Double(used) / Double(total)))
+}
+
+struct MemoryWidgetView: View {
+    let entry: MemoryWidgetEntry
+
+    var body: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            ZStack {
+                Circle()
+                    .inset(by: 2.5)
+                    .stroke(Color.white.opacity(0.25), lineWidth: 5)
+                Circle()
+                    .inset(by: 2.5)
+                    .trim(from: 0, to: max(0.001, entry.usedFraction ?? 0))
+                    .stroke(usedColour, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text(percentText)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .minimumScaleFactor(0.4)
+                    .foregroundStyle(.white)
+            }
+            .padding(2)
+        }
+    }
+
+    private var usedColour: Color {
+        let used = entry.usedFraction ?? 0
+        if used >= 0.85 { return .red }
+        if used >= 0.60 { return .orange }
+        return .green
+    }
+
+    private var percentText: String {
+        guard let used = entry.usedFraction else { return "--" }
+        return "\(Int((used * 100).rounded()))%"
     }
 }
 

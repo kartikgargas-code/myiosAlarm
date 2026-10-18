@@ -37,6 +37,8 @@ struct SettingsView: View {
     @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
     @AppStorage("widgetHomeShowCircle", store: WidgetSettingsStore.defaults) private var homeShowCircle = true
     @AppStorage("widgetHomeShowText", store: WidgetSettingsStore.defaults) private var homeShowText = true
+    @State private var memoryText = "Reading..."
+    @State private var freedMemoryMB: Int? = nil
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -83,6 +85,24 @@ struct SettingsView: View {
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     Toggle("Show the percentage", isOn: $homeShowText)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                }
+
+                Section("Memory") {
+                    HStack {
+                        Text("In use")
+                        Spacer()
+                        Text(memoryText)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
+                    Button("Free memory") {
+                        freedMemoryMB = SystemMemory.free()
+                        refreshMemory()
+                    }
+                    if let freedMemoryMB {
+                        Text("Freed about \(freedMemoryMB) MB")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
                 }
                 
                 Section("Diagnostics") {
@@ -140,6 +160,7 @@ struct SettingsView: View {
             .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }
+            .onAppear { refreshMemory() }
             .navigationTitle("Settings")
             .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .safeAreaInset(edge: .bottom) {
@@ -194,6 +215,15 @@ struct SettingsView: View {
         }
     }
     
+    private func refreshMemory() {
+        guard let used = SystemMemory.usedBytes() else {
+            memoryText = "--"
+            return
+        }
+        let gb = 1_073_741_824.0
+        memoryText = String(format: "%.1f of %.1f GB", Double(used) / gb, Double(SystemMemory.totalBytes()) / gb)
+    }
+
     private func runExport(named name: String) {
         Task {
             do {
@@ -238,4 +268,58 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+
+enum SystemMemory {
+    static func usedBytes() -> UInt64? {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+        let result = withUnsafeMutablePointer(to: &stats) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+
+        var pageSize: vm_size_t = 0
+        guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else { return nil }
+
+        let page = UInt64(pageSize)
+        let active = UInt64(stats.active_count) * page
+        let inactive = UInt64(stats.inactive_count) * page
+        let wired = UInt64(stats.wire_count) * page
+        let compressed = UInt64(stats.compressor_page_count) * page
+        return active + inactive + wired + compressed
+    }
+
+    static func totalBytes() -> UInt64 {
+        ProcessInfo.processInfo.physicalMemory
+    }
+
+    /// Frees memory the way the cleaning apps do: ask for a large block so the phone
+    /// reclaims what it is holding, then give it straight back. The target is scaled to the
+    /// device so the app is not closed for asking for too much.
+    @MainActor
+    static func free() -> Int? {
+        let before = usedBytes()
+
+        let total = totalBytes()
+        let scaled = total / 12
+        let cap: UInt64 = 512 * 1024 * 1024
+        let target = Int(min(cap, scaled))
+
+        var blocks: [Data] = []
+        let chunk = 32 * 1024 * 1024
+        var allocated = 0
+        while allocated < target {
+            blocks.append(Data(count: chunk))
+            allocated += chunk
+        }
+        blocks.removeAll(keepingCapacity: false)
+
+        let after = usedBytes()
+        guard let before, let after, before > after else { return 0 }
+        return Int((before - after) / 1_048_576)
+    }
 }
