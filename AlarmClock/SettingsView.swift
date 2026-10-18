@@ -32,6 +32,8 @@ struct SettingsView: View {
     @AppStorage("widgetBatteryShowText", store: WidgetSettingsStore.defaults) private var batteryShowText = true
     @AppStorage("widgetBatteryCircleScale", store: WidgetSettingsStore.defaults) private var batteryCircleScale = 1.0
     @AppStorage("widgetBatteryTextScale", store: WidgetSettingsStore.defaults) private var batteryTextScale = 1.0
+    @AppStorage("widgetBatteryShowPercentSign", store: WidgetSettingsStore.defaults) private var batteryShowPercentSign = true
+    @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -44,18 +46,28 @@ struct SettingsView: View {
                 Section("Lock Screen battery") {
                     Toggle("Show the circle", isOn: $batteryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    Toggle("Show the number", isOn: $batteryShowText)
+                    Toggle("Show the percentage", isOn: $batteryShowText)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    if batteryShowText {
+                        Toggle("Show the % sign", isOn: $batteryShowPercentSign)
+                            .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Circle thickness: " + String(format: "%.1f", batteryCircleScale) + "\u{00d7}")
                             .font(.caption)
-                        Slider(value: $batteryCircleScale, in: 0.5...2.0)
+                        Slider(value: $batteryCircleScale, in: 0.5...3.0)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Number size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
+                        Text("Percentage size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
                             .font(.caption)
-                        Slider(value: $batteryTextScale, in: 0.5...2.0)
+                        Slider(value: $batteryTextScale, in: 0.5...3.0)
                     }
+                }
+
+
+                Section("One-line widget") {
+                    Toggle("Also show the battery", isOn: $inlineShowBattery)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                 }
                 
                 Section("Diagnostics") {
@@ -110,7 +122,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)") { _, _ in
+            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }
             .navigationTitle("Settings")

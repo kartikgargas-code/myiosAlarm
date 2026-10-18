@@ -78,6 +78,7 @@ struct BatteryWidget: Widget {
         StaticConfiguration(kind: kind, provider: BatteryWidgetProvider()) { entry in
             BatteryWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                .widgetRenderingMode(.fullColor)
         }
         .configurationDisplayName("Battery")
         .description("Shows your phone's battery level.")
@@ -92,13 +93,14 @@ struct BatteryWidgetEntry: TimelineEntry {
     let showText: Bool
     let circleScale: Double
     let textScale: Double
+    let showPercentSign: Bool
 }
 
 struct BatteryWidgetProvider: TimelineProvider {
     typealias Entry = BatteryWidgetEntry
 
     func placeholder(in context: Context) -> BatteryWidgetEntry {
-        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1)
+        BatteryWidgetEntry(date: Date(), level: 0.78, showCircle: true, showText: true, circleScale: 1, textScale: 1, showPercentSign: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BatteryWidgetEntry) -> Void) {
@@ -121,7 +123,8 @@ struct BatteryWidgetProvider: TimelineProvider {
             showCircle: defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true,
             showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
-            textScale: defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0
+            textScale: defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0,
+            showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true
         )
     }
 }
@@ -135,8 +138,10 @@ struct BatteryWidgetView: View {
             ZStack {
                 if entry.showCircle {
                     Circle()
+                        .inset(by: ringWidth / 2)
                         .stroke(Color.white.opacity(0.25), lineWidth: ringWidth)
                     Circle()
+                        .inset(by: ringWidth / 2)
                         .trim(from: 0, to: max(0.001, min(1.0, entry.level ?? 0)))
                         .stroke(ringColour, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
                         .rotationEffect(.degrees(-90))
@@ -148,7 +153,7 @@ struct BatteryWidgetView: View {
                         .foregroundStyle(.white)
                 }
             }
-            .padding(6)
+            .padding(2)
         }
     }
 
@@ -163,7 +168,8 @@ struct BatteryWidgetView: View {
 
     private var percentText: String {
         guard let level = entry.level else { return "--" }
-        return "\(Int((level * 100).rounded()))%"
+        let number = "\(Int((level * 100).rounded()))"
+        return entry.showPercentSign ? number + "%" : number
     }
 }
 
@@ -322,7 +328,9 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             hasAlarm: true,
             alarmID: snapshot.alarmID,
             batteryLevel: readBatteryLevel(),
-            nextDate: snapshot.nextOccurrenceDate
+            nextDate: snapshot.nextOccurrenceDate,
+            showBatteryInline: widgetDefaults().object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
+            showPercentSign: widgetDefaults().object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true
         )
         
         return entry
@@ -339,6 +347,8 @@ struct NextAlarmWidgetEntry: TimelineEntry {
     let alarmID: UUID?
     var batteryLevel: Double? = nil
     var nextDate: Date? = nil
+    var showBatteryInline: Bool = false
+    var showPercentSign: Bool = true
 }
 
 
@@ -357,6 +367,7 @@ struct NextAlarmLiveActivity: Widget {
 /// SwiftUI view for the Lock Screen widget
 struct NextAlarmWidgetView: View {
     @Environment(\.widgetFamily) var family
+    @Environment(\.isLuminanceReduced) private var luminanceReduced
     let entry: NextAlarmWidgetEntry
     
     var body: some View {
@@ -431,7 +442,14 @@ struct NextAlarmWidgetView: View {
         if let nextDate = entry.nextDate, nextDate > entry.date {
             HStack(spacing: 4) {
                 Image(systemName: "alarm.fill")
-                Text(nextDate, style: .timer)
+                if luminanceReduced {
+                    Text(entry.nextTime)
+                } else {
+                    Text(nextDate, style: .timer)
+                }
+                if entry.showBatteryInline {
+                    Text(inlineBatteryText)
+                }
             }
         } else {
             HStack(spacing: 4) {
@@ -439,6 +457,12 @@ struct NextAlarmWidgetView: View {
                 Text(entry.hasAlarm ? entry.nextTime : "No alarm")
             }
         }
+    }
+
+    private var inlineBatteryText: String {
+        guard let level = entry.batteryLevel else { return "| --" }
+        let number = "\(Int((level * 100).rounded()))"
+        return entry.showPercentSign ? "| \(number)%" : "| \(number)"
     }
 }
 

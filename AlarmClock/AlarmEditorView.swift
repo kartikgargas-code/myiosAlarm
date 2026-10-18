@@ -477,7 +477,7 @@ struct AlarmEditorView: View {
         var components = Calendar.autoupdatingCurrent.dateComponents([.year, .month, .day], from: oneTimeDate)
         components.hour = time.hour
         components.minute = time.minute
-        components.second = 0
+        components.second = time.second
         return Calendar.autoupdatingCurrent.date(from: components) ?? oneTimeDate
     }
 

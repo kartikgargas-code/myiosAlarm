@@ -97,6 +97,7 @@ public struct AlarmScheduleCalculator {
         components.day = values[2]
         components.hour = alarm.time.hour
         components.minute = alarm.time.minute
+        components.second = alarm.time.second
         return calendar.date(from: components)
     }
 
@@ -105,7 +106,7 @@ public struct AlarmScheduleCalculator {
         var matching = DateComponents()
         matching.hour = time.hour
         matching.minute = time.minute
-        matching.second = 0
+        matching.second = time.second
         let searchStart = calendar.date(byAdding: .second, value: -1, to: calendar.startOfDay(for: day)) ?? day
         guard let candidate = calendar.nextDate(
             after: searchStart,
