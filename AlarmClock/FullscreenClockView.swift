@@ -173,6 +173,7 @@ struct MeltClockView: View {
     let blurFraction: Double
     let ink: Double
     let cycleSeconds: Double
+    var leading: Bool = false
 
 
     var body: some View {
@@ -236,7 +237,7 @@ struct MeltClockView: View {
         let font = Font.system(size: fontSize, weight: .thin, design: .rounded).monospacedDigit()
         let lineHeight = fontSize * 1.25
         let top = max(0, (size.height - lineHeight) / 2)
-        var cursor = max(0, (size.width - totalUnits * scale) / 2)
+        var cursor = leading ? 0 : max(0, (size.width - totalUnits * scale) / 2)
 
 
         let t = min(max(date.timeIntervalSince(tickStart) / max(duration, 0.05), 0), 1)

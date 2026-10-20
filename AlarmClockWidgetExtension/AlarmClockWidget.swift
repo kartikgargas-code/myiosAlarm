@@ -221,18 +221,20 @@ struct BatteryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
-        // Widgets have a limited daily refresh budget, so refresh every 15 minutes
-        // rather than every minute. The app pushes an immediate reload when the
-        // user changes the settings.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        // Ask again every 5 minutes, and the app also pushes a reload whenever the level
+        // changes or it is running.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
         completion(Timeline(entries: [makeEntry()], policy: .after(nextUpdate)))
     }
 
     private func makeEntry() -> BatteryWidgetEntry {
         let defaults = widgetDefaults()
+        let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double
+        let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double
+        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 300 } ?? false
         return BatteryWidgetEntry(
             date: Date(),
-            level: readBatteryLevel(),
+            level: (appLevelIsFresh ? appLevel : nil) ?? readBatteryLevel(),
             showCircle: defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true,
             showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,

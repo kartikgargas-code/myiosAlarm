@@ -95,7 +95,7 @@ struct SettingsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                     Button("Free memory") {
-                        freedMemoryMB = SystemMemory.free()
+                        freedMemoryMB = SystemMemory.freeMemory()
                         refreshMemory()
                     }
                     if let freedMemoryMB {
@@ -298,25 +298,30 @@ enum SystemMemory {
     }
 
     /// Frees memory the way the cleaning apps do: ask for a large block so the phone
-    /// reclaims what it is holding, then give it straight back. The target is scaled to the
-    /// device so the app is not closed for asking for too much.
+    /// reclaims what it is holding, then give it straight back. malloc is used so a
+    /// refused request ends the loop instead of closing the app.
     @MainActor
-    static func free() -> Int? {
+    static func freeMemory() -> Int? {
         let before = usedBytes()
 
-        let total = totalBytes()
-        let scaled = total / 12
-        let cap: UInt64 = 512 * 1024 * 1024
-        let target = Int(min(cap, scaled))
+        let cap: UInt64 = 1_536 * 1024 * 1024
+        let target = Int(min(cap, totalBytes() / 3))
 
-        var blocks: [Data] = []
-        let chunk = 32 * 1024 * 1024
+        let chunk = 64 * 1024 * 1024
+        var pointers: [UnsafeMutableRawPointer] = []
         var allocated = 0
         while allocated < target {
-            blocks.append(Data(count: chunk))
+            guard let pointer = malloc(chunk) else { break }
+            memset(pointer, 0, chunk)
+            pointers.append(pointer)
             allocated += chunk
         }
-        blocks.removeAll(keepingCapacity: false)
+
+        // Hand it straight back.
+        for pointer in pointers {
+            free(pointer)
+        }
+        pointers.removeAll()
 
         let after = usedBytes()
         guard let before, let after, before > after else { return 0 }

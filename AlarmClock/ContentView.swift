@@ -1189,7 +1189,8 @@ private struct MeltSeconds: View {
                     color: color,
                     blurFraction: meltAmount,
                     ink: meltInk,
-                    cycleSeconds: 0
+                    cycleSeconds: 0,
+                    leading: true
                 )
                 .frame(width: 40, height: 28)
                 .frame(minWidth: 20, alignment: .leading)

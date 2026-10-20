@@ -3,6 +3,7 @@ import AppIntents
 import AlarmKit
 import AlarmClockShared
 import UserNotifications
+import WidgetKit
 
 @main
 struct AlarmClockApp: App {
@@ -17,6 +18,9 @@ struct AlarmClockApp: App {
         MainActor.assumeIsolated {
             LiveActivityAlarmServiceProvider.shared = SharedAlarmService()
         }
+
+        // Keep the Lock Screen battery widget's figure fresh
+        BatteryReporter.start()
         
         // Request notification authorization for Stop/Snooze actions on lock screen
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -185,3 +189,32 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 /// App Intents are automatically discovered from the widget extension's Info.plist
 /// and the AppIntent protocols used in the widget bundle.
 /// No explicit configuration needed in iOS 17+.
+
+
+enum BatteryReporter {
+    static let widgetKind = "com.example.alarmclock.battery-widget"
+
+    static func start() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        write()
+        NotificationCenter.default.addObserver(
+            forName: UIDevice.batteryLevelDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            write()
+        }
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+            write()
+        }
+    }
+
+    static func write() {
+        let level = UIDevice.current.batteryLevel
+        guard level >= 0 else { return }
+        let defaults = WidgetSettingsStore.defaults
+        defaults.set(Double(level), forKey: "appBatteryLevel")
+        defaults.set(Date().timeIntervalSince1970, forKey: "appBatteryLevelAt")
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+    }
+}
