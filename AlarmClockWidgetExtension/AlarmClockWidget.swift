@@ -148,21 +148,32 @@ struct MemoryWidgetView: View {
     let entry: MemoryWidgetEntry
 
     var body: some View {
+        let defaults = widgetDefaults()
+        let showCircle = defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true
+        let showText = defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true
+        let circleScale = defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0
+        let textScale = defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0
+        let ringWidth = CGFloat(5 * circleScale)
+
         ZStack {
             AccessoryWidgetBackground()
             ZStack {
-                Circle()
-                    .inset(by: 2.5)
-                    .stroke(Color.white.opacity(0.25), lineWidth: 5)
-                Circle()
-                    .inset(by: 2.5)
-                    .trim(from: 0, to: max(0.001, entry.usedFraction ?? 0))
-                    .stroke(usedColour, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text(percentText)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .minimumScaleFactor(0.4)
-                    .foregroundStyle(.white)
+                if showCircle {
+                    Circle()
+                        .inset(by: ringWidth / 2)
+                        .stroke(Color.white.opacity(0.25), lineWidth: ringWidth)
+                    Circle()
+                        .inset(by: ringWidth / 2)
+                        .trim(from: 0, to: max(0.001, entry.usedFraction ?? 0))
+                        .stroke(usedColour, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                if showText {
+                    Text(percentText)
+                        .font(.system(size: CGFloat(16 * textScale), weight: .semibold, design: .rounded))
+                        .minimumScaleFactor(0.4)
+                        .foregroundStyle(.white)
+                }
             }
             .padding(2)
         }
@@ -351,6 +362,24 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmWidgetEntry>) -> Void) {
         let now = Date()
+
+        // The wide Lock Screen widget shows a countdown, so give it one entry per second.
+        // One real read of the alarm list, then cheap copies with a different date.
+        if context.family == .accessoryRectangular {
+            let base = loadEntry(at: now)
+            var secondEntries: [NextAlarmWidgetEntry] = []
+            for second in 0..<3600 {
+                if let when = Calendar.current.date(byAdding: .second, value: second, to: now) {
+                    var copy = base
+                    copy.date = when
+                    secondEntries.append(copy)
+                }
+            }
+            let reloadAt = Calendar.current.date(byAdding: .minute, value: 60, to: now) ?? now
+            completion(Timeline(entries: secondEntries, policy: .after(reloadAt)))
+            return
+        }
+
         var entries: [NextAlarmWidgetEntry] = []
         // One entry per minute for the next hour, each worked out as of that minute, so the
         // widget stays correct - and rolls on to the following alarm once one has passed -
@@ -537,7 +566,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
 
 /// Timeline entry for the next alarm widget
 struct NextAlarmWidgetEntry: TimelineEntry {
-    let date: Date
+    var date: Date
     let alarmLabel: String
     let nextTime: String
     let dateIndicator: String
@@ -622,6 +651,13 @@ struct NextAlarmWidgetView: View {
                             .font(.system(size: 10, weight: .bold, design: .rounded)))
                         .foregroundStyle(.primary)
                 }
+                if let countdown = rollingCountdown {
+                    Text(countdown)
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 HStack(spacing: 6) {
                     Image(systemName: "alarm.slash")
@@ -660,10 +696,31 @@ struct NextAlarmWidgetView: View {
 
     // The one-line widget renders a single string, so while the screen is dimmed the alarm
     // time and the battery are combined into one line.
+    // The entry may have been planned up to an hour ago, so prefer the value the app wrote.
+    private var freshBatteryLevel: Double? {
+        let defaults = widgetDefaults()
+        if let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double,
+           let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double,
+           Date().timeIntervalSince1970 - appLevelAt < 300 {
+            return appLevel
+        }
+        return entry.batteryLevel
+    }
+
     private var dimmedInlineText: String {
-        guard entry.showBatteryInline, let level = entry.batteryLevel else { return entry.nextTime }
+        guard entry.showBatteryInline, let level = freshBatteryLevel else { return entry.nextTime }
         let number = "\(Int((level * 100).rounded()))"
         return entry.nextTime + " \u{00B7} " + number + "%"
+    }
+
+    // Clamped at zero, so a passed alarm does not count upwards.
+    private var rollingCountdown: String? {
+        guard entry.hasAlarm, let nextDate = entry.nextDate else { return nil }
+        let remaining = max(0, Int(nextDate.timeIntervalSince(entry.date)))
+        let hours = remaining / 3600
+        let minutes = (remaining % 3600) / 60
+        let seconds = remaining % 60
+        return String(format: "%d:%02d:%02d", hours, minutes, seconds)
     }
 
     private var nextTimeShort: String {

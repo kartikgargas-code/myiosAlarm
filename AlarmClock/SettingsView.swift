@@ -48,7 +48,7 @@ struct SettingsView: View {
                 Section("Appearance") {
                     Button("Appearance") { showingAppearance = true }
                 }
-                Section("Lock Screen battery") {
+                Section("Lock Screen circles") {
                     Toggle("Show the circle", isOn: $batteryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     Toggle("Show the percentage", isOn: $batteryShowText)
@@ -95,11 +95,13 @@ struct SettingsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                     Button("Free memory") {
-                        freedMemoryMB = SystemMemory.freeMemory()
-                        refreshMemory()
+                        Task {
+                            freedMemoryMB = await SystemMemory.freeMemory()
+                            refreshMemory()
+                        }
                     }
                     if let freedMemoryMB {
-                        Text("Freed about \(freedMemoryMB) MB")
+                        Text(freedMemoryMB > 0 ? "Freed about \(freedMemoryMB) MB" : "Nothing to free right now")
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
@@ -217,7 +219,7 @@ struct SettingsView: View {
     
     private func refreshMemory() {
         guard let used = SystemMemory.usedBytes() else {
-            memoryText = "--"
+            memoryText = "unavailable"
             return
         }
         let gb = 1_073_741_824.0
@@ -300,8 +302,7 @@ enum SystemMemory {
     /// Frees memory the way the cleaning apps do: ask for a large block so the phone
     /// reclaims what it is holding, then give it straight back. malloc is used so a
     /// refused request ends the loop instead of closing the app.
-    @MainActor
-    static func freeMemory() -> Int? {
+    static func freeMemory() async -> Int? {
         let before = usedBytes()
 
         let cap: UInt64 = 1_536 * 1024 * 1024
@@ -317,7 +318,9 @@ enum SystemMemory {
             allocated += chunk
         }
 
-        // Hand it straight back.
+        // Hold it for a moment: the phone needs time to actually reclaim.
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+
         for pointer in pointers {
             free(pointer)
         }

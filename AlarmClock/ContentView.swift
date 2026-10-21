@@ -1192,7 +1192,7 @@ private struct MeltSeconds: View {
                     cycleSeconds: 0,
                     leading: true
                 )
-                .frame(width: 40, height: 28)
+                .frame(width: 44, height: 34)
                 .frame(minWidth: 20, alignment: .leading)
             }
         }
