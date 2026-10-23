@@ -4,6 +4,7 @@ import AlarmKit
 import AlarmClockShared
 import UserNotifications
 import WidgetKit
+import IOKit.ps
 
 @main
 struct AlarmClockApp: App {
@@ -190,6 +191,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 /// and the AppIntent protocols used in the widget bundle.
 /// No explicit configuration needed in iOS 17+.
 
+enum BatteryReader {
+    /// The exact percentage. UIDevice.batteryLevel only reports 5% steps.
+    static func exactPercentage() -> Int? {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else { return nil }
+        guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
+        for source in sources {
+            guard let description = IOPSGetPowerSourceDescription(snapshot, source)?
+                .takeUnretainedValue() as? [String: Any] else { continue }
+            if let current = description[kIOPSCurrentCapacityKey] as? Int,
+               let maximum = description[kIOPSMaxCapacityKey] as? Int,
+               maximum > 0 {
+                return Int((Double(current) / Double(maximum) * 100).rounded())
+            }
+        }
+        return nil
+    }
+}
+
 
 enum BatteryReporter {
     static let widgetKind = "com.example.alarmclock.battery-widget"
@@ -210,10 +229,16 @@ enum BatteryReporter {
     }
 
     static func write() {
-        let level = UIDevice.current.batteryLevel
-        guard level >= 0 else { return }
         let defaults = WidgetSettingsStore.defaults
-        defaults.set(Double(level), forKey: "appBatteryLevel")
+
+        if let exact = BatteryReader.exactPercentage() {
+            defaults.set(Double(exact) / 100.0, forKey: "appBatteryLevel")
+        } else {
+            let level = UIDevice.current.batteryLevel
+            guard level >= 0 else { return }
+            defaults.set(Double(level), forKey: "appBatteryLevel")
+        }
+
         defaults.set(Date().timeIntervalSince1970, forKey: "appBatteryLevelAt")
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
     }

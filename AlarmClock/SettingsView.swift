@@ -38,6 +38,7 @@ struct SettingsView: View {
     @AppStorage("widgetHomeShowCircle", store: WidgetSettingsStore.defaults) private var homeShowCircle = true
     @AppStorage("widgetHomeShowText", store: WidgetSettingsStore.defaults) private var homeShowText = true
     @State private var memoryText = "Reading..."
+    @State private var batteryText = "Reading..."
     @State private var freedMemoryMB: Int? = nil
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
@@ -92,6 +93,12 @@ struct SettingsView: View {
                         Text("In use")
                         Spacer()
                         Text(memoryText)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
+                    HStack {
+                        Text("Battery")
+                        Spacer()
+                        Text(batteryText)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                     Button("Free memory") {
@@ -224,6 +231,13 @@ struct SettingsView: View {
         }
         let gb = 1_073_741_824.0
         memoryText = String(format: "%.1f of %.1f GB", Double(used) / gb, Double(SystemMemory.totalBytes()) / gb)
+
+        if let exact = BatteryReader.exactPercentage() {
+            batteryText = "\(exact)%"
+        } else {
+            let level = UIDevice.current.batteryLevel
+            batteryText = level >= 0 ? "\(Int((level * 100).rounded()))%" : "unavailable"
+        }
     }
 
     private func runExport(named name: String) {
