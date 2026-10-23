@@ -204,9 +204,6 @@ enum BatteryReporter {
         ) { _ in
             write()
         }
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
-            write()
-        }
     }
 
     static func write() {

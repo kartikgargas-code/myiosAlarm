@@ -57,6 +57,7 @@ private func widgetDefaults() -> UserDefaults {
 @main
 struct AlarmClockWidgetBundle: WidgetBundle {
     init() {
+        SmartWakeDebugLog.log("WIDGET extension launched", force: true)
         // Register the Live Activity alarm service for the widget extension
         // WidgetKit extension @main entry points already run on the main thread
         MainActor.assumeIsolated {
@@ -129,7 +130,9 @@ struct MemoryWidgetProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoryWidgetEntry>) -> Void) {
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
-        completion(Timeline(entries: [makeEntry()], policy: .after(nextUpdate)))
+        let entry = makeEntry()
+        SmartWakeDebugLog.log("WIDGET memory timeline used=\(entry.usedFraction.map { String(Int(($0 * 100).rounded())) } ?? "-")", force: true)
+        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
 
     private func makeEntry() -> MemoryWidgetEntry {
@@ -232,17 +235,19 @@ struct BatteryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
-        // Ask again every 5 minutes, and the app also pushes a reload whenever the level
-        // changes or it is running.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
-        completion(Timeline(entries: [makeEntry()], policy: .after(nextUpdate)))
+        // The app pushes a reload whenever the level changes, so the widget itself only needs
+        // to ask again now and then - which keeps the phone from waking up too often.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        let entry = makeEntry()
+        SmartWakeDebugLog.log("WIDGET battery timeline level=\(entry.level.map { String(Int(($0 * 100).rounded())) } ?? "-")", force: true)
+        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
 
     private func makeEntry() -> BatteryWidgetEntry {
         let defaults = widgetDefaults()
         let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double
         let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double
-        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 300 } ?? false
+        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 3600 } ?? false
         return BatteryWidgetEntry(
             date: Date(),
             level: (appLevelIsFresh ? appLevel : nil) ?? readBatteryLevel(),
@@ -376,6 +381,10 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             entries = [loadEntry(at: now)]
         }
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 60, to: now) ?? now
+        SmartWakeDebugLog.log(
+            "WIDGET next-alarm timeline family=\(context.family) entries=\(entries.count) hasAlarm=\(entries.first?.hasAlarm ?? false) next=\(entries.first?.nextTime ?? "-") appGroup=\(appGroupIdentifier)",
+            force: true
+        )
         completion(Timeline(entries: entries, policy: .after(nextUpdate)))
     }
     
@@ -684,7 +693,7 @@ struct NextAlarmWidgetView: View {
         let defaults = widgetDefaults()
         if let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double,
            let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double,
-           Date().timeIntervalSince1970 - appLevelAt < 300 {
+           Date().timeIntervalSince1970 - appLevelAt < 3600 {
             return appLevel
         }
         return entry.batteryLevel
