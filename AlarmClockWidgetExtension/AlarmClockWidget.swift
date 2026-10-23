@@ -363,23 +363,6 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmWidgetEntry>) -> Void) {
         let now = Date()
 
-        // The wide Lock Screen widget shows a countdown, so give it one entry per second.
-        // One real read of the alarm list, then cheap copies with a different date.
-        if context.family == .accessoryRectangular {
-            let base = loadEntry(at: now)
-            var secondEntries: [NextAlarmWidgetEntry] = []
-            for second in 0..<3600 {
-                if let when = Calendar.current.date(byAdding: .second, value: second, to: now) {
-                    var copy = base
-                    copy.date = when
-                    secondEntries.append(copy)
-                }
-            }
-            let reloadAt = Calendar.current.date(byAdding: .minute, value: 60, to: now) ?? now
-            completion(Timeline(entries: secondEntries, policy: .after(reloadAt)))
-            return
-        }
-
         var entries: [NextAlarmWidgetEntry] = []
         // One entry per minute for the next hour, each worked out as of that minute, so the
         // widget stays correct - and rolls on to the following alarm once one has passed -
@@ -651,7 +634,7 @@ struct NextAlarmWidgetView: View {
                             .font(.system(size: 10, weight: .bold, design: .rounded)))
                         .foregroundStyle(.primary)
                 }
-                if let countdown = rollingCountdown {
+                if let countdown = countdownText {
                     Text(countdown)
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .monospacedDigit()
@@ -713,14 +696,15 @@ struct NextAlarmWidgetView: View {
         return entry.nextTime + " \u{00B7} " + number + "%"
     }
 
-    // Clamped at zero, so a passed alarm does not count upwards.
-    private var rollingCountdown: String? {
+    // Minute granularity, because the timeline only steps once a minute. Clamped at zero,
+    // so a passed alarm does not count upwards.
+    private var countdownText: String? {
         guard entry.hasAlarm, let nextDate = entry.nextDate else { return nil }
         let remaining = max(0, Int(nextDate.timeIntervalSince(entry.date)))
         let hours = remaining / 3600
         let minutes = (remaining % 3600) / 60
-        let seconds = remaining % 60
-        return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        if hours > 0 { return "in \(hours)h \(minutes)m" }
+        return "in \(minutes)m"
     }
 
     private var nextTimeShort: String {
