@@ -1343,10 +1343,8 @@ final class AlarmCoordinator {
             lastSnapshotWriteResult = (false, "Missing configured App Group identifier", timestamp)
             return
         }
-        let resignedAppGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-        let appGroupIdentifier = resignedAppGroups.first {
-            $0 == configuredAppGroup || $0.hasPrefix(configuredAppGroup + ".")
-        } ?? configuredAppGroup
+        // Resolve App Group at runtime by probing, not by guessing the renamed name.
+        let appGroupIdentifier = AppGroupResolver.resolve() ?? AppGroupResolver.configuredIdentifier
 
         WidgetDiagnostics.appLogEvent("Resolved App Group identifier", appGroupIdentifier: appGroupIdentifier)
         

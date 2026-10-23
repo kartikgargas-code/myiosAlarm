@@ -21,6 +21,11 @@ struct AlarmClockApp: App {
 
         // Keep the Lock Screen battery widget's figure fresh
         BatteryReporter.start()
+        // What did the phone actually grant us? Written to the log so the Diagnostics
+        // screen answers it without a Mac, and the shared alarm copy is put back so the
+        // widgets have something to show even when nothing has been edited.
+        SmartWakeDebugLog.log("APPGROUP " + AppGroupResolver.describe(), force: true)
+        SharedStorage.republish()
         
         // Request notification authorization for Stop/Snooze actions on lock screen
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -213,5 +218,37 @@ enum BatteryReporter {
         defaults.set(Double(level), forKey: "appBatteryLevel")
         defaults.set(Date().timeIntervalSince1970, forKey: "appBatteryLevelAt")
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+    }
+}
+
+/// The shared App Group the app and the widgets both read, kept in one place so the
+/// Diagnostics screen can report exactly what the phone granted.
+enum SharedStorage {
+    static func resolve() -> String? {
+        AppGroupResolver.resolve()
+    }
+
+    /// Copy the app's own alarm file into the shared container and reload the widget
+    /// kinds. Best-effort: with no usable container there is nothing to do.
+    static func republish() {
+        guard let group = resolve(),
+              let container = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: group
+              ) else {
+            return
+        }
+        let source = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("alarms.json")
+        if let data = try? Data(contentsOf: source) {
+            try? data.write(to: container.appendingPathComponent("alarms.json"), options: .atomic)
+        }
+
+        var kinds = [BatteryReporter.widgetKind, "com.example.alarmclock.memory-widget"]
+        if let nextAlarmKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
+            kinds.append(nextAlarmKind)
+        }
+        for kind in kinds {
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        }
     }
 }

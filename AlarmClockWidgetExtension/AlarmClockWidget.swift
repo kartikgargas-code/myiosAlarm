@@ -41,10 +41,7 @@ private func systemMemoryTotalBytes() -> UInt64 {
 }
 
 private func resolvedAppGroupIdentifier() -> String {
-    let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String
-        ?? "group.com.example.alarmclock"
-    let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-    return resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+    AppGroupResolver.resolve() ?? AppGroupResolver.configuredIdentifier
 }
 
 private func widgetDefaults() -> UserDefaults {
@@ -336,11 +333,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     typealias Entry = NextAlarmWidgetEntry
     
     private var appGroupIdentifier: String {
-        let configured = Bundle.main.object(
-            forInfoDictionaryKey: "AlarmClockAppGroupIdentifier"
-        ) as? String ?? "group.com.example.alarmclock"
-        let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-        return resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+        AppGroupResolver.resolve() ?? AppGroupResolver.configuredIdentifier
     }
     private let snapshotFileName = "nextAlarmSnapshot.json"
     

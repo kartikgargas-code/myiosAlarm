@@ -8,10 +8,7 @@ import WidgetKit
 /// Lock Screen battery widget sees the same values the app writes here.
 enum WidgetSettingsStore {
     static var defaults: UserDefaults {
-        let configured = Bundle.main.object(forInfoDictionaryKey: "AlarmClockAppGroupIdentifier") as? String
-            ?? "group.com.example.alarmclock"
-        let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
-        let group = resigned.first { $0 == configured || $0.hasPrefix(configured + ".") } ?? configured
+        guard let group = AppGroupResolver.resolve() else { return .standard }
         return UserDefaults(suiteName: group) ?? .standard
     }
 }
