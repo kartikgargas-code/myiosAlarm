@@ -1,12 +1,14 @@
 import Foundation
 
-/// Resolves the App Group identifier at runtime. AltStore/SideStore resign the
-/// entitlement group by RENAMING it (usually by adding the team ID), so a hardcoded
-/// group name returns a nil container on device.
+/// Resolves the App Group identifier at runtime. A re-signing tool RENAMES every App Group to
+/// `<group>.<TEAMID>`, so the build-time name is never granted and `containerURL` returns nil
+/// for it. The renamed name used to be recorded in Info.plist as `ALTAppGroups`, but SideStore
+/// (commit 7866508) stopped writing it - the granted ids now exist only in the provisioning
+/// profile embedded in each bundle, so that is where they are read from.
 ///
-/// The renaming scheme is not ours to predict, so nothing is guessed from the shape of
-/// a name: every candidate is probed with `containerURL(forSecurityApplicationGroupIdentifier:)`
-/// and the first one the phone actually grants a container for wins.
+/// Nothing is guessed: every candidate is probed with
+/// `containerURL(forSecurityApplicationGroupIdentifier:)` and the first one the phone actually
+/// grants a container for wins.
 public enum AppGroupResolver {
     public static let productionFallback = "group.com.example.alarmclock"
 
@@ -16,16 +18,39 @@ public enum AppGroupResolver {
             ?? productionFallback
     }
 
+    /// The group ids the phone granted THIS process, taken from this bundle's own provisioning
+    /// profile. Empty when there is no profile (simulator / CI builds) or it cannot be read.
+    public static func profileGroupIdentifiers() -> [String] {
+        guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              // isoLatin1, not utf8: the profile is CMS-signed, so utf8 decoding returns nil.
+              let text = String(data: data, encoding: .isoLatin1),
+              let start = text.range(of: "<?xml"),
+              let end = text.range(of: "</plist>"),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: Data(text[start.lowerBound..<end.upperBound].utf8),
+                  format: nil
+              ) as? [String: Any],
+              let entitlements = plist["Entitlements"] as? [String: Any],
+              let groups = entitlements["com.apple.security.application-groups"] as? [String]
+        else {
+            return []
+        }
+        return groups
+    }
+
     /// Every identifier worth trying, most likely first.
     public static func candidates() -> [String] {
         let configured = configuredIdentifier
         let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
 
         var list: [String] = []
+        // Whatever this process was actually granted comes first.
+        list.append(contentsOf: profileGroupIdentifiers())
         if let match = resigned.first(where: { $0 == configured || $0.hasPrefix(configured + ".") }) {
             list.append(match)
         }
-        // Then EVERY resigned group, whatever it is called.
+        // Then EVERY resigned group, whatever it is called, then the configured name.
         list.append(contentsOf: resigned)
         list.append(configured)
 
@@ -44,9 +69,11 @@ public enum AppGroupResolver {
     public static func describe() -> String {
         let configured = configuredIdentifier
         let resigned = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let fromProfile = profileGroupIdentifiers()
         let chosen = resolve() ?? "none"
         return "configured=" + configured
             + " altGroups=" + (resigned.isEmpty ? "none" : resigned.joined(separator: ","))
+            + " profile=" + (fromProfile.isEmpty ? "none" : fromProfile.joined(separator: ","))
             + " chosen=" + chosen
     }
 }
