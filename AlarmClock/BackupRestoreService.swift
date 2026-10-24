@@ -1,6 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 import SwiftUI
+import WidgetKit
 import os.log
 
 /// Document wrapper for .fileExporter - exports as JSON file from a file URL
@@ -37,6 +38,12 @@ final class BackupRestoreService {
         var sounds: [BackupSoundFile]  // Only imported sounds
         var version: Int = 2
         var exportedAt: Date = Date()
+
+        // Added later - optional, so older backup files still decode.
+        var playlists: [Playlist]? = nil
+        var activeThemeName: String? = nil
+        var activeUserThemeID: UUID? = nil
+        var widgetSettings: [String: Double]? = nil
         
         struct BackupSoundFile: Codable {
             let fileName: String
@@ -47,6 +54,39 @@ final class BackupRestoreService {
         }
     }
     
+    /// Widget / Lock Screen / one-line / Home Screen settings kept in the App Group defaults.
+    /// Booleans are stored as 1.0 / 0.0.
+    private static let widgetBoolKeys = [
+        "widgetBatteryShowCircle", "widgetBatteryShowText", "widgetBatteryShowPercentSign",
+        "widgetInlineShowBattery", "widgetHomeShowCircle", "widgetHomeShowText"
+    ]
+
+    private static let widgetNumberKeys = [
+        "widgetBatteryCircleScale", "widgetBatteryTextScale", "widgetBatteryPlateOpacity"
+    ]
+
+    private func exportWidgetSettings() -> [String: Double] {
+        let defaults = WidgetSettingsStore.defaults
+        var result: [String: Double] = [:]
+        for key in Self.widgetBoolKeys {
+            if let value = defaults.object(forKey: key) as? Bool { result[key] = value ? 1.0 : 0.0 }
+        }
+        for key in Self.widgetNumberKeys {
+            if let value = defaults.object(forKey: key) as? Double { result[key] = value }
+        }
+        return result
+    }
+
+    private func restoreWidgetSettings(_ settings: [String: Double]) {
+        let defaults = WidgetSettingsStore.defaults
+        for key in Self.widgetBoolKeys {
+            if let value = settings[key] { defaults.set(value >= 0.5, forKey: key) }
+        }
+        for key in Self.widgetNumberKeys {
+            if let value = settings[key] { defaults.set(value, forKey: key) }
+        }
+    }
+
     private init() {}
     
     /// Export all app data to a JSON file (metadata-only, no audio bytes)
@@ -78,13 +118,17 @@ final class BackupRestoreService {
         let displayNames = soundLibrary.savedDisplayNamesForBackup()
         let durations = soundLibrary.savedDurationsForBackup()
         
-        let archive = BackupArchive(
+        var archive = BackupArchive(
             alarms: try coordinator.currentEngine.snapshot,
             userThemes: themeManager.userThemes,
             displayNameOverrides: displayNames,
             durationOverrides: durations,
             sounds: soundFiles
         )
+        archive.playlists = soundLibrary.playlistsForBackup()
+        archive.activeThemeName = themeManager.currentTheme.rawValue
+        archive.activeUserThemeID = themeManager.activeUserThemeID
+        archive.widgetSettings = exportWidgetSettings()
         
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
         let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -168,6 +212,10 @@ final class BackupRestoreService {
         // Stage 3: Reload sound library
         soundLibrary.loadSounds()
         
+        // Stage 3b: Restore playlists (older backups simply have none)
+        if let backedUpPlaylists = archive.playlists {
+            soundLibrary.restorePlaylistsFromBackup(backedUpPlaylists)
+        }
         // Stage 4: Validate alarm sound references - reset missing imported sounds to Default
         var restoredAlarms = archive.alarms.alarms
         var changed = false
@@ -196,6 +244,15 @@ final class BackupRestoreService {
         let themeManager = ThemeManager.shared
         themeManager.userThemes = archive.userThemes
         themeManager.saveUserThemes()
+        themeManager.restoreActiveTheme(
+            themeName: archive.activeThemeName,
+            activeUserThemeID: archive.activeUserThemeID
+        )
+        // Stage 6b: Restore widget / one-line / circle settings and refresh the widgets
+        if let widgetSettings = archive.widgetSettings {
+            restoreWidgetSettings(widgetSettings)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
         
         // Stage 7: Re-schedule alarms
         await coordinator.synchronize()

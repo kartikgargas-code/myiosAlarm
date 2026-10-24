@@ -359,6 +359,22 @@ final class SoundLibrary {
         setDurationOverride(seconds, for: fileName)
     }
 
+    /// Playlists as they are right now, for backup.
+    func playlistsForBackup() -> [Playlist] {
+        playlists
+    }
+
+    /// Replace the playlists with a restored set. Playlists already present are kept and a
+    /// restored one with the same id wins, so nothing the user has is lost. The result is
+    /// healed against the sounds that exist so a playlist never points at a missing song.
+    func restorePlaylistsFromBackup(_ restored: [Playlist]) {
+        var merged = playlists.filter { existing in !restored.contains(where: { $0.id == existing.id }) }
+        merged.append(contentsOf: restored)
+        playlists = merged
+        savePlaylists()
+        selfHealPlaylists()
+    }
+
     private func loadPlaylists() {
         guard let data = UserDefaults.standard.data(forKey: playlistKey),
               let decoded = try? JSONDecoder().decode([Playlist].self, from: data) else {

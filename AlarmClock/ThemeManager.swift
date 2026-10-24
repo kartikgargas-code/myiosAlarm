@@ -207,6 +207,18 @@ final class ThemeManager {
         userTheme.colors.toThemeColors()
     }
 
+    /// Re-select the theme a backup was made with: a built-in theme by its raw value, or a user
+    /// theme by id. Silently does nothing if the theme is not recognised.
+    func restoreActiveTheme(themeName: String?, activeUserThemeID id: UUID?) {
+        if let id, let userTheme = userThemes.first(where: { $0.id == id }) {
+            selectUserTheme(userTheme)
+            return
+        }
+        if let themeName, let theme = Theme(rawValue: themeName), theme != .custom {
+            selectTheme(theme)
+        }
+    }
+
     private func loadUserThemes() {
         if let data = defaults.data(forKey: userThemesKey),
            let decoded = try? JSONDecoder().decode([UserTheme].self, from: data) {
