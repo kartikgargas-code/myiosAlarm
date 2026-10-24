@@ -64,9 +64,14 @@ struct AlarmClockWidgetBundle: WidgetBundle {
     
     var body: some Widget {
         NextAlarmWidget()
+        NextAlarmControl()
         BatteryWidget()
         MemoryWidget()
         NextAlarmLiveActivity()
+        // Control Center buttons (headless AppIntents)
+        SkipNextAlarmControl()
+        AlarmMinus10Control()
+        AlarmPlus10Control()
     }
 }
 
@@ -75,6 +80,23 @@ struct WidgetAlarmServiceRegistrar {
     @MainActor
     static func register() {
         LiveActivityAlarmServiceProvider.shared = WidgetAlarmService()
+    }
+}
+
+/// Lock Screen bottom-area control button for the next alarm.
+struct NextAlarmControl: ControlWidget {
+    static let kind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockControlKind") as? String
+        ?? "com.example.alarmclock.next-alarm-control"
+
+    var body: some ControlWidgetConfiguration {
+        SmartWakeDebugLog.log("CONTROL CONFIG: NextAlarmControl built, action=SkipNextAlarmIntent")
+        return StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: SkipNextAlarmIntent()) {
+                Label("Skip Next", systemImage: "forward.end")
+            }
+        }
+        .displayName("Next Alarm")
+        .description("Skips the next alarm occurrence.")
     }
 }
 
@@ -1054,6 +1076,51 @@ private func queuePendingWidgetAction(_ action: String, reason: String) async th
     postDarwinNotification("com.example.alarmclock.widget.changed")
 }
 
+
+/// Control Widget Button: Skip next alarm
+struct SkipNextAlarmControl: ControlWidget {
+    static let kind = "com.example.alarmclock.control.skip-next"
+    
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: SkipNextAlarmIntent()) {
+                Label("Skip Next Alarm", systemImage: "forward.end")
+            }
+        }
+        .displayName("Skip Next Alarm")
+        .description("Skip the next alarm occurrence.")
+    }
+}
+
+/// Control Widget Button: Alarm -10 min
+struct AlarmMinus10Control: ControlWidget {
+    static let kind = "com.example.alarmclock.control.minus10"
+    
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: AlarmMinus10Intent()) {
+                Label("Alarm -10 min", systemImage: "minus.circle")
+            }
+        }
+        .displayName("Alarm -10 min")
+        .description("Move the next alarm 10 minutes earlier.")
+    }
+}
+
+/// Control Widget Button: Alarm +10 min
+struct AlarmPlus10Control: ControlWidget {
+    static let kind = "com.example.alarmclock.control.plus10"
+    
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: AlarmPlus10Intent()) {
+                Label("Alarm +10 min", systemImage: "plus.circle")
+            }
+        }
+        .displayName("Alarm +10 min")
+        .description("Move the next alarm 10 minutes later.")
+    }
+}
 
 /// Darwin notification bridge for widget-to-app communication
 private func postDarwinNotification(_ name: String) {

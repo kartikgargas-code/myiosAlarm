@@ -81,7 +81,7 @@ final class AlarmCoordinator {
     private static let lastStitchPruneFreedBytesKey = "lastStitchPruneFreedBytes"
 
     /// Live Activity / Dynamic Island toggle — when false, never request and end all existing on launch
-    static let liveActivityEnabled = true
+    static let liveActivityEnabled = false
 
     /// Live Activity for Dynamic Island
     private var liveActivity: Activity<NextAlarmAttributes>?
