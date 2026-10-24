@@ -50,6 +50,8 @@ targets:
         NSAlarmKitUsageDescription: Alarm Clock schedules alarms you explicitly create and test.
         CFBundleDisplayName: $(APP_DISPLAY_NAME)
         AlarmClockAppGroupIdentifier: $(APP_GROUP_IDENTIFIER)
+        ALTAppGroups:
+          - $(APP_GROUP_IDENTIFIER)
         AlarmClockWidgetKind: $(WIDGET_KIND)
         AlarmClockControlKind: $(CONTROL_KIND)
         UILaunchScreen: {}

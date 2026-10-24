@@ -384,6 +384,14 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     // Worked out from the alarm list itself, as of `date`, so the widget is correct even when
     // the app has not run for a while and a passed alarm rolls on to the next one.
     private func loadEntry(at date: Date) -> NextAlarmWidgetEntry {
+        // A sideloading tool that does not provision an App Group (SideStore on a free Apple
+        // ID) leaves this nil, and then the shared alarm file can never be read - so read the
+        // phone's own alarm list instead.
+        if FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) == nil {
+            return entryFromAlarmKit(at: date)
+        }
         guard let appGroupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         ) else {
@@ -433,6 +441,58 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         )
     }
 
+    /// The next alarm taken straight from the phone's own alarm list. Used when the shared
+    /// App Group is unavailable. Only the TIME is available here: an alarm's label lives in
+    /// its attributes, which are not readable from this list - the Live Activity is what
+    /// shows the label.
+    private func entryFromAlarmKit(at date: Date) -> NextAlarmWidgetEntry {
+        do {
+            let alarms = try AlarmManager.shared.alarms
+            var next: Date?
+            for alarm in alarms {
+                guard alarm.state == .scheduled else { continue }
+                guard let schedule = alarm.schedule, case .fixed(let fireDate) = schedule else { continue }
+                if fireDate > date, next == nil || fireDate < next! {
+                    next = fireDate
+                }
+            }
+            SmartWakeDebugLog.log(
+                "WIDGET ALARMKIT alarms=\(alarms.count) next=\(next.map { ISO8601DateFormatter().string(from: $0) } ?? "none")",
+                force: true
+            )
+            guard let fireDate = next else { return emptyEntry(at: date) }
+            return entryFromAlarmKitDate(fireDate, at: date)
+        } catch {
+            SmartWakeDebugLog.log("WIDGET ALARMKIT read FAILED: \(error.localizedDescription)", force: true)
+            return emptyEntry(at: date)
+        }
+    }
+
+    private func entryFromAlarmKitDate(_ fireDate: Date, at date: Date) -> NextAlarmWidgetEntry {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+
+        let calendar = Calendar.current
+        let dateIndicator: String
+        if calendar.isDate(fireDate, inSameDayAs: date) {
+            dateIndicator = "Today"
+        } else if calendar.isDate(fireDate, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: date) ?? date) {
+            dateIndicator = "Tomorrow"
+        } else {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "MMM d"
+            dateIndicator = dateFormatter.string(from: fireDate)
+        }
+        return NextAlarmWidgetEntry(
+            date: date,
+            alarmLabel: "Alarm",
+            nextTime: formatter.string(from: fireDate),
+            dateIndicator: dateIndicator,
+            hasAlarm: true,
+            alarmID: nil,
+            nextDate: fireDate
+        )
+    }
     private func emptyEntry(at date: Date) -> NextAlarmWidgetEntry {
         NextAlarmWidgetEntry(
             date: date,

@@ -8,6 +8,10 @@
     <string>$(WIDGET_DISPLAY_NAME)</string>
     <key>AlarmClockAppGroupIdentifier</key>
     <string>$(APP_GROUP_IDENTIFIER)</string>
+    <key>ALTAppGroups</key>
+    <array>
+        <string>$(APP_GROUP_IDENTIFIER)</string>
+    </array>
     <key>AlarmClockWidgetKind</key>
     <string>$(WIDGET_KIND)</string>
     <key>AlarmClockControlKind</key>
