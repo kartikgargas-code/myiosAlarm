@@ -850,27 +850,23 @@ final class SmartWakeService {
             return
         }
         
-        // Read fresh snapshot from App Group
-        // AltStore resigns the group (adds team suffix); resolve at runtime.
-        guard let appGroupIdentifier = AppGroupResolver.resolve() else {
-            os_log(.error, log: log, "App Group container not available")
-            return
+        // Prefer the shared copy - widget-initiated changes land there - but fall back to the
+        // app's own state. On a phone with no App Group the shared copy does not exist, and
+        // without this fallback nothing arms: the playlist never starts at wake time and only
+        // the backup alarm rings.
+        var sharedSnapshot: AlarmStoreSnapshot?
+        if let appGroupIdentifier = AppGroupResolver.resolve(),
+           let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
+            let alarmsURL = appGroupURL.appendingPathComponent("alarms.json")
+            if FileManager.default.fileExists(atPath: alarmsURL.path),
+               let data = try? Data(contentsOf: alarmsURL) {
+                sharedSnapshot = try? JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: data)
+            }
+        } else {
+            os_log(.info, log: log, "No App Group - arming from the app's own alarm state")
         }
-
-        guard let appGroupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
-            os_log(.error, log: log, "App Group container not available for %{public}s", appGroupIdentifier)
-            return
-        }
-        
-        let alarmsURL = appGroupURL.appendingPathComponent("alarms.json")
-        guard FileManager.default.fileExists(atPath: alarmsURL.path) else {
-            os_log(.info, log: log, "No alarms.json in App Group")
-            return
-        }
-        
         do {
-            let data = try Data(contentsOf: alarmsURL)
-            let snapshot = try JSONDecoder.alarmDecoder.decode(AlarmStoreSnapshot.self, from: data)
+            let snapshot = sharedSnapshot ?? coordinator.currentSnapshot
             
             // Create engine from snapshot to evaluate occurrences
             let engine = AlarmEngine(snapshot: snapshot, calendar: Calendar.current)

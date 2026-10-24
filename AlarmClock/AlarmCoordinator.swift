@@ -551,6 +551,10 @@ final class AlarmCoordinator {
         }
     }
 
+    var currentSnapshot: AlarmStoreSnapshot {
+        engine.snapshot
+    }
+
     /// Mirror alarms.json into the shared App Group so Smart Wake (and the
     /// widget/extension world) can read current alarm state. Best-effort:
     /// a missing container (no entitlements / unresolved group) just skips it.
