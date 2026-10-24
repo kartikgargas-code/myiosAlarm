@@ -209,15 +209,23 @@ enum BatteryReporter {
         ) { _ in
             write()
         }
+        // Refresh the stored number often so the widgets never fall back to their own
+        // unreliable read. No widget reload unless the number actually changes.
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+            write(reloadWidget: false)
+        }
     }
 
-    static func write() {
+    static func write(reloadWidget: Bool = true) {
         let level = UIDevice.current.batteryLevel
         guard level >= 0 else { return }
         let defaults = WidgetSettingsStore.defaults
+        let previous = defaults.object(forKey: "appBatteryLevel") as? Double
         defaults.set(Double(level), forKey: "appBatteryLevel")
         defaults.set(Date().timeIntervalSince1970, forKey: "appBatteryLevelAt")
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        if reloadWidget || previous != Double(level) {
+            WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        }
     }
 }
 

@@ -267,6 +267,10 @@ struct BatteryWidgetProvider: TimelineProvider {
         let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double
         let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double
         let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 3600 } ?? false
+        SmartWakeDebugLog.log(
+            "WIDGET battery appLevel=\(appLevel.map { String(Int(($0 * 100).rounded())) } ?? "none") age=\(appLevelAt.map { String(Int(Date().timeIntervalSince1970 - $0)) } ?? "none")s usedAppValue=\(appLevelIsFresh) ownRead=\(readBatteryLevel().map { String(Int(($0 * 100).rounded())) } ?? "none")",
+            force: true
+        )
         return BatteryWidgetEntry(
             date: Date(),
             level: (appLevelIsFresh ? appLevel : nil) ?? readBatteryLevel(),

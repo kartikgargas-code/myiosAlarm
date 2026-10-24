@@ -372,7 +372,6 @@ final class SoundLibrary {
         merged.append(contentsOf: restored)
         playlists = merged
         savePlaylists()
-        selfHealPlaylists()
     }
 
     private func loadPlaylists() {
@@ -382,7 +381,6 @@ final class SoundLibrary {
             return
         }
         playlists = decoded
-        selfHealPlaylists()
     }
 
     private func savePlaylists() {
