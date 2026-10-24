@@ -364,14 +364,22 @@ final class SoundLibrary {
         playlists
     }
 
-    /// Replace the playlists with a restored set. Playlists already present are kept and a
-    /// restored one with the same id wins, so nothing the user has is lost. The result is
-    /// healed against the sounds that exist so a playlist never points at a missing song.
-    func restorePlaylistsFromBackup(_ restored: [Playlist]) {
-        var merged = playlists.filter { existing in !restored.contains(where: { $0.id == existing.id }) }
-        merged.append(contentsOf: restored)
-        playlists = merged
+    /// Put restored playlists back, matching BY NAME. A playlist with that name that already
+    /// exists is kept as it is - it may already hold the songs the user re-imported - and the
+    /// backed-up one is NOT added a second time. Returns a map of the backed-up id to the
+    /// surviving id, so the caller can point the restored alarms at the right playlist.
+    func restorePlaylistsFromBackup(_ restored: [Playlist]) -> [UUID: UUID] {
+        var remap: [UUID: UUID] = [:]
+        for candidate in restored {
+            if let index = playlists.firstIndex(where: { $0.name == candidate.name }) {
+                remap[candidate.id] = playlists[index].id
+            } else {
+                playlists.append(candidate)
+                remap[candidate.id] = candidate.id
+            }
+        }
         savePlaylists()
+        return remap
     }
 
     private func loadPlaylists() {
@@ -579,12 +587,27 @@ final class SoundLibrary {
                 self.importedSounds.insert(sound, at: 0)
             }
 
-            let playlist = Playlist(
-                name: folderName,
-                soundIDs: importedSoundIDs,
-                selectedSoundIDs: importedSoundIDs  // All songs selected by default
-            )
-            self.playlists.append(playlist)
+            // A playlist with this folder's name may already exist - for example one that came back
+            // from a backup. Put the songs INTO it instead of adding a second playlist with the same
+            // name, so the alarms that already point at it keep working.
+            if let index = self.playlists.firstIndex(where: { $0.name == folderName }) {
+                var existing = self.playlists[index]
+                for id in importedSoundIDs where !existing.soundIDs.contains(id) {
+                    existing.soundIDs.append(id)
+                }
+                for id in importedSoundIDs where !existing.selectedSoundIDs.contains(id) {
+                    existing.selectedSoundIDs.append(id)
+                }
+                self.playlists[index] = existing
+                AudioProcessingService.shared.removePrecomposedPlaylist(for: existing.id)
+            } else {
+                let playlist = Playlist(
+                    name: folderName,
+                    soundIDs: importedSoundIDs,
+                    selectedSoundIDs: importedSoundIDs  // All songs selected by default
+                )
+                self.playlists.append(playlist)
+            }
             self.savePlaylists()
         }
 

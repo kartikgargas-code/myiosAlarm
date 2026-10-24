@@ -513,6 +513,7 @@ struct PlaylistEditorView: View {
     @State private var deleteError: String?
     @State private var sortOption: PlaylistSortOption
     @State private var playOrder: PlaylistPlayOrder
+    @State private var playlistName: String = ""
     private let previewService = SoundPreviewService.shared
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
@@ -523,6 +524,7 @@ struct PlaylistEditorView: View {
         self._initialSelectedSoundIDs = State(initialValue: initial)
         self._sortOption = State(initialValue: playlist.sortOption)
         self._playOrder = State(initialValue: playlist.playOrder)
+        self._playlistName = State(initialValue: playlist.name)
     }
 
     private var sortedSounds: [ImportedSound] {
@@ -624,6 +626,15 @@ struct PlaylistEditorView: View {
                     }
                 }
 
+                Section("Playlist name") {
+                    TextField("Name", text: $playlistName)
+                    Button("Rename Playlist") {
+                        let trimmed = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
+                    }
+                    .disabled(playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
                 Section {
                     Button("Delete Playlist", role: .destructive) {
                         showingDeleteConfirmation = true

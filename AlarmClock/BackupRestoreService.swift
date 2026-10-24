@@ -212,9 +212,11 @@ final class BackupRestoreService {
         // Stage 3: Reload sound library
         soundLibrary.loadSounds()
         
-        // Stage 3b: Restore playlists (older backups simply have none)
+        // Stage 3b: Restore playlists (older backups simply have none). The returned map
+        // points backed-up playlist ids at the surviving playlist ids.
+        var playlistRemap: [UUID: UUID] = [:]
         if let backedUpPlaylists = archive.playlists {
-            soundLibrary.restorePlaylistsFromBackup(backedUpPlaylists)
+            playlistRemap = soundLibrary.restorePlaylistsFromBackup(backedUpPlaylists)
         }
         // Stage 4: Validate alarm sound references - reset missing imported sounds to Default
         var restoredAlarms = archive.alarms.alarms
@@ -227,6 +229,22 @@ final class BackupRestoreService {
             }
         }
         
+        // Stage 4b: an alarm may refer to a playlist that was matched by NAME, in which case its
+        // stored id is the backed-up one and has to be pointed at the playlist that survived.
+        for i in restoredAlarms.indices {
+            switch restoredAlarms[i].sound {
+            case .random(let playlistID):
+                if let mapped = playlistRemap[playlistID] {
+                    restoredAlarms[i].sound = .random(mapped)
+                }
+            case .precomposedPlaylist(let playlistID, let selection):
+                if let mapped = playlistRemap[playlistID] {
+                    restoredAlarms[i].sound = .precomposedPlaylist(mapped, selection)
+                }
+            default:
+                break
+            }
+        }
         let finalAlarms = AlarmStoreSnapshot(
             alarms: restoredAlarms,
             playlists: archive.alarms.playlists,
