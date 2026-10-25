@@ -590,6 +590,8 @@ struct SoundsView: View {
     // Playlist editor/creator
     @State private var playlistToEdit: Playlist? = nil
     @State private var showingPlaylistCreator = false
+    @State private var playlistToDelete: Playlist? = nil
+    @State private var playlistDeleteError: String? = nil
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -789,6 +791,28 @@ struct SoundsView: View {
                 Button("Cancel", role: .cancel) { folderToDelete = nil }
             } message: {
                 Text("Deletes every track in this folder and removes its playlist.")
+            }
+            .confirmationDialog("Delete playlist \"\(playlistToDelete?.name ?? "")\"?",
+                isPresented: Binding(get: { playlistToDelete != nil }, set: { if !$0 { playlistToDelete = nil } }),
+                titleVisibility: .visible) {
+                Button("Delete Playlist", role: .destructive) {
+                    if let playlist = playlistToDelete,
+                       let error = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: coordinator.alarms) {
+                        playlistDeleteError = error.localizedDescription
+                    }
+                    playlistToDelete = nil
+                }
+                Button("Cancel", role: .cancel) { playlistToDelete = nil }
+            } message: {
+                Text("Removes this playlist. An alarm that uses it has to be changed first.")
+            }
+            .alert("Unable to Delete Playlist", isPresented: Binding(
+                get: { playlistDeleteError != nil },
+                set: { if !$0 { playlistDeleteError = nil } }
+            )) {
+                Button("OK", role: .cancel) { playlistDeleteError = nil }
+            } message: {
+                Text(playlistDeleteError ?? "")
             }
     }
 
@@ -1067,6 +1091,11 @@ private func makeCreatorSheet() -> some View {
         .contentShape(Rectangle())
         .onTapGesture {
             playlistToEdit = playlist
+        }
+        .contextMenu {
+            Button("Delete Playlist", role: .destructive) {
+                playlistToDelete = playlist
+            }
         }
         .padding(.vertical, 4)
         .listRowBackground(colors.card)

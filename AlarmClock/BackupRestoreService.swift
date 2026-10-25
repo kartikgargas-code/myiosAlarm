@@ -88,6 +88,34 @@ final class BackupRestoreService {
     }
 
     private init() {}
+
+    /// Suggested name for the next backup: 01mynextalarm25-10-26, then 02..., counting up.
+    /// The number is remembered between launches and re-derived from the files already on disk,
+    /// so a reinstall does not restart at 01 and quietly overwrite an older backup.
+    static func suggestedExportName(date: Date = Date()) -> String {
+        let f = DateFormatter(); f.dateFormat = "dd-MM-yy"
+        return String(format: "%02dmynextalarm%@", nextExportNumber(), f.string(from: date))
+    }
+    /// One past the highest number already used by a backup file or by an earlier launch.
+    private static func nextExportNumber() -> Int {
+        var highest = UserDefaults.standard.integer(forKey: "backupExportNumber")
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        let dir = docs?.appendingPathComponent("AlarmClock_Backups", isDirectory: true)
+        if let path = dir?.path,
+           let names = try? FileManager.default.contentsOfDirectory(atPath: path) {
+            for name in names {
+                if let n = Int(name.prefix { $0.isNumber }), n > highest { highest = n }
+            }
+        }
+        return highest + 1
+    }
+    /// Remembers the number that was actually written, so the next suggestion is one higher.
+    static func rememberExportNumber(from name: String) {
+        guard let used = Int(name.prefix { $0.isNumber }) else { return }
+        if used > UserDefaults.standard.integer(forKey: "backupExportNumber") {
+            UserDefaults.standard.set(used, forKey: "backupExportNumber")
+        }
+    }
     
     /// Export all app data to a JSON file (metadata-only, no audio bytes)
     func exportArchive(fileName: String? = nil) async throws -> URL {

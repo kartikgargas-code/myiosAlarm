@@ -44,6 +44,36 @@ struct SettingsView: View {
             List {
                 Section {
                     Button("Appearance") { showingAppearance = true }
+                    Button("Play History") { showingHistory = true }
+                    Button("Sounds") { showingSounds = true }
+                    Button("Export Backup") {
+                        exportName = BackupRestoreService.suggestedExportName()
+                        showingExportAlert = true
+                    }
+                    Button("Import Backup") {
+                        showingImportPicker = true
+                    }
+                    Button("AlarmKit Diagnostics") { showingDiagnostics = true }
+                    Button("Free memory") {
+                        Task {
+                            freedMemoryMB = await SystemMemory.freeMemory()
+                            refreshMemory()
+                        }
+                    }
+                    if let freedMemoryMB {
+                        Text(freedMemoryMB > 0 ? "Freed about \(freedMemoryMB) MB" : "Nothing to free right now")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
+                }
+
+                Section("Memory") {
+                    HStack {
+                        Text("In use")
+                        Spacer()
+                        Text(memoryText)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
                 }
                 Section("Lock Screen circles") {
                     Toggle("Show the circle", isOn: $batteryShowCircle)
@@ -84,49 +114,6 @@ struct SettingsView: View {
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                 }
 
-                Section("Memory") {
-                    HStack {
-                        Text("In use")
-                        Spacer()
-                        Text(memoryText)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    }
-                    Button("Free memory") {
-                        Task {
-                            freedMemoryMB = await SystemMemory.freeMemory()
-                            refreshMemory()
-                        }
-                    }
-                    if let freedMemoryMB {
-                        Text(freedMemoryMB > 0 ? "Freed about \(freedMemoryMB) MB" : "Nothing to free right now")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    }
-                }
-                
-                Section {
-                    Button("AlarmKit Diagnostics") { showingDiagnostics = true }
-                }
-                
-                Section {
-                    Button("Play History") { showingHistory = true }
-                }
-                
-                Section {
-                    Button("Sounds") { showingSounds = true }
-                }
-                
-                Section {
-                    Button("Export Backup") {
-                        let f = DateFormatter(); f.dateFormat = "dd-MM-yy"
-                        exportName = "01mynextalarm\(f.string(from: Date()))"
-                        showingExportAlert = true
-                    }
-                    Button("Import Backup") {
-                        showingImportPicker = true
-                    }
-                }
-                
                 Section("Smart Wake") {
                     Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
@@ -227,6 +214,7 @@ struct SettingsView: View {
         Task {
             do {
                 let url = try await BackupRestoreService.shared.exportArchive(fileName: name)
+                BackupRestoreService.rememberExportNumber(from: name)
                 shareURL = url
                 showingShareSheet = true
             } catch {
