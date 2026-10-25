@@ -110,6 +110,11 @@ final class SoundLibrary {
     }
 
     private(set) var importedSounds: [ImportedSound] = []
+    /// Extensions AVFoundation can decode. Used by the folder import AND by the disk scan,
+    /// so an imported file is still listed after a relaunch. Keep both uses in step.
+    static let supportedAudioExtensions: Set<String> = [
+        "mp3", "m4a", "m4b", "aac", "wav", "aif", "aiff", "aifc", "caf", "flac", "mp4", "mov"
+    ]
     private(set) var playlists: [Playlist] = []
     private(set) var linkedRecords: [LinkedSoundRecord] = []
     private let fileManager = FileManager.default
@@ -154,7 +159,7 @@ final class SoundLibrary {
             let displayNames = savedDisplayNames()
             let copiedSounds: [ImportedSound] = files.compactMap { (url: URL) -> ImportedSound? in
                 let ext = url.pathExtension.lowercased()
-                guard ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains(ext) else { return nil }
+                guard Self.supportedAudioExtensions.contains(ext) else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 let fileName = url.lastPathComponent
@@ -502,7 +507,7 @@ final class SoundLibrary {
                 options: [.skipsHiddenFiles]
             )
 
-            let audioFiles = fileURLs.filter { ["mp3", "m4a", "wav", "aac", "caf", "aiff"].contains($0.pathExtension.lowercased()) }
+            let audioFiles = fileURLs.filter { Self.supportedAudioExtensions.contains($0.pathExtension.lowercased()) }
 
             for sourceFileURL in audioFiles {
                 do {
@@ -558,7 +563,7 @@ final class SoundLibrary {
         }
 
         guard !importedSoundInfos.isEmpty else {
-            throw SoundLibraryError.folderImportFailed("No valid MP3 files found in folder.")
+            throw SoundLibraryError.folderImportFailed("No playable audio files found in this folder.")
         }
 
         // Update @MainActor state

@@ -42,7 +42,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Appearance") {
+                Section {
                     Button("Appearance") { showingAppearance = true }
                 }
                 Section("Lock Screen circles") {
@@ -104,22 +104,22 @@ struct SettingsView: View {
                     }
                 }
                 
-                Section("Diagnostics") {
+                Section {
                     Button("AlarmKit Diagnostics") { showingDiagnostics = true }
                 }
                 
-                Section("History") {
+                Section {
                     Button("Play History") { showingHistory = true }
                 }
                 
-                Section("Sounds") {
+                Section {
                     Button("Sounds") { showingSounds = true }
                 }
                 
-                Section("Backup & Restore") {
+                Section {
                     Button("Export Backup") {
-                        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-                        exportName = "AlarmClock_Backup_\(f.string(from: Date()))"
+                        let f = DateFormatter(); f.dateFormat = "dd-MM-yy"
+                        exportName = "01mynextalarm\(f.string(from: Date()))"
                         showingExportAlert = true
                     }
                     Button("Import Backup") {

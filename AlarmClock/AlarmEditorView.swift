@@ -149,7 +149,7 @@ struct AlarmEditorView: View {
                 HStack {
                     Text("Alarm Sound")
                     Spacer()
-                    Text(selectedSound.displayName)
+                    Text(selectedSound.appDisplayName)
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     Image(systemName: "chevron.right")
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)

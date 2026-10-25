@@ -13,7 +13,6 @@ struct SoundPickerView: View {
     @State private var importError: String?
     @State private var importStatus: String?
     // pickerEventLog removed - diagnostics section deleted
-    @State private var showingDeleteConfirmation = false
     // Single fileImporter driven by enum — avoids SwiftUI conflict of two modifiers
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
@@ -509,11 +508,10 @@ struct PlaylistEditorView: View {
     let alarms: [AlarmRecord]
     @State private var selectedSoundIDs: Set<UUID>
     @State private var initialSelectedSoundIDs: Set<UUID>
-    @State private var showingDeleteConfirmation = false
-    @State private var deleteError: String?
     @State private var sortOption: PlaylistSortOption
     @State private var playOrder: PlaylistPlayOrder
     @State private var playlistName: String = ""
+    @State private var isEditingName = false
     private let previewService = SoundPreviewService.shared
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
@@ -525,6 +523,19 @@ struct PlaylistEditorView: View {
         self._sortOption = State(initialValue: playlist.sortOption)
         self._playOrder = State(initialValue: playlist.playOrder)
         self._playlistName = State(initialValue: playlist.name)
+    }
+
+    private var trimmedPlaylistName: String {
+        playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+
+    private func commitPlaylistName() {
+        let trimmed = trimmedPlaylistName
+        guard !trimmed.isEmpty else { return }
+        playlistName = trimmed
+        SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
+        isEditingName = false
     }
 
     private var sortedSounds: [ImportedSound] {
@@ -547,8 +558,31 @@ struct PlaylistEditorView: View {
         NavigationStack {
             List {
                 Section("Playlist Name") {
-                    Text(playlist.name)
-                        .font(.headline)
+                    if isEditingName {
+                        HStack {
+                            TextField("Name", text: $playlistName)
+                            Spacer()
+                            Button {
+                                commitPlaylistName()
+                            } label: {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(ThemeManager.shared.colors.accent)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(trimmedPlaylistName.isEmpty)
+                        }
+                    } else {
+                        HStack {
+                            Text(playlistName)
+                                .font(.headline)
+                            Spacer()
+                            Image(systemName: "pencil")
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { isEditingName = true }
+                    }
                 }
 
                 Section {
@@ -625,21 +659,6 @@ struct PlaylistEditorView: View {
                         .disabled(selectedSoundIDs.isEmpty)
                     }
                 }
-
-                Section("Playlist name") {
-                    TextField("Name", text: $playlistName)
-                    Button("Rename Playlist") {
-                        let trimmed = playlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
-                    }
-                    .disabled(playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                Section {
-                    Button("Delete Playlist", role: .destructive) {
-                        showingDeleteConfirmation = true
-                    }
-                }
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
@@ -665,30 +684,36 @@ struct PlaylistEditorView: View {
                     ]
                 )
             }
-            .alert("Delete Playlist", isPresented: $showingDeleteConfirmation) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    if let error = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: alarms) {
-                        deleteError = error.localizedDescription
-                    } else {
-                        dismiss()
-                    }
-                }
-            }
-            .alert("Unable to Delete Playlist", isPresented: Binding(
-                get: { deleteError != nil },
-                set: { if !$0 { deleteError = nil } }
-            )) {
-                Button("OK", role: .cancel) { deleteError = nil }
-            } message: {
-                Text(deleteError ?? "")
-            }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
 }
 
 extension AlarmSound {
+    /// Same wording as `displayName`, but with the playlist's real name when it can be found.
+    /// `displayName` sits in the shared module (the widget compiles it too) and has no SoundLibrary.
+    var appDisplayName: String {
+        switch self {
+        case .random(let playlistID):
+            guard let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }) else {
+                return displayName
+            }
+            return playlist.name
+        case .precomposedPlaylist(let playlistID, _):
+            guard let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }) else {
+                return displayName
+            }
+            return playlist.name
+        case .imported(let id):
+            guard let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) else {
+                return displayName
+            }
+            return sound.name
+        case .systemDefault, .builtIn:
+            return displayName
+        }
+    }
+
     var systemFileName: String? {
         switch self {
         case .systemDefault, .imported, .random, .precomposedPlaylist: nil

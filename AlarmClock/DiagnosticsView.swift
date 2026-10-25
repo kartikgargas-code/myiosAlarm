@@ -368,7 +368,7 @@ struct DiagnosticsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Label: \(alarm.label.isEmpty ? "Alarm" : alarm.label)")
                     Text("ID: \(alarm.id.uuidString.prefix(8))")
-                    Text("Sound: \(alarm.sound.displayName)")
+                    Text("Sound: \(alarm.sound.appDisplayName)")
                     Text("Next Fire: \(next.effectiveDate.formatted(date: .complete, time: .standard))")
                     Text("Adjusted: \(next.isAdjusted ? "Yes" : "No")")
                     if next.isAdjusted {

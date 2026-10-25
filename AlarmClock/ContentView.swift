@@ -803,8 +803,7 @@ struct SoundsView: View {
     // Explicit identifiers keep the type-checker off the slow path.
     private var pickerContentTypes: [UTType] {
         if pickerMode == .files {
-            return ["public.mp3", "public.mpeg-4-audio", "com.microsoft.waveform-audio", "public.aiff-audio", "public.aac-audio"]
-                .compactMap { UTType($0) }
+            return [.audio, .movie]
         }
         return [.folder]
     }
