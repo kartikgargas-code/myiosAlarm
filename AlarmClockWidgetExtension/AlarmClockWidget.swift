@@ -148,7 +148,8 @@ struct MemoryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoryWidgetEntry>) -> Void) {
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        // 15 minutes was about 96 wake-ups a day, above Apple's 40-70 budget, so iOS throttles it.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date()
         let entry = makeEntry()
         SmartWakeDebugLog.log("WIDGET memory timeline used=\(entry.usedFraction.map { String(Int(($0 * 100).rounded())) } ?? "-")", force: true)
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
@@ -176,9 +177,11 @@ struct MemoryWidgetView: View {
         let circleScale = defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0
         let textScale = defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0
         let ringWidth = CGFloat(5 * circleScale)
+        let plateOpacity = defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
 
         ZStack {
             AccessoryWidgetBackground()
+                .opacity(plateOpacity)
             ZStack {
                 if showCircle {
                     Circle()
@@ -254,9 +257,9 @@ struct BatteryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
-        // The app pushes a reload whenever the level changes, so the widget itself only needs
-        // to ask again now and then - which keeps the phone from waking up too often.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        // The app pushes a reload whenever the level changes (5% steps), so one wake-up an hour is
+        // plenty - and well inside Apple's 40-70 reloads a day.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 60, to: Date()) ?? Date()
         let entry = makeEntry()
         SmartWakeDebugLog.log("WIDGET battery timeline level=\(entry.level.map { String(Int(($0 * 100).rounded())) } ?? "-")", force: true)
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
@@ -387,15 +390,23 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmWidgetEntry>) -> Void) {
         let now = Date()
 
+        // ONE ENTRY PER MINUTE (60 an hour) woke the widget extension every minute while a Lock
+        // Screen widget was visible, which is what drained the battery - Apple asks for entries
+        // at least five minutes apart. A five-minute step keeps the countdown close enough and
+        // wakes the extension twelve times an hour instead of sixty.
         var entries: [NextAlarmWidgetEntry] = []
-        // One entry per minute for the next hour, each worked out as of that minute, so the
-        // widget stays correct - and rolls on to the following alarm once one has passed -
-        // without WidgetKit having to reload it.
-        for minute in 0..<60 {
-            if let when = Calendar.current.date(byAdding: .minute, value: minute, to: now) {
+        for step in stride(from: 0, through: 60, by: 5) {
+            if let when = Calendar.current.date(byAdding: .minute, value: step, to: now) {
                 entries.append(loadEntry(at: when))
             }
         }
+        // One extra entry just after the next alarm, so the widget rolls on to the following
+        // alarm by itself even if the reload is late.
+        if let fireDate = loadEntry(at: now).nextDate, fireDate > now {
+            entries.append(loadEntry(at: fireDate.addingTimeInterval(61)))
+        }
+        // WidgetKit wants the entries oldest first.
+        entries.sort { $0.date < $1.date }
         if entries.isEmpty {
             entries = [loadEntry(at: now)]
         }
