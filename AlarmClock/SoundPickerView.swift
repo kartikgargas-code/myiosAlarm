@@ -692,7 +692,8 @@ struct PlaylistEditorView: View {
 extension AlarmSound {
     /// Same wording as `displayName`, but with the playlist's real name when it can be found.
     /// `displayName` sits in the shared module (the widget compiles it too) and has no SoundLibrary.
-    var appDisplayName: String {
+    /// SoundLibrary is @MainActor, so the whole helper is too — every call site is a view body.
+    @MainActor var appDisplayName: String {
         switch self {
         case .random(let playlistID):
             guard let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }) else {
