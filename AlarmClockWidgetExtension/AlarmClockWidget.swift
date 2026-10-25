@@ -172,12 +172,12 @@ struct MemoryWidgetView: View {
 
     var body: some View {
         let defaults = widgetDefaults()
-        let showCircle = defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true
-        let showText = defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true
-        let circleScale = defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0
-        let textScale = defaults.object(forKey: "widgetBatteryTextScale") as? Double ?? 1.0
+        let showCircle = defaults.object(forKey: "widgetMemoryShowCircle") as? Bool ?? true
+        let showText = defaults.object(forKey: "widgetMemoryShowText") as? Bool ?? true
+        let circleScale = defaults.object(forKey: "widgetMemoryCircleScale") as? Double ?? 1.0
+        let textScale = defaults.object(forKey: "widgetMemoryTextScale") as? Double ?? 1.0
         let ringWidth = CGFloat(5 * circleScale)
-        let plateOpacity = defaults.object(forKey: "widgetBatteryPlateOpacity") as? Double ?? 1.0
+        let plateOpacity = defaults.object(forKey: "widgetMemoryPlateOpacity") as? Double ?? 1.0
 
         ZStack {
             AccessoryWidgetBackground()
@@ -269,14 +269,16 @@ struct BatteryWidgetProvider: TimelineProvider {
         let defaults = widgetDefaults()
         let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double
         let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double
-        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 3600 } ?? false
+        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 600 } ?? false
+        let ownRead = readBatteryLevel()
+        let chosen = (appLevelIsFresh ? appLevel : nil) ?? ownRead ?? appLevel
         SmartWakeDebugLog.log(
-            "WIDGET battery appLevel=\(appLevel.map { String(Int(($0 * 100).rounded())) } ?? "none") age=\(appLevelAt.map { String(Int(Date().timeIntervalSince1970 - $0)) } ?? "none")s usedAppValue=\(appLevelIsFresh) ownRead=\(readBatteryLevel().map { String(Int(($0 * 100).rounded())) } ?? "none")",
+            "WIDGET battery appLevel=\(appLevel.map { String(Int(($0 * 100).rounded())) } ?? "none") age=\(appLevelAt.map { String(Int(Date().timeIntervalSince1970 - $0)) } ?? "none")s usedAppValue=\(appLevelIsFresh) ownRead=\(ownRead.map { String(Int(($0 * 100).rounded())) } ?? "none") chosen=\(chosen.map { String(Int(($0 * 100).rounded())) } ?? "none")",
             force: true
         )
         return BatteryWidgetEntry(
             date: Date(),
-            level: (appLevelIsFresh ? appLevel : nil) ?? readBatteryLevel(),
+            level: chosen,
             showCircle: defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true,
             showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
@@ -778,15 +780,15 @@ struct NextAlarmWidgetView: View {
 
     // The one-line widget renders a single string, so while the screen is dimmed the alarm
     // time and the battery are combined into one line.
-    // The entry may have been planned up to an hour ago, so prefer the value the app wrote.
+    // The entry may have been planned up to ten minutes ago, so prefer the value the app wrote.
     private var freshBatteryLevel: Double? {
         let defaults = widgetDefaults()
         if let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double,
            let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double,
-           Date().timeIntervalSince1970 - appLevelAt < 3600 {
+           Date().timeIntervalSince1970 - appLevelAt < 600 {
             return appLevel
         }
-        return entry.batteryLevel
+        return entry.batteryLevel ?? readBatteryLevel()
     }
 
     private var dimmedInlineText: String {

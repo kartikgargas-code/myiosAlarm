@@ -34,6 +34,11 @@ struct SettingsView: View {
     @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
     @AppStorage("widgetHomeShowCircle", store: WidgetSettingsStore.defaults) private var homeShowCircle = true
     @AppStorage("widgetHomeShowText", store: WidgetSettingsStore.defaults) private var homeShowText = true
+    @AppStorage("widgetMemoryShowCircle", store: WidgetSettingsStore.defaults) private var memoryShowCircle = true
+    @AppStorage("widgetMemoryShowText", store: WidgetSettingsStore.defaults) private var memoryShowText = true
+    @AppStorage("widgetMemoryCircleScale", store: WidgetSettingsStore.defaults) private var memoryCircleScale = 1.0
+    @AppStorage("widgetMemoryTextScale", store: WidgetSettingsStore.defaults) private var memoryTextScale = 1.0
+    @AppStorage("widgetMemoryPlateOpacity", store: WidgetSettingsStore.defaults) private var memoryPlateOpacity = 1.0
     @State private var memoryText = "Reading..."
     @State private var freedMemoryMB: Int? = nil
     let coordinator: AlarmCoordinator
@@ -113,6 +118,27 @@ struct SettingsView: View {
                     Toggle("Show the percentage", isOn: $homeShowText)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                 }
+                Section("Memory widget") {
+                    Toggle("Show the circle", isOn: $memoryShowCircle)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    Toggle("Show the percentage", isOn: $memoryShowText)
+                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Circle thickness: " + String(format: "%.1f", memoryCircleScale) + "\u{00d7}")
+                            .font(.caption)
+                        Slider(value: $memoryCircleScale, in: 0.5...3.0)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Percentage size: " + String(format: "%.1f", memoryTextScale) + "\u{00d7}")
+                            .font(.caption)
+                        Slider(value: $memoryTextScale, in: 0.5...3.0)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Plate behind it: " + String(format: "%.0f", memoryPlateOpacity * 100) + "%")
+                            .font(.caption)
+                        Slider(value: $memoryPlateOpacity, in: 0.0...1.0)
+                    }
+                }
 
                 Section("Smart Wake") {
                     Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
@@ -143,7 +169,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)") { _, _ in
+            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)|\(memoryShowCircle)|\(memoryShowText)|\(memoryCircleScale)|\(memoryTextScale)|\(memoryPlateOpacity)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }
             .onAppear { refreshMemory() }

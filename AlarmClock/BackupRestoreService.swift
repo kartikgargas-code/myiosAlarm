@@ -58,11 +58,13 @@ final class BackupRestoreService {
     /// Booleans are stored as 1.0 / 0.0.
     private static let widgetBoolKeys = [
         "widgetBatteryShowCircle", "widgetBatteryShowText", "widgetBatteryShowPercentSign",
-        "widgetInlineShowBattery", "widgetHomeShowCircle", "widgetHomeShowText"
+        "widgetInlineShowBattery", "widgetHomeShowCircle", "widgetHomeShowText",
+        "widgetMemoryShowCircle", "widgetMemoryShowText"
     ]
 
     private static let widgetNumberKeys = [
-        "widgetBatteryCircleScale", "widgetBatteryTextScale", "widgetBatteryPlateOpacity"
+        "widgetBatteryCircleScale", "widgetBatteryTextScale", "widgetBatteryPlateOpacity",
+        "widgetMemoryCircleScale", "widgetMemoryTextScale", "widgetMemoryPlateOpacity"
     ]
 
     private func exportWidgetSettings() -> [String: Double] {

@@ -198,34 +198,57 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
 enum BatteryReporter {
     static let widgetKind = "com.example.alarmclock.battery-widget"
-
+    /// The level a reload was last asked for, and when. iOS budgets widget reloads (about 40-70
+    /// a day), so asking on every 1% step while charging spent the budget and the widget then
+    /// froze on an old number. Only a 5% move, an hour of silence, or a moment that does not
+    /// count against the budget gets a reload now.
+    private static var lastReloadPercent: Int? = nil
+    private static var lastReloadAt: Date = .distantPast
     static func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        write()
+        write(forceReload: true)
         NotificationCenter.default.addObserver(
             forName: UIDevice.batteryLevelDidChangeNotification,
             object: nil,
             queue: .main
         ) { _ in
-            write()
+            write(forceReload: false)
         }
-        // Refresh the stored number often so the widgets never fall back to their own
-        // unreliable read. No widget reload unless the number actually changes.
+        // A reload asked for while the app is awake, or on the way to the background, is not
+        // charged to the widget budget - so those are the moments worth spending.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            write(forceReload: true)
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            write(forceReload: true)
+        }
+        // Keep the stored number recent. No reload ask: the five-minute write is silent.
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
-            write(reloadWidget: false)
+            write(forceReload: false)
         }
     }
-
-    static func write(reloadWidget: Bool = true) {
+    static func write(forceReload: Bool) {
         let level = UIDevice.current.batteryLevel
         guard level >= 0 else { return }
         let defaults = WidgetSettingsStore.defaults
-        let previous = defaults.object(forKey: "appBatteryLevel") as? Double
         defaults.set(Double(level), forKey: "appBatteryLevel")
         defaults.set(Date().timeIntervalSince1970, forKey: "appBatteryLevelAt")
-        if reloadWidget || previous != Double(level) {
-            WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
-        }
+        let percent = Int((level * 100).rounded())
+        let movedFive = lastReloadPercent.map { abs(percent - $0) >= 5 } ?? true
+        let silentTooLong = Date().timeIntervalSince(lastReloadAt) > 3600
+        guard forceReload || movedFive || silentTooLong else { return }
+        lastReloadPercent = percent
+        lastReloadAt = Date()
+        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        SmartWakeDebugLog.log("BATTERY reload asked n=\(percent)% force=\(forceReload) moved5=\(movedFive) silent=\(silentTooLong)")
     }
 }
 
