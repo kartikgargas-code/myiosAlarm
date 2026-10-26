@@ -160,6 +160,9 @@ final class SoundLibrary {
             let copiedSounds: [ImportedSound] = files.compactMap { (url: URL) -> ImportedSound? in
                 let ext = url.pathExtension.lowercased()
                 guard Self.supportedAudioExtensions.contains(ext) else { return nil }
+                // "playlist_..." is the app's own stitched playlist render, not a song anybody
+                // imported - keep it out of the list even when an old build left one in this folder.
+                guard !url.lastPathComponent.hasPrefix("playlist_") else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 let fileName = url.lastPathComponent
@@ -507,7 +510,10 @@ final class SoundLibrary {
                 options: [.skipsHiddenFiles]
             )
 
-            let audioFiles = fileURLs.filter { Self.supportedAudioExtensions.contains($0.pathExtension.lowercased()) }
+            let audioFiles = fileURLs.filter {
+                Self.supportedAudioExtensions.contains($0.pathExtension.lowercased())
+                    && !$0.lastPathComponent.hasPrefix("playlist_")
+            }
 
             for sourceFileURL in audioFiles {
                 do {
