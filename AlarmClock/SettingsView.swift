@@ -58,6 +58,7 @@ struct SettingsView: View {
                     Button("Import Backup") {
                         showingImportPicker = true
                     }
+                    Button("Diagnostics") { showingDiagnostics = true }
                 }
 
                 Section("Memory") {
@@ -81,9 +82,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section {
-                    Button("Diagnostics") { showingDiagnostics = true }
-                }
                 Section("Lock Screen circles") {
                     Toggle("Show the circle", isOn: $batteryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))

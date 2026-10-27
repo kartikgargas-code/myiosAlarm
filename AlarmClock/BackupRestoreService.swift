@@ -45,6 +45,11 @@ final class BackupRestoreService {
         var activeUserThemeID: UUID? = nil
         var widgetSettings: [String: Double]? = nil
         var buttonSettings: [String: Double]? = nil
+        var interfaceTextSize: String? = nil
+        var secondsMorphStyle: String? = nil
+        var customDayAlarmColorEnabled: Bool? = nil
+        var customDayAlarmColor: String? = nil
+        var compactModeEnabled: Bool? = nil
         
         struct BackupSoundFile: Codable {
             let fileName: String
@@ -183,6 +188,13 @@ final class BackupRestoreService {
         archive.activeUserThemeID = themeManager.activeUserThemeID
         archive.widgetSettings = exportWidgetSettings()
         archive.buttonSettings = exportButtonSettings()
+        archive.interfaceTextSize = String(describing: themeManager.interfaceTextSize)
+        archive.secondsMorphStyle = themeManager.secondsMorphStyle.rawValue
+        archive.customDayAlarmColorEnabled = themeManager.customDayAlarmColorEnabled
+        if let data = try? JSONEncoder().encode(ColorData(from: themeManager.customDayAlarmColor)) {
+            archive.customDayAlarmColor = String(data: data, encoding: .utf8)
+        }
+        archive.compactModeEnabled = themeManager.isCompactModeEnabled
         
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
         let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -329,6 +341,29 @@ final class BackupRestoreService {
         if let buttonSettings = archive.buttonSettings {
             restoreButtonSettings(buttonSettings)
             ThemeManager.shared.reloadButtonSettings()
+        }
+        // Stage 6d: Restore interface text size (backward compatible - uses default if missing)
+        if let interfaceTextSize = archive.interfaceTextSize,
+           let size = DynamicTypeSize.allCases.first(where: { String(describing: $0) == interfaceTextSize }) {
+            ThemeManager.shared.setInterfaceTextSize(size)
+        }
+        // Stage 6e: Restore seconds morph style (backward compatible)
+        if let secondsMorphStyle = archive.secondsMorphStyle,
+           let style = MorphSecondsStyle(rawValue: secondsMorphStyle) {
+            ThemeManager.shared.setSecondsMorphStyle(style)
+        }
+        // Stage 6f: Restore custom day alarm color settings (backward compatible)
+        if let customDayAlarmColorEnabled = archive.customDayAlarmColorEnabled {
+            ThemeManager.shared.setCustomDayAlarmColorEnabled(customDayAlarmColorEnabled)
+        }
+        if let customDayAlarmColorData = archive.customDayAlarmColor,
+           let data = customDayAlarmColorData.data(using: .utf8),
+           let colorData = try? JSONDecoder().decode(ColorData.self, from: data) {
+            ThemeManager.shared.setCustomDayAlarmColor(colorData.color)
+        }
+        // Stage 6g: Restore compact mode (backward compatible)
+        if let compactModeEnabled = archive.compactModeEnabled {
+            ThemeManager.shared.setCompactMode(compactModeEnabled)
         }
         
         // Stage 7: Re-schedule alarms
