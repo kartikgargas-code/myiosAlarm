@@ -394,12 +394,18 @@ struct ContentView: View {
     private func alarmRowLeftColumn(_ alarm: AlarmRecord, occurrence: AlarmOccurrence?, skippedOccurrence: AlarmOccurrence?, isNext: Bool) -> some View {
         let colors = ThemeManager.shared.colors
         let isCompact = ThemeManager.shared.isCompactModeEnabled
+        let isCustomDay = ThemeManager.shared.customDayAlarmColorEnabled && 
+                       (alarm.repeatRule.weekdays != Set(1...7) && 
+                        alarm.repeatRule.weekdays != Set(2...6) && 
+                        alarm.repeatRule.weekdays != [1, 7] && 
+                        !alarm.repeatRule.weekdays.isEmpty)
+        let timeColor = isCustomDay ? ThemeManager.shared.customDayAlarmColor : colors.primaryText
         
         return VStack(alignment: .leading, spacing: 2) {
             // Big time
             Text(timeText(alarm.time))
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(colors.primaryText)
+                .foregroundStyle(timeColor)
             
             // Live countdown
             if let occurrence {
@@ -762,18 +768,18 @@ struct SoundsView: View {
         .sheet(isPresented: $showingPlaylistCreator) {
             makeCreatorSheet()
         }
-        .overlay(alignment: .top) {
+        .overlay(alignment: .bottom) {
             if let toastMessage {
                 Text(toastMessage)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
                     .background(ThemeManager.shared.colors.card.opacity(0.95))
                     .clipShape(Capsule())
                     .shadow(radius: 4)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .offset(y: -40)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 100)
             }
         }
     }

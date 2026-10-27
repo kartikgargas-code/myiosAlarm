@@ -1,5 +1,6 @@
 import SwiftUI
 import AlarmClockShared
+import UIKit
 
 struct AppearanceView: View {
     @Environment(\.dismiss) private var dismiss
@@ -158,12 +159,59 @@ struct AppearanceView: View {
                     }
                     .listRowBackground(Color.clear)
                     
-                    SliderSettingRow(title: "Glow Size", value: glowRadiusSlider, range: 0...20, step: 1) { "\(Int($0))" }
-                    SliderSettingRow(title: "Lume", value: glowOpacitySlider, range: 0...100, step: 5) { "\(Int($0))%" }
-                    SliderSettingRow(title: "Spread", value: glowSpreadSlider, range: 0...20, step: 1) { "\(Int($0))" }
-                    SliderSettingRow(title: "Border", value: outlineSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
-                    SliderSettingRow(title: "Ring", value: outerRingSlider, range: 0...6, step: 0.5) { String(format: "%.1f", $0) }
-                    SliderSettingRow(title: "Edge", value: textOutlineSlider, range: 0...3, step: 0.5) { String(format: "%.1f", $0) }
+                    // Row 1: Glow Size | Lume
+                    HStack(spacing: 0) {
+                        WheelSettingRow(
+                            title: "Glow Size",
+                            value: glowRadiusSlider,
+                            range: 0...20,
+                            step: 1,
+                            format: { "\(Int($0))" }
+                        )
+                        WheelSettingRow(
+                            title: "Lume",
+                            value: glowOpacitySlider,
+                            range: 0...100,
+                            step: 5,
+                            format: { "\(Int($0))%" }
+                        )
+                    }
+                    
+                    // Row 2: Spread | Border
+                    HStack(spacing: 0) {
+                        WheelSettingRow(
+                            title: "Spread",
+                            value: glowSpreadSlider,
+                            range: 0...20,
+                            step: 1,
+                            format: { "\(Int($0))" }
+                        )
+                        WheelSettingRow(
+                            title: "Border",
+                            value: outlineSlider,
+                            range: 0...6,
+                            step: 0.5,
+                            format: { String(format: "%.1f", $0) }
+                        )
+                    }
+                    
+                    // Row 3: Ring | Edge
+                    HStack(spacing: 0) {
+                        WheelSettingRow(
+                            title: "Ring",
+                            value: outerRingSlider,
+                            range: 0...6,
+                            step: 0.5,
+                            format: { String(format: "%.1f", $0) }
+                        )
+                        WheelSettingRow(
+                            title: "Edge",
+                            value: textOutlineSlider,
+                            range: 0...3,
+                            step: 0.5,
+                            format: { String(format: "%.1f", $0) }
+                        )
+                    }
                 }
 
                 Section("Text Size") {
@@ -488,5 +536,52 @@ private struct SliderSettingRow: View {
             Slider(value: value, in: range, step: step)
                 .tint(ThemeManager.shared.colors.accent)
         }
+    }
+}
+
+struct WheelSettingRow: View {
+    let title: String
+    let value: Binding<Double>
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: (Double) -> String
+    
+    @State private var lastValue: Double = 0
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(format(value.wrappedValue))
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(ThemeManager.shared.colors.accent)
+            }
+            Picker("", selection: value) {
+                ForEach(makeValues(), id: \.self) { val in
+                    Text(format(val)).tag(val)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(height: 100)
+            .clipped()
+            .onChange(of: value.wrappedValue) { _, newValue in
+                if lastValue != newValue {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                    lastValue = newValue
+                }
+            }
+        }
+    }
+    
+    private func makeValues() -> [Double] {
+        var values: [Double] = []
+        var current = range.lowerBound
+        while current <= range.upperBound + step / 2 {
+            values.append(current)
+            current += step
+        }
+        return values
     }
 }
