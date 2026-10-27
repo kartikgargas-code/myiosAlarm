@@ -44,7 +44,6 @@ targets:
       - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/SmartWakeService.swift
       - path: AlarmClock/AlarmPlaybackService.swift
-      - path: AlarmClock/BatterySource.swift
     info:
       path: AlarmClock/Info.plist
       properties:
@@ -123,7 +122,6 @@ targets:
       - path: AlarmClock/AppGroupResolver.swift
       - path: AlarmClock/SmartWakeDebugLog.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
-      - path: AlarmClock/BatterySource.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:

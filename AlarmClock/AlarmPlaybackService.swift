@@ -202,9 +202,6 @@ final class AlarmPlaybackService: NSObject {
             // Start playing the first track
             playTrack(at: 0, skippedCount: 0)
             
-            // Alarm fired - reload widgets to update next-alarm display
-            WidgetCenter.shared.reloadAllTimelines()
-            
         } catch {
             let nsError = error as NSError
             lastError = error.localizedDescription

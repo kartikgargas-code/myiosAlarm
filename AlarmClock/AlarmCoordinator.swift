@@ -256,7 +256,6 @@ final class AlarmCoordinator {
             writeAlarmsToAppGroup(candidate.snapshot)
             engine = candidate
             publish() // UI updates immediately
-            WidgetCenter.shared.reloadAllTimelines()
             SmartWakeDebugLog.log("PERF: setEnabled done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms (reconcile continues in background)")
         } catch {
             lastError = error.localizedDescription
@@ -545,7 +544,6 @@ final class AlarmCoordinator {
             engine = candidate
             lastError = nil
             publish()
-            WidgetCenter.shared.reloadAllTimelines()
             SmartWakeDebugLog.log("PERF: commit(\(reason)) done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms")
         } catch {
             lastError = error.localizedDescription
