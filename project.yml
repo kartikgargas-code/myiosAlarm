@@ -122,6 +122,7 @@ targets:
       - path: AlarmClock/AppGroupResolver.swift
       - path: AlarmClock/SmartWakeDebugLog.swift
       - path: AlarmClock/ExtensionAlarmSchedulingService.swift
+      - path: AlarmClock/BatterySource.swift
     info:
       path: AlarmClock/AlarmClockShared-Info.plist
       properties:

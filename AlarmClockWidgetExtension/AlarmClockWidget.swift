@@ -9,10 +9,9 @@ import CoreFoundation
 import AlarmKit
 import UserNotifications
 
+// Keep the local function for backward compatibility, but delegate to BatterySource
 private func readBatteryLevel() -> Double? {
-    UIDevice.current.isBatteryMonitoringEnabled = true
-    let level = UIDevice.current.batteryLevel
-    return level >= 0 ? Double(level) : nil
+    BatterySource.current()
 }
 
 private func systemMemoryUsedBytes() -> UInt64? {
@@ -268,18 +267,14 @@ struct BatteryWidgetProvider: TimelineProvider {
 
     private func makeEntry() -> BatteryWidgetEntry {
         let defaults = widgetDefaults()
-        let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double
-        let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double
-        let appLevelIsFresh = appLevelAt.map { Date().timeIntervalSince1970 - $0 < 600 } ?? false
-        let ownRead = readBatteryLevel()
-        let chosen = (appLevelIsFresh ? appLevel : nil) ?? ownRead ?? appLevel
+        let level = BatterySource.current()
         SmartWakeDebugLog.log(
-            "WIDGET battery appLevel=\(appLevel.map { String(Int(($0 * 100).rounded())) } ?? "none") age=\(appLevelAt.map { String(Int(Date().timeIntervalSince1970 - $0)) } ?? "none")s usedAppValue=\(appLevelIsFresh) ownRead=\(ownRead.map { String(Int(($0 * 100).rounded())) } ?? "none") chosen=\(chosen.map { String(Int(($0 * 100).rounded())) } ?? "none")",
+            "WIDGET battery level=\(level.map { String(Int(($0 * 100).rounded())) } ?? "none")",
             force: true
         )
         return BatteryWidgetEntry(
             date: Date(),
-            level: chosen,
+            level: level,
             showCircle: defaults.object(forKey: "widgetBatteryShowCircle") as? Bool ?? true,
             showText: defaults.object(forKey: "widgetBatteryShowText") as? Bool ?? true,
             circleScale: defaults.object(forKey: "widgetBatteryCircleScale") as? Double ?? 1.0,
@@ -392,41 +387,18 @@ final class NextAlarmWidgetProvider: TimelineProvider {
     
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextAlarmWidgetEntry>) -> Void) {
         let now = Date()
-
-        // WidgetKit re-renders the widget for EVERY entry and each render wakes the extension, so
-        // the number of entries matters more than the reload does. The one-line family prints a
-        // countdown that is a system timer ticking by itself, so it needs just two entries: now,
-        // and one just after the next alarm. The other families print a countdown string, which
-        // can only be as fresh as its entry, so they keep the five-minute steps.
-        var entries: [NextAlarmWidgetEntry] = []
-        if context.family == .accessoryInline {
-            entries.append(loadEntry(at: now))
-        } else {
-            for step in stride(from: 0, through: 60, by: 5) {
-                if let when = Calendar.current.date(byAdding: .minute, value: step, to: now) {
-                    entries.append(loadEntry(at: when))
-                }
-            }
-        }
-        // One extra entry just after the next alarm, so the widget rolls on to the following
-        // alarm by itself even if the reload is late.
-        if let fireDate = loadEntry(at: now).nextDate, fireDate > now {
-            entries.append(loadEntry(at: fireDate.addingTimeInterval(61)))
-        }
-        // WidgetKit wants the entries oldest first.
-        entries.sort { $0.date < $1.date }
-        if entries.isEmpty {
-            entries = [loadEntry(at: now)]
-        }
-        // Four hours at most. Everything that changes sooner than that (an alarm edited, a skip, a
-        // battery step) makes the app ask for a reload, and those asks do not cost the widget
-        // budget while the app is awake.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 240, to: now) ?? now
+        
+        // Single entry per build. Battery is unified via BatterySource.current() which prefers
+        // the app's cached value (< 600s) else a live read. The app calls reloadAllTimelines()
+        // on alarm save/edit/delete/fire, so we don't need 5-minute steps for battery freshness.
+        // Policy: 2 hours; app-driven reloads cover sooner changes.
+        let entry = loadEntry(at: now)
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 120, to: now) ?? now
         SmartWakeDebugLog.log(
-            "WIDGET next-alarm timeline family=\(context.family) entries=\(entries.count) hasAlarm=\(entries.first?.hasAlarm ?? false) next=\(entries.first?.nextTime ?? "-") appGroup=\(appGroupIdentifier)",
+            "WIDGET next-alarm timeline family=\(context.family) entries=1 hasAlarm=\(entry.hasAlarm) next=\(entry.nextTime ?? "-") appGroup=\(appGroupIdentifier)",
             force: true
         )
-        completion(Timeline(entries: entries, policy: .after(nextUpdate)))
+        completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
     
     // Worked out from the alarm list itself, as of `date`, so the widget is correct even when
@@ -481,7 +453,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: alarm.id,
-            batteryLevel: readBatteryLevel(),
+            batteryLevel: BatterySource.current(),
             nextDate: occurrence.effectiveDate,
             showBatteryInline: defaults.object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
             showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
@@ -538,6 +510,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: nil,
+            batteryLevel: BatterySource.current(),
             nextDate: fireDate
         )
     }
@@ -646,7 +619,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: snapshot.alarmID,
-            batteryLevel: readBatteryLevel(),
+            batteryLevel: BatterySource.current(),
             nextDate: snapshot.nextOccurrenceDate,
             showBatteryInline: widgetDefaults().object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
             showPercentSign: widgetDefaults().object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
@@ -789,15 +762,8 @@ struct NextAlarmWidgetView: View {
 
     // The one-line widget renders a single string, so while the screen is dimmed the alarm
     // time and the battery are combined into one line.
-    // The entry may have been planned up to ten minutes ago, so prefer the value the app wrote.
     private var freshBatteryLevel: Double? {
-        let defaults = widgetDefaults()
-        if let appLevel = defaults.object(forKey: "appBatteryLevel") as? Double,
-           let appLevelAt = defaults.object(forKey: "appBatteryLevelAt") as? Double,
-           Date().timeIntervalSince1970 - appLevelAt < 600 {
-            return appLevel
-        }
-        return entry.batteryLevel ?? readBatteryLevel()
+        BatterySource.current()
     }
 
     private var dimmedInlineText: String {

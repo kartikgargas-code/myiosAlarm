@@ -544,6 +544,7 @@ final class AlarmCoordinator {
             engine = candidate
             lastError = nil
             publish()
+            WidgetCenter.shared.reloadAllTimelines()
             SmartWakeDebugLog.log("PERF: commit(\(reason)) done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms")
         } catch {
             lastError = error.localizedDescription
