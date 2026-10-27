@@ -7,6 +7,7 @@ import AlarmKit
 import AlarmClockShared
 import UIKit
 import AudioToolbox
+import WidgetKit
 @preconcurrency import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
