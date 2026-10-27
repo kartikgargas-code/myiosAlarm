@@ -1,14 +1,37 @@
 import SwiftUI
 import AlarmClockShared
+import UIKit
 
 /// History screen showing songs that finished playing during alarm rings
 struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: AlarmCoordinator
     @State private var showingClearAllConfirmation = false
+    @State private var toastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
     
     init(coordinator: AlarmCoordinator) {
         _coordinator = State(initialValue: coordinator)
+    }
+    
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        withAnimation { toastMessage = message }
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if !Task.isCancelled {
+                await MainActor.run {
+                    withAnimation { toastMessage = nil }
+                }
+            }
+        }
+    }
+    
+    private func copyToClipboard(_ text: String) {
+        UIPasteboard.general.string = text
+        showToast("Copied")
     }
     
     var body: some View {
@@ -110,11 +133,15 @@ struct HistoryView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    // Song name
+                    // Song name - long press to copy
                     Text(entry.songName)
                         .font(.body)
                         .foregroundStyle(colors.primaryText)
                         .lineLimit(1)
+                        .contentShape(Rectangle())
+                        .onLongPressGesture {
+                            copyToClipboard(entry.songName)
+                        }
                     
                     // Alarm name and timestamp
                     HStack(spacing: 8) {
@@ -145,6 +172,20 @@ struct HistoryView: View {
         .listRowBackground(colors.card)
         .listRowSeparator(.visible)
         .listRowSeparatorTint(colors.divider)
+        .overlay(alignment: .top) {
+            if let toastMessage {
+                Text(toastMessage)
+                    .font(.caption)
+                    .foregroundStyle(colors.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(colors.card.opacity(0.95))
+                    .clipShape(Capsule())
+                    .shadow(radius: 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .offset(y: -40)
+            }
+        }
     }
 }
 

@@ -58,7 +58,9 @@ struct SettingsView: View {
                     Button("Import Backup") {
                         showingImportPicker = true
                     }
-                    Button("AlarmKit Diagnostics") { showingDiagnostics = true }
+                }
+
+                Section("Memory") {
                     Button("Free memory") {
                         Task {
                             freedMemoryMB = await SystemMemory.freeMemory()
@@ -70,15 +72,17 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
-                }
-
-                Section("Memory") {
+                    
                     HStack {
                         Text("In use")
                         Spacer()
                         Text(memoryText)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
+                }
+
+                Section {
+                    Button("Diagnostics") { showingDiagnostics = true }
                 }
                 Section("Lock Screen circles") {
                     Toggle("Show the circle", isOn: $batteryShowCircle)

@@ -20,6 +20,8 @@ final class ThemeManager {
     private let buttonTextOutlineKey = "buttonTextOutline"
     private let interfaceTextSizeKey = "interfaceTextSize"
     private let secondsMorphStyleKey = "secondsMorphStyle"
+    private let customDayAlarmColorKey = "customDayAlarmColor"
+    private let customDayAlarmColorEnabledKey = "customDayAlarmColorEnabled"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
@@ -42,6 +44,10 @@ final class ThemeManager {
     
     // Seconds morph animation style
     var secondsMorphStyle: MorphSecondsStyle = .goo
+    
+    // Custom-day alarm color (for alarms with custom repeat days)
+    var customDayAlarmColor: Color = Color(red: 1.0, green: 0.58, blue: 0.0)  // Default orange accent
+    var customDayAlarmColorEnabled: Bool = false
 
     func setCompactMode(_ enabled: Bool) {
         isCompactModeEnabled = enabled
@@ -94,6 +100,28 @@ final class ThemeManager {
         secondsMorphStyle = style
         defaults.set(style.rawValue, forKey: secondsMorphStyleKey)
     }
+    
+    func setCustomDayAlarmColor(_ color: Color) {
+        customDayAlarmColor = color
+        if let data = try? JSONEncoder().encode(ColorData(from: color)) {
+            defaults.set(data, forKey: customDayAlarmColorKey)
+        }
+    }
+    
+    func setCustomDayAlarmColorEnabled(_ enabled: Bool) {
+        customDayAlarmColorEnabled = enabled
+        defaults.set(enabled, forKey: customDayAlarmColorEnabledKey)
+    }
+    
+    /// Reload button settings from UserDefaults (used after backup restore)
+    func reloadButtonSettings() {
+        buttonGlowRadius = defaults.object(forKey: buttonGlowRadiusKey) as? Double ?? 6.0
+        buttonGlowOpacity = defaults.object(forKey: buttonGlowOpacityKey) as? Double ?? 0.45
+        buttonGlowSpread = defaults.object(forKey: buttonGlowSpreadKey) as? Double ?? 0.0
+        buttonOuterRing = defaults.object(forKey: buttonOuterRingKey) as? Double ?? 0.0
+        buttonTextOutline = defaults.object(forKey: buttonTextOutlineKey) as? Double ?? 0.0
+        buttonOutlineWidth = defaults.object(forKey: buttonOutlineWidthKey) as? Double ?? 2.0
+    }
 
     private init() {
         isCompactModeEnabled = defaults.bool(forKey: compactModeKey)
@@ -113,6 +141,11 @@ final class ThemeManager {
            let style = MorphSecondsStyle(rawValue: raw) {
             secondsMorphStyle = style
         }
+        if let data = defaults.data(forKey: customDayAlarmColorKey),
+           let colorData = try? JSONDecoder().decode(ColorData.self, from: data) {
+            customDayAlarmColor = colorData.color
+        }
+        customDayAlarmColorEnabled = defaults.bool(forKey: customDayAlarmColorEnabledKey)
         loadUserThemes()
         loadTheme()
     }

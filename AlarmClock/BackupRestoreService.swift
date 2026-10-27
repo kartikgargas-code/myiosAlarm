@@ -44,6 +44,7 @@ final class BackupRestoreService {
         var activeThemeName: String? = nil
         var activeUserThemeID: UUID? = nil
         var widgetSettings: [String: Double]? = nil
+        var buttonSettings: [String: Double]? = nil
         
         struct BackupSoundFile: Codable {
             let fileName: String
@@ -67,6 +68,12 @@ final class BackupRestoreService {
         "widgetMemoryCircleScale", "widgetMemoryTextScale", "widgetMemoryPlateOpacity"
     ]
 
+    /// Button glow/appearance settings kept in standard UserDefaults.
+    private static let buttonNumberKeys = [
+        "buttonGlowRadius", "buttonGlowOpacity", "buttonGlowSpread",
+        "buttonOuterRing", "buttonTextOutline", "buttonOutlineWidth"
+    ]
+
     private func exportWidgetSettings() -> [String: Double] {
         let defaults = WidgetSettingsStore.defaults
         var result: [String: Double] = [:]
@@ -85,6 +92,22 @@ final class BackupRestoreService {
             if let value = settings[key] { defaults.set(value >= 0.5, forKey: key) }
         }
         for key in Self.widgetNumberKeys {
+            if let value = settings[key] { defaults.set(value, forKey: key) }
+        }
+    }
+
+    private func exportButtonSettings() -> [String: Double] {
+        let defaults = UserDefaults.standard
+        var result: [String: Double] = [:]
+        for key in Self.buttonNumberKeys {
+            if let value = defaults.object(forKey: key) as? Double { result[key] = value }
+        }
+        return result
+    }
+
+    private func restoreButtonSettings(_ settings: [String: Double]) {
+        let defaults = UserDefaults.standard
+        for key in Self.buttonNumberKeys {
             if let value = settings[key] { defaults.set(value, forKey: key) }
         }
     }
@@ -159,6 +182,7 @@ final class BackupRestoreService {
         archive.activeThemeName = themeManager.currentTheme.rawValue
         archive.activeUserThemeID = themeManager.activeUserThemeID
         archive.widgetSettings = exportWidgetSettings()
+        archive.buttonSettings = exportButtonSettings()
         
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
         let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -300,6 +324,11 @@ final class BackupRestoreService {
         if let widgetSettings = archive.widgetSettings {
             restoreWidgetSettings(widgetSettings)
             WidgetCenter.shared.reloadAllTimelines()
+        }
+        // Stage 6c: Restore button glow/appearance settings
+        if let buttonSettings = archive.buttonSettings {
+            restoreButtonSettings(buttonSettings)
+            ThemeManager.shared.reloadButtonSettings()
         }
         
         // Stage 7: Re-schedule alarms

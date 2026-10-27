@@ -95,9 +95,19 @@ struct AppButtonChrome<Content: View>: View {
                 color: colors.accent.opacity(glowOpacity),
                 radius: glowRadius
             )
+            // Spread effect: additional shadow layers that extend the glow outward
+            // Each layer has slightly larger radius and lower opacity to simulate spread
             .shadow(
-                color: colors.accent.opacity(glowOpacity * 0.3),
+                color: colors.accent.opacity(glowOpacity * 0.4),
+                radius: glowRadius + glowSpread * 0.5
+            )
+            .shadow(
+                color: colors.accent.opacity(glowOpacity * 0.2),
                 radius: glowRadius + glowSpread
+            )
+            .shadow(
+                color: colors.accent.opacity(glowOpacity * 0.1),
+                radius: glowRadius + glowSpread * 1.5
             )
     }
 }

@@ -210,6 +210,19 @@ struct AppearanceView: View {
                     ))
                 }
                 
+                Section("Custom-Day Alarm Color") {
+                    Toggle("Use Different Color", isOn: Binding(
+                        get: { ThemeManager.shared.customDayAlarmColorEnabled },
+                        set: { ThemeManager.shared.setCustomDayAlarmColorEnabled($0) }
+                    ))
+                    if ThemeManager.shared.customDayAlarmColorEnabled {
+                        ColorPicker("Color", selection: Binding(
+                            get: { ThemeManager.shared.customDayAlarmColor },
+                            set: { ThemeManager.shared.setCustomDayAlarmColor($0) }
+                        ), supportsOpacity: false)
+                    }
+                }
+                
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)

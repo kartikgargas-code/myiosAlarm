@@ -24,6 +24,29 @@ struct ContentView: View {
 
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
+    // Toast for copy feedback
+    @State private var toastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+    
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        withAnimation { toastMessage = message }
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if !Task.isCancelled {
+                await MainActor.run {
+                    withAnimation { toastMessage = nil }
+                }
+            }
+        }
+    }
+    
+    private func copyToClipboard(_ text: String) {
+        UIPasteboard.general.string = text
+        showToast("Copied")
+    }
     
     var body: some View {
         NavigationStack {
@@ -169,6 +192,22 @@ struct ContentView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
+                }
+                
+                // Global toast overlay for copy feedback
+                .overlay(alignment: .top) {
+                    if let toastMessage {
+                        Text(toastMessage)
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(ThemeManager.shared.colors.card.opacity(0.95))
+                            .clipShape(Capsule())
+                            .shadow(radius: 4)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .offset(y: -40)
+                    }
                 }
                 
                 
@@ -470,11 +509,19 @@ struct ContentView: View {
     }
     
     private func alarmRowRightColumn(_ alarm: AlarmRecord, colors: ThemeColors) -> some View {
+        let customDayColor = ThemeManager.shared.customDayAlarmColorEnabled && 
+                           (alarm.repeatRule.weekdays != Set(1...7) && 
+                            alarm.repeatRule.weekdays != Set(2...6) && 
+                            alarm.repeatRule.weekdays != [1, 7] && 
+                            !alarm.repeatRule.weekdays.isEmpty) 
+            ? ThemeManager.shared.customDayAlarmColor 
+            : colors.primaryText
+        
         return VStack(alignment: .trailing, spacing: 22) {
             // Name top-right
             Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
                 .font(.subheadline)
-                .foregroundStyle(colors.primaryText)
+                .foregroundStyle(customDayColor)
             
             // Toggle bottom-right (empty label to avoid "Enabled" text)
             Toggle("", isOn: Binding(
@@ -1011,6 +1058,10 @@ private func makeCreatorSheet() -> some View {
                 Text(sound.name)
                     .font(.body)
                     .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture {
+                        copyToClipboard(sound.name)
+                    }
                 Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
                     .font(.caption)
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
