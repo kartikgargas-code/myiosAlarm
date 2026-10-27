@@ -24,29 +24,6 @@ struct ContentView: View {
 
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
-    // Toast for copy feedback
-    @State private var toastMessage: String? = nil
-    @State private var toastTask: Task<Void, Never>? = nil
-    
-    private func showToast(_ message: String) {
-        toastTask?.cancel()
-        withAnimation { toastMessage = message }
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if !Task.isCancelled {
-                await MainActor.run {
-                    withAnimation { toastMessage = nil }
-                }
-            }
-        }
-    }
-    
-    private func copyToClipboard(_ text: String) {
-        UIPasteboard.general.string = text
-        showToast("Copied")
-    }
     
     var body: some View {
         NavigationStack {
@@ -192,22 +169,6 @@ struct ContentView: View {
                     }
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.2), value: alarmPlaybackService.currentTrackName)
-                }
-                
-                // Global toast overlay for copy feedback
-                .overlay(alignment: .top) {
-                    if let toastMessage {
-                        Text(toastMessage)
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(ThemeManager.shared.colors.card.opacity(0.95))
-                            .clipShape(Capsule())
-                            .shadow(radius: 4)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .offset(y: -40)
-                    }
                 }
                 
                 
@@ -619,6 +580,24 @@ struct EditorPresentation: Identifiable {
 struct SoundsView: View {
     @Environment(\.dismiss) private var dismiss
     let coordinator: AlarmCoordinator
+    // Copy feedback for the song names in this list (HistoryView has the same pair)
+    @State private var toastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        withAnimation { toastMessage = message }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        toastTask = Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if !Task.isCancelled {
+                await MainActor.run { withAnimation { toastMessage = nil } }
+            }
+        }
+    }
+    private func copyToClipboard(_ text: String) {
+        UIPasteboard.general.string = text
+        showToast("Copied")
+    }
     
     @State private var showingDocumentPicker = false
     @State private var importError: String?
@@ -782,6 +761,20 @@ struct SoundsView: View {
         }
         .sheet(isPresented: $showingPlaylistCreator) {
             makeCreatorSheet()
+        }
+        .overlay(alignment: .top) {
+            if let toastMessage {
+                Text(toastMessage)
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(ThemeManager.shared.colors.card.opacity(0.95))
+                    .clipShape(Capsule())
+                    .shadow(radius: 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .offset(y: -40)
+            }
         }
     }
 
