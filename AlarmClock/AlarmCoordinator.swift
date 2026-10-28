@@ -33,6 +33,10 @@ final class AlarmCoordinator {
     // Playlist diagnostics
     var playlistDiagnostics = PlaylistDiagnostics()
 
+    // Stitch retry state - for automatic retry after failed stitch
+    private var stitchRetryState: (playlistID: UUID, attempt: Int, task: Task<Void, Never>)? = nil
+    private let maxStitchRetries = 2
+
     /// Play history - tracks songs that finished playing during alarm rings
     private(set) var playHistory: [PlayHistoryEntry] = []
 
@@ -147,6 +151,10 @@ final class AlarmCoordinator {
         // Consume any queued Control Center action before the no-op reconcile —
         // otherwise a foreground commit could overwrite the file unread.
         await applyPendingWidgetActions()
+        
+        // Cancel any pending stitch retries - a new synchronize from any source cancels them
+        cancelStitchRetries()
+        
         await commit({ _ in }, reason: "synchronize")
     }
 
@@ -890,6 +898,7 @@ final class AlarmCoordinator {
                     } catch let err as AudioProcessingError {
                         // Playlist empty → fall back to classic-bell so the alarm still rings
                         SmartWakeDebugLog.log("DESIRED ALARMS: backup sound failed (\(err)), falling back to classic-bell")
+                        scheduleStitchRetry(for: playlistID)
                         backupPrecomposedURL = URL(fileURLWithPath: "")
                         warnings.append("\(label): backup sound unavailable, using default")
                     }
@@ -1161,13 +1170,23 @@ final class AlarmCoordinator {
             return (.named("classic-bell.wav"), "classic-bell.wav")
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
-            let (precomposedURL, preparationEntry, generatedFileEntry) = try await AudioProcessingService.shared.precomposePlaylist(
-                playlistID: playlistID,
-                loudness: loudness,
-                songCount: 5,
-                forcedSelection: forcedSelection,
-                protectedFileNames: protectedFileNames
-            )
+            let precomposedResult: (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry)
+            do {
+                precomposedResult = try await AudioProcessingService.shared.precomposePlaylist(
+                    playlistID: playlistID,
+                    loudness: loudness,
+                    songCount: 5,
+                    forcedSelection: forcedSelection,
+                    protectedFileNames: protectedFileNames
+                )
+            } catch let err as AudioProcessingError {
+                // Stitch failed - schedule retry and fall back to classic-bell
+                SmartWakeDebugLog.log("DESIRED ALARMS: primary sound failed (\(err)), falling back to classic-bell")
+                scheduleStitchRetry(for: playlistID)
+                return (.named("classic-bell.wav"), "classic-bell.wav")
+            }
+            
+            let (precomposedURL, preparationEntry, generatedFileEntry) = precomposedResult
             
             // Record diagnostics
             playlistDiagnostics.addPreparation(preparationEntry)
@@ -1916,6 +1935,51 @@ final class AlarmCoordinator {
         } catch {
             SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")
         }
+    }
+    
+    // MARK: - Stitch Retry Logic
+    
+    /// Cancel any pending stitch retry
+    private func cancelStitchRetries() {
+        if let state = stitchRetryState {
+            state.task.cancel()
+            stitchRetryState = nil
+            SmartWakeDebugLog.log("STITCH RETRY: cancelled pending retries")
+        }
+    }
+    
+    /// Schedule a stitch retry after a failed stitch
+    /// Called when a playlist stitch fails and falls back to classic-bell
+    func scheduleStitchRetry(for playlistID: UUID) {
+        // Cancel any existing retry for the same playlist
+        if let state = stitchRetryState, state.playlistID == playlistID {
+            state.task.cancel()
+        }
+        
+        let attempt = 1
+        let task = Task { @MainActor in
+            // Wait 10 seconds for first retry
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            if Task.isCancelled { return }
+            
+            SmartWakeDebugLog.log("STITCH RETRY \(attempt)/\(maxStitchRetries) playlist=\(playlistID.uuidString.prefix(8))")
+            await synchronize()
+            
+            // If we get here and the stitch succeeded, the retry state will be cleared
+            // If it failed again, schedule second retry
+            if let state = stitchRetryState, state.playlistID == playlistID, state.attempt == attempt {
+                // Schedule second retry at 30 seconds
+                let attempt2 = attempt + 1
+                stitchRetryState = (playlistID, attempt2, Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    if Task.isCancelled { return }
+                    SmartWakeDebugLog.log("STITCH RETRY \(attempt2)/\(maxStitchRetries) playlist=\(playlistID.uuidString.prefix(8))")
+                    await synchronize()
+                    stitchRetryState = nil
+                })
+            }
+        }
+        stitchRetryState = (playlistID, attempt, task)
     }
 }
 

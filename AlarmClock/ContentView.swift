@@ -1224,6 +1224,8 @@ private func makeCreatorSheet() -> some View {
         do {
             let _ = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
+            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
+            await coordinator.synchronize()
         } catch {
             importError = "Import failed: \(error.localizedDescription)"
         }
@@ -1231,11 +1233,12 @@ private func makeCreatorSheet() -> some View {
     
     func importFolder(from url: URL) async {
         do {
-            let _ = try await SoundLibrary.shared.importFolder(from: url)
+            let playlist = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
             SmartWakeDebugLog.log("MP3 folder import finished - reconnecting missing entries")
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
             SmartWakeDebugLog.log("MP3 FOLDER IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
+            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count), rescheduling")
             await coordinator.synchronize()
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"

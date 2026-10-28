@@ -104,7 +104,7 @@ struct AlarmEditorView: View {
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
         .background(ThemeManager.shared.colors.background)
         .sheet(isPresented: $showingSoundPicker) {
-            SoundPickerView(selectedSound: $selectedSound, alarms: alarms)
+            SoundPickerView(selectedSound: $selectedSound, alarms: alarms, coordinator: coordinator)
         }
         .onChange(of: selectedLoudness) { _, newValue in
             // Start preview when loudness changes via wheel picker

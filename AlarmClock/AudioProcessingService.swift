@@ -766,6 +766,10 @@ final class AudioProcessingService {
             guard totalFrames > 0, appendedSongs > 0 else {
                 try? fileManager.removeItem(at: outputFileURL)
                 let capText = maxDuration.map { "\(Int($0))s" } ?? "none"
+                let availableInLibrary = selectedSoundIDs.compactMap { id in
+                    importedSounds.first(where: { $0.id == id })
+                }.count
+                SmartWakeDebugLog.log("STITCH FAILED: playlist='\(playlist.name)' selected=\(selectedSoundIDs.count) availableInLibrary=\(availableInLibrary) cap=\(capText) - falling back to classic-bell")
                 throw AudioProcessingError.processingFailed("Stitch rendered with no audio (songs=\(selectedSoundIDs.count), cap=\(capText))")
             }
 

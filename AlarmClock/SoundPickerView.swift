@@ -7,6 +7,7 @@ struct SoundPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedSound: AlarmSound
     let alarms: [AlarmRecord]
+    let coordinator: AlarmCoordinator
 
     @State private var showingDocumentPicker = false
     @State private var showingPlaylistPicker = false
@@ -20,9 +21,10 @@ struct SoundPickerView: View {
     // Local copy for Cancel/Save behavior
     @State private var initialSelection: AlarmSound
     
-    init(selectedSound: Binding<AlarmSound>, alarms: [AlarmRecord]) {
+    init(selectedSound: Binding<AlarmSound>, alarms: [AlarmRecord], coordinator: AlarmCoordinator) {
         self._selectedSound = selectedSound
         self.alarms = alarms
+        self.coordinator = coordinator
         self._initialSelection = State(initialValue: selectedSound.wrappedValue)
     }
 
@@ -416,6 +418,8 @@ struct SoundPickerView: View {
             let sound = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
             selectedSound = .imported(sound.id)
+            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
+            await coordinator.synchronize()
         } catch {
             importError = error.localizedDescription
         }
@@ -426,6 +430,8 @@ struct SoundPickerView: View {
             let playlist = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
             selectedSound = .random(playlist.id)
+            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count), rescheduling")
+            await coordinator.synchronize()
         } catch {
             importError = error.localizedDescription
         }

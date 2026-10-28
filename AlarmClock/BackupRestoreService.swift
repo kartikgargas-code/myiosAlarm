@@ -421,6 +421,7 @@ final class BackupRestoreService {
         }
         
         os_log(.info, log: log, "Imported backup (%d sounds, %d alarms, %d themes)", archive.sounds.count, archive.alarms.alarms.count, archive.userThemes.count)
+        SmartWakeDebugLog.log("IMPORT DONE kind=restore songs=\(archive.sounds.count), rescheduling")
     }
     
     enum BackupError: LocalizedError {
