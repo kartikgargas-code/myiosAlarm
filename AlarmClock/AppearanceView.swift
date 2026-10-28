@@ -185,69 +185,67 @@ struct AppearanceView: View {
                     }
                     .listRowBackground(Color.clear)
                     
-                    // Row 1: Glow Size | Lume
-                    HStack(spacing: 24) {
-                        WheelSettingRow(
-                            title: "Glow Size",
-                            value: glowRadiusSlider,
-                            range: 0...20,
-                            step: 1,
-                            format: { "\(Int($0))" }
-                        )
-                        WheelSettingRow(
-                            title: "Lume",
-                            value: glowOpacitySlider,
-                            range: 0...100,
-                            step: 5,
-                            format: { "\(Int($0))%" }
-                        )
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(ThemeManager.shared.colors.card)
-                    .cornerRadius(12)
+                    VStack(spacing: 0) {
+                        // Row 1: Glow Size | Lume
+                        HStack(spacing: 24) {
+                            WheelSettingRow(
+                                title: "Glow Size",
+                                value: glowRadiusSlider,
+                                range: 0...20,
+                                step: 1,
+                                format: { "\(Int($0))" }
+                            )
+                            WheelSettingRow(
+                                title: "Lume",
+                                value: glowOpacitySlider,
+                                range: 0...100,
+                                step: 5,
+                                format: { "\(Int($0))%" }
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     
-                    // Row 2: Spread | Border
-                    HStack(spacing: 24) {
-                        WheelSettingRow(
-                            title: "Spread",
-                            value: glowSpreadSlider,
-                            range: 0...20,
-                            step: 1,
-                            format: { "\(Int($0))" }
-                        )
-                        WheelSettingRow(
-                            title: "Border",
-                            value: outlineSlider,
-                            range: 0...6,
-                            step: 0.5,
-                            format: { String(format: "%.1f", $0) }
-                        )
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(ThemeManager.shared.colors.card)
-                    .cornerRadius(12)
+                        // Row 2: Spread | Border
+                        HStack(spacing: 24) {
+                            WheelSettingRow(
+                                title: "Spread",
+                                value: glowSpreadSlider,
+                                range: 0...20,
+                                step: 1,
+                                format: { "\(Int($0))" }
+                            )
+                            WheelSettingRow(
+                                title: "Border",
+                                value: outlineSlider,
+                                range: 0...6,
+                                step: 0.5,
+                                format: { String(format: "%.1f", $0) }
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     
-                    // Row 3: Ring | Edge
-                    HStack(spacing: 24) {
-                        WheelSettingRow(
-                            title: "Ring",
-                            value: outerRingSlider,
-                            range: 0...6,
-                            step: 0.5,
-                            format: { String(format: "%.1f", $0) }
-                        )
-                        WheelSettingRow(
-                            title: "Edge",
-                            value: textOutlineSlider,
-                            range: 0...3,
-                            step: 0.5,
-                            format: { String(format: "%.1f", $0) }
-                        )
+                        // Row 3: Ring | Edge
+                        HStack(spacing: 24) {
+                            WheelSettingRow(
+                                title: "Ring",
+                                value: outerRingSlider,
+                                range: 0...6,
+                                step: 0.5,
+                                format: { String(format: "%.1f", $0) }
+                            )
+                            WheelSettingRow(
+                                title: "Edge",
+                                value: textOutlineSlider,
+                                range: 0...3,
+                                step: 0.5,
+                                format: { String(format: "%.1f", $0) }
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
                     .background(ThemeManager.shared.colors.card)
                     .cornerRadius(12)
                 }
@@ -265,30 +263,7 @@ struct AppearanceView: View {
                     .pickerStyle(.segmented)
                     .tint(ThemeManager.shared.colors.accent)
                 }
-
-                Section("Seconds Animation") {
-                    Picker("Style", selection: Binding(
-                        get: { ThemeManager.shared.secondsMorphStyle },
-                        set: { ThemeManager.shared.setSecondsMorphStyle($0) }
-                    )) {
-                        ForEach(MorphSecondsStyle.allCases) { style in
-                            Text(style.label).tag(style)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .tint(ThemeManager.shared.colors.accent)
-                    
-                    // Live preview of the selected style
-                    HStack {
-                        Text("Preview")
-                            .font(.body)
-                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                        Spacer()
-                        PreviewSecondsView()
-                            .fixedSize()
-                    }
-                }
-
+                
                 Section("Alarm List") {
                     Toggle("Compact Mode", isOn: Binding(
                         get: { ThemeManager.shared.isCompactModeEnabled },
