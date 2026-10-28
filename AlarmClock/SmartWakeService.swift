@@ -109,9 +109,10 @@ final class SmartWakeService {
             var lastAlertingCount = 0
             var lastSnoozeWatchPhase: String? = nil
             var lastSnoozeWatchLogAt = Date.distantPast
+            var tickDelay: TimeInterval = 2
             
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                try? await Task.sleep(nanoseconds: UInt64(tickDelay * 1_000_000_000))
                 guard !Task.isCancelled else { break }
                 
                 // Check for any alerting AlarmKit alarm (system ring) - for banner visibility during system rings
@@ -325,8 +326,53 @@ final class SmartWakeService {
                         SmartWakeDebugLog.log("PLAYBACK stopped: alarm disabled/deleted (tick)")
                     }
                 }
+                
+                // Adaptive tick rate, decided from the state THIS tick saw: 2s while
+                // something needs fast reactions (ringing, snooze watch, in-app
+                // playback, or an occurrence within 10 minutes), 30s otherwise. A
+                // ring that just ended is still caught by the previous 2s gap.
+                let (newDelay, delayReason) = tickDelayAndReason(alertingCount: lastAlertingCount)
+                if tickDelay != newDelay {
+                    SmartWakeDebugLog.log("TICK DELAY: \(Int(tickDelay))s -> \(Int(newDelay))s (\(delayReason))")
+                    tickDelay = newDelay
+                }
             }
         }
+    }
+    
+    /// Adaptive status tick delay, with the reason for the change log.
+    private func tickDelayAndReason(alertingCount: Int) -> (TimeInterval, String) {
+        if alertingCount > 0 {
+            return (2, "alarm ringing")
+        }
+        if AlarmPlaybackService.shared.isPlaying {
+            return (2, "in-app playback ringing")
+        }
+        if AlarmPlaybackService.shared.pendingSnoozeIDForTakeover != nil {
+            return (2, "snooze watch")
+        }
+        if occurrenceWithinTenMinutes() {
+            return (2, "occurrence within 10 min")
+        }
+        return (30, "quiet")
+    }
+    
+    /// True when an occurrence is within the next 10 minutes. Uses the arming
+    /// check's fresh candidate when available, plus the coordinator's published
+    /// next occurrence as backup (only future dates count - a stale past date
+    /// is ignored).
+    private func occurrenceWithinTenMinutes() -> Bool {
+        let now = Date()
+        if let next = nextArmingCandidateDate, next > now, next.timeIntervalSince(now) <= 600 {
+            return true
+        }
+        if let coordinator = coordinator,
+           let next = coordinator.nextOccurrence,
+           next.effectiveDate > now,
+           next.effectiveDate.timeIntervalSince(now) <= 600 {
+            return true
+        }
+        return false
     }
     
     private func scenePhaseString(_ state: UIApplication.State) -> String {
@@ -814,32 +860,76 @@ final class SmartWakeService {
     }
 
     // MARK: - Transition Arming
-    
-    /// Start the background task that checks for upcoming alarms and arms transition
+
+    /// The sleep between arming checks, kept as its own task so an alarm-list
+    /// change can cancel it and the loop re-checks immediately.
+    private var armingSleepTask: Task<Void, Error>?
+    /// Earliest upcoming occurrence seen by the last arming check (nil = none in the ring window)
+    private var nextArmingCandidateDate: Date?
+    /// Last arming delay applied, for change logging
+    private var lastAppliedArmingDelay: TimeInterval?
+
+    /// Start the background task that checks for upcoming alarms and arms transition.
+    /// Adaptive: sleeps until ~90s before the next occurrence that could need
+    /// arming, clamped to 5s...5min, instead of polling every 30 seconds all day.
     private func startTransitionArming() {
         // Cancel any existing task
         transitionCheckTask?.cancel()
-        
+
         transitionCheckTask = Task { @MainActor in
-            os_log(.info, log: log, "Starting transition arming task")
-            
+            os_log(.info, log: log, "Starting transition arming task (adaptive)")
+
             while !Task.isCancelled {
-                // Check every 30 seconds
-                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
-                
-                guard !Task.isCancelled else { break }
-                
                 await checkAndArmUpcomingAlarms()
+
+                guard !Task.isCancelled else { break }
+
+                let (delay, reason) = armingDelayAndReason()
+                if let last = lastAppliedArmingDelay, last != delay {
+                    os_log(.info, log: log, "Arming delay changed %.0fs -> %.0fs (%{public}s)", last, delay, reason)
+                    SmartWakeDebugLog.log("ARMING DELAY: \(Int(last))s -> \(Int(delay))s (\(reason))")
+                }
+                lastAppliedArmingDelay = delay
+
+                // Sleep for the delay; an alarm-list change cancels this early
+                let sleepTask = Task { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+                armingSleepTask = sleepTask
+                _ = try? await sleepTask.value
+                armingSleepTask = nil
             }
-            
+
             os_log(.info, log: log, "Transition arming task ended")
         }
     }
-    
+
+    /// Adaptive delay before the next arming check, with the reason for the change log.
+    private func armingDelayAndReason() -> (TimeInterval, String) {
+        let now = Date()
+        guard let next = nextArmingCandidateDate else {
+            return (300, "no upcoming occurrence in ring window")
+        }
+        let secondsToNext = next.timeIntervalSince(now)
+        guard secondsToNext > 600 else {
+            return (30, "occurrence within 10 min")
+        }
+        return (min(max(secondsToNext - 90, 5), 300), "next occurrence in \(Int(secondsToNext))s")
+    }
+
+    /// The alarm list changed (save, edit, delete, toggle, backup restore, ...):
+    /// wake the arming loop immediately so a new alarm is armed in time and the
+    /// sleep is re-aimed at the new next occurrence.
+    func alarmListDidChange(reason: String) {
+        guard transitionCheckTask != nil else { return }
+        SmartWakeDebugLog.log("ARMING WAKEUP: alarm list changed (\(reason))")
+        armingSleepTask?.cancel()
+    }
+
     /// Stop the transition arming task
     private func stopTransitionArming() {
         transitionCheckTask?.cancel()
         transitionCheckTask = nil
+        armingSleepTask?.cancel()
+        armingSleepTask = nil
         armedOccurrences.removeAll()
     }
     
@@ -878,8 +968,11 @@ final class SmartWakeService {
             let upcomingOccurrences = desiredOccurrences.filter { occ in
                 occ.effectiveDate > now && occ.effectiveDate <= ringWindowEnd
             }
+            // The adaptive arming sleep aims at the earliest of these.
+            nextArmingCandidateDate = upcomingOccurrences.map { $0.effectiveDate }.min()
             
             guard !upcomingOccurrences.isEmpty else {
+                nextArmingCandidateDate = nil
                 os_log(.info, log: log, "No upcoming occurrences in ring window")
                 return
             }

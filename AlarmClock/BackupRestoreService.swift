@@ -367,6 +367,8 @@ final class BackupRestoreService {
         coordinator.currentEngine.snapshot = finalAlarms
         coordinator.publish()
         coordinator.writeAlarmsToAppGroup(finalAlarms)
+        // Alarm list changed - wake Smart Wake's arming loop immediately.
+        SmartWakeService.shared.alarmListDidChange(reason: "backup restore")
         
         // Stage 6: Restore user themes
         let themeManager = ThemeManager.shared

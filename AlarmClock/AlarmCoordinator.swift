@@ -553,6 +553,9 @@ final class AlarmCoordinator {
             lastError = nil
             publish()
             WidgetCenter.shared.reloadAllTimelines()
+            // Alarm list changed - wake Smart Wake's arming loop immediately so a
+            // new/edited alarm is armed in time and its sleep re-aims.
+            SmartWakeService.shared.alarmListDidChange(reason: reason)
             SmartWakeDebugLog.log("PERF: commit(\(reason)) done in \(Int((CFAbsoluteTimeGetCurrent() - perfStart) * 1000))ms")
         } catch {
             lastError = error.localizedDescription
