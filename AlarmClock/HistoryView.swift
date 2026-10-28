@@ -6,6 +6,7 @@ import UIKit
 struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: AlarmCoordinator
+    @State private var showingClearAllConfirmation = false
     
     init(coordinator: AlarmCoordinator) {
         _coordinator = State(initialValue: coordinator)
@@ -154,20 +155,6 @@ struct HistoryView: View {
         .listRowBackground(colors.card)
         .listRowSeparator(.visible)
         .listRowSeparatorTint(colors.divider)
-        .overlay(alignment: .bottom) {
-            if let toastMessage {
-                Text(toastMessage)
-                    .font(.callout)
-                    .foregroundStyle(colors.primaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(colors.card.opacity(0.95))
-                    .clipShape(Capsule())
-                    .shadow(radius: 4)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.bottom, 100)
-            }
-        }
     }
 }
 
