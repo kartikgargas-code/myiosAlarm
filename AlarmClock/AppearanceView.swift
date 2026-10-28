@@ -56,6 +56,32 @@ struct AppearanceView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Custom-Day Alarm Color") {
+                    Toggle("Use Different Color", isOn: Binding(
+                        get: { ThemeManager.shared.customDayAlarmColorEnabled },
+                        set: { ThemeManager.shared.setCustomDayAlarmColorEnabled($0) }
+                    ))
+                    if ThemeManager.shared.customDayAlarmColorEnabled {
+                        ColorPicker("Color", selection: Binding(
+                            get: { ThemeManager.shared.customDayAlarmColor },
+                            set: { ThemeManager.shared.setCustomDayAlarmColor($0) }
+                        ), supportsOpacity: false)
+                    }
+                }
+                
+                Section("Custom Ringtone Card Color") {
+                    Toggle("Use Custom Color for Imported Song Cards", isOn: Binding(
+                        get: { ThemeManager.shared.customRingtoneCardColorEnabled },
+                        set: { ThemeManager.shared.setCustomRingtoneCardColorEnabled($0) }
+                    ))
+                    if ThemeManager.shared.customRingtoneCardColorEnabled {
+                        ColorPicker("Card Color", selection: Binding(
+                            get: { ThemeManager.shared.customRingtoneCardColor },
+                            set: { ThemeManager.shared.setCustomRingtoneCardColor($0) }
+                        ), supportsOpacity: false)
+                    }
+                }
+
                 Section("My Themes") {
                     ForEach(ThemeManager.shared.userThemes) { userTheme in
                         Button {
@@ -160,7 +186,7 @@ struct AppearanceView: View {
                     .listRowBackground(Color.clear)
                     
                     // Row 1: Glow Size | Lume
-                    HStack(spacing: 0) {
+                    HStack(spacing: 24) {
                         WheelSettingRow(
                             title: "Glow Size",
                             value: glowRadiusSlider,
@@ -176,9 +202,13 @@ struct AppearanceView: View {
                             format: { "\(Int($0))%" }
                         )
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(ThemeManager.shared.colors.card)
+                    .cornerRadius(12)
                     
                     // Row 2: Spread | Border
-                    HStack(spacing: 0) {
+                    HStack(spacing: 24) {
                         WheelSettingRow(
                             title: "Spread",
                             value: glowSpreadSlider,
@@ -194,9 +224,13 @@ struct AppearanceView: View {
                             format: { String(format: "%.1f", $0) }
                         )
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(ThemeManager.shared.colors.card)
+                    .cornerRadius(12)
                     
                     // Row 3: Ring | Edge
-                    HStack(spacing: 0) {
+                    HStack(spacing: 24) {
                         WheelSettingRow(
                             title: "Ring",
                             value: outerRingSlider,
@@ -212,6 +246,10 @@ struct AppearanceView: View {
                             format: { String(format: "%.1f", $0) }
                         )
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(ThemeManager.shared.colors.card)
+                    .cornerRadius(12)
                 }
 
                 Section("Text Size") {
@@ -552,24 +590,23 @@ struct WheelSettingRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
-                Spacer()
-                Text(format(value.wrappedValue))
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(ThemeManager.shared.colors.accent)
-            }
-            Picker("", selection: value) {
-                ForEach(makeValues(), id: \.self) { val in
-                    Text(format(val)).tag(val)
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                Spacer(minLength: 12)
+                Picker("", selection: value) {
+                    ForEach(makeValues(), id: \.self) { val in
+                        Text(format(val)).tag(val)
+                    }
                 }
-            }
-            .pickerStyle(.wheel)
-            .frame(height: 100)
-            .clipped()
-            .onChange(of: value.wrappedValue) { _, newValue in
-                if lastValue != newValue {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    lastValue = newValue
+                .pickerStyle(.wheel)
+                .frame(width: 65, height: 120)
+                .clipped()
+                .onChange(of: value.wrappedValue) { _, newValue in
+                    if lastValue != newValue {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.impactOccurred()
+                        lastValue = newValue
+                    }
                 }
             }
         }

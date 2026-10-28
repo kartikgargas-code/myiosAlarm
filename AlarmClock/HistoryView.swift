@@ -15,6 +15,7 @@ struct HistoryView: View {
     }
     
     private func showToast(_ message: String) {
+        SmartWakeDebugLog.log("HISTORY TOAST: showing message=\(message)")
         toastTask?.cancel()
         withAnimation { toastMessage = message }
         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -23,6 +24,7 @@ struct HistoryView: View {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if !Task.isCancelled {
                 await MainActor.run {
+                    SmartWakeDebugLog.log("HISTORY TOAST: clearing message")
                     withAnimation { toastMessage = nil }
                 }
             }
@@ -83,6 +85,20 @@ struct HistoryView: View {
                 }
             } message: { _ in
                 Text("Delete this song?")
+            }
+            .overlay(alignment: .bottom) {
+                if let toastMessage {
+                    Text(toastMessage)
+                        .font(.callout)
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(ThemeManager.shared.colors.card.opacity(0.95))
+                        .clipShape(Capsule())
+                        .shadow(radius: 4)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 100)
+                }
             }
         }
     }

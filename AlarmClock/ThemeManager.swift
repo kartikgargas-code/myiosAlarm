@@ -22,6 +22,8 @@ final class ThemeManager {
     private let secondsMorphStyleKey = "secondsMorphStyle"
     private let customDayAlarmColorKey = "customDayAlarmColor"
     private let customDayAlarmColorEnabledKey = "customDayAlarmColorEnabled"
+    private let customRingtoneCardColorKey = "customRingtoneCardColor"
+    private let customRingtoneCardColorEnabledKey = "customRingtoneCardColorEnabled"
 
     var currentTheme: Theme = .midnightBlack
     var customThemeColors: CustomThemeColors = CustomThemeColors()
@@ -48,6 +50,10 @@ final class ThemeManager {
     // Custom-day alarm color (for alarms with custom repeat days)
     var customDayAlarmColor: Color = Color(red: 1.0, green: 0.58, blue: 0.0)  // Default orange accent
     var customDayAlarmColorEnabled: Bool = false
+    
+    // Custom ringtone card color (for imported/custom song cards)
+    var customRingtoneCardColor: Color = Color(red: 0.2, green: 0.6, blue: 1.0)  // Default blue accent
+    var customRingtoneCardColorEnabled: Bool = false
 
     func setCompactMode(_ enabled: Bool) {
         isCompactModeEnabled = enabled
@@ -97,6 +103,7 @@ final class ThemeManager {
     }
     
     func setSecondsMorphStyle(_ style: MorphSecondsStyle) {
+        SmartWakeDebugLog.log("SECONDS MORPH STYLE SET: style=\(style.rawValue)")
         secondsMorphStyle = style
         defaults.set(style.rawValue, forKey: secondsMorphStyleKey)
     }
@@ -111,6 +118,18 @@ final class ThemeManager {
     func setCustomDayAlarmColorEnabled(_ enabled: Bool) {
         customDayAlarmColorEnabled = enabled
         defaults.set(enabled, forKey: customDayAlarmColorEnabledKey)
+    }
+    
+    func setCustomRingtoneCardColor(_ color: Color) {
+        customRingtoneCardColor = color
+        if let data = try? JSONEncoder().encode(ColorData(from: color)) {
+            defaults.set(data, forKey: customRingtoneCardColorKey)
+        }
+    }
+    
+    func setCustomRingtoneCardColorEnabled(_ enabled: Bool) {
+        customRingtoneCardColorEnabled = enabled
+        defaults.set(enabled, forKey: customRingtoneCardColorEnabledKey)
     }
     
     /// Reload button settings from UserDefaults (used after backup restore)
@@ -146,6 +165,11 @@ final class ThemeManager {
             customDayAlarmColor = colorData.color
         }
         customDayAlarmColorEnabled = defaults.bool(forKey: customDayAlarmColorEnabledKey)
+        if let data = defaults.data(forKey: customRingtoneCardColorKey),
+           let colorData = try? JSONDecoder().decode(ColorData.self, from: data) {
+            customRingtoneCardColor = colorData.color
+        }
+        customRingtoneCardColorEnabled = defaults.bool(forKey: customRingtoneCardColorEnabledKey)
         loadUserThemes()
         loadTheme()
     }

@@ -299,6 +299,12 @@ struct ContentView: View {
         let occurrence = coordinator.occurrence(for: alarm.id)
         let skippedOccurrence = skippedOccurrenceForAlarm(alarm)
         let isNext = coordinator.nextOccurrence?.alarmID == alarm.id
+        
+        // Check if alarm uses an imported/custom song (not a playlist)
+        let isCustomSong = if case .imported = alarm.sound { true } else { false }
+        let cardBackground = isCustomSong && ThemeManager.shared.customRingtoneCardColorEnabled
+            ? ThemeManager.shared.customRingtoneCardColor
+            : colors.card
 
         return HStack(spacing: 12) {
             // Left column: time, countdown, repeat, skip/adjusted message - tap to edit
@@ -315,7 +321,7 @@ struct ContentView: View {
             // Right column: name top, toggle bottom
             alarmRowRightColumn(alarm, colors: colors)
         }
-        .listRowBackground(colors.card)
+        .listRowBackground(cardBackground)
         .contextMenu {
             // Reordered: Skip Next/Undo Skip at TOP, then -10/Reset/+10, Duplicate, Custom Time, Delete
             if let occurrence {
@@ -484,11 +490,28 @@ struct ContentView: View {
             ? ThemeManager.shared.customDayAlarmColor 
             : colors.primaryText
         
+        // Get sound display name for imported songs
+        let soundDisplay: String
+        if case .imported(let id) = alarm.sound,
+           let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
+            soundDisplay = sound.name
+        } else {
+            soundDisplay = alarm.sound.appDisplayName
+        }
+        
         return VStack(alignment: .trailing, spacing: 22) {
             // Name top-right
             Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
                 .font(.subheadline)
                 .foregroundStyle(customDayColor)
+            
+            // Sound display - show track name for imported songs
+            if case .imported = alarm.sound {
+                Text(soundDisplay)
+                    .font(.caption)
+                    .foregroundStyle(colors.secondaryText)
+                    .lineLimit(1)
+            }
             
             // Toggle bottom-right (empty label to avoid "Enabled" text)
             Toggle("", isOn: Binding(
@@ -590,13 +613,17 @@ struct SoundsView: View {
     @State private var toastMessage: String? = nil
     @State private var toastTask: Task<Void, Never>? = nil
     private func showToast(_ message: String) {
+        SmartWakeDebugLog.log("SOUNDS TOAST: showing message=\(message)")
         toastTask?.cancel()
         withAnimation { toastMessage = message }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         toastTask = Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             if !Task.isCancelled {
-                await MainActor.run { withAnimation { toastMessage = nil } }
+                await MainActor.run {
+                    SmartWakeDebugLog.log("SOUNDS TOAST: clearing message")
+                    withAnimation { toastMessage = nil }
+                }
             }
         }
     }
@@ -782,6 +809,9 @@ struct SoundsView: View {
                     .padding(.bottom, 100)
             }
         }
+        .onDisappear {
+            preview.stop()
+        }
     }
 
     // Kept small: the compiler type-checks each computed view on its own.
@@ -796,9 +826,6 @@ struct SoundsView: View {
                 allowsMultipleSelection: pickerMode == .files
             ) { result in
                 handlePickedFiles(result)
-            }
-            .onDisappear {
-                preview.stop()
             }
     }
 
@@ -859,6 +886,9 @@ struct SoundsView: View {
                 Button("OK", role: .cancel) { playlistDeleteError = nil }
             } message: {
                 Text(playlistDeleteError ?? "")
+            }
+            .onDisappear {
+                preview.stop()
             }
     }
 
@@ -1248,8 +1278,10 @@ private struct MeltSeconds: View {
 
 
     var body: some View {
-        Group {
-            switch ThemeManager.shared.secondsMorphStyle {
+        let style = ThemeManager.shared.secondsMorphStyle
+        SmartWakeDebugLog.log("MELTSECONDS DRAW: style=\(style.rawValue) seconds=\(seconds)")
+        return Group {
+            switch style {
             case .fade:
                 Text("\(seconds)")
                     .font(.subheadline)
@@ -1263,7 +1295,7 @@ private struct MeltSeconds: View {
                     text: "\(seconds)",
                     previousText: previous.map { "\($0)" } ?? "\(seconds)",
                     tickStart: tickStart,
-                    duration: meltDuration * (ThemeManager.shared.secondsMorphStyle == .drip ? 1.6 : 1),
+                    duration: meltDuration * (style == .drip ? 1.6 : 1),
                     color: color,
                     blurFraction: meltAmount,
                     ink: meltInk,
