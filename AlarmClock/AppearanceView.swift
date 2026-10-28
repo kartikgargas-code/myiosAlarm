@@ -177,15 +177,17 @@ struct AppearanceView: View {
                 }
 
                 Section("Buttons") {
-                    HStack {
-                        Spacer()
-                        Button("Test") {}
-                            .appButtonChrome(shape: .capsule)
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                    
                     VStack(spacing: 0) {
+                        // Test button row
+                        HStack {
+                            Spacer()
+                            Button("Test") {}
+                                .appButtonChrome(shape: .capsule)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                    
                         // Row 1: Glow Size | Lume
                         HStack(spacing: 24) {
                             WheelSettingRow(
@@ -248,6 +250,7 @@ struct AppearanceView: View {
                     }
                     .background(ThemeManager.shared.colors.card)
                     .cornerRadius(12)
+                    .listRowBackground(Color.clear)
                 }
 
                 Section("Text Size") {
@@ -269,19 +272,6 @@ struct AppearanceView: View {
                         get: { ThemeManager.shared.isCompactModeEnabled },
                         set: { ThemeManager.shared.setCompactMode($0) }
                     ))
-                }
-                
-                Section("Custom-Day Alarm Color") {
-                    Toggle("Use Different Color", isOn: Binding(
-                        get: { ThemeManager.shared.customDayAlarmColorEnabled },
-                        set: { ThemeManager.shared.setCustomDayAlarmColorEnabled($0) }
-                    ))
-                    if ThemeManager.shared.customDayAlarmColorEnabled {
-                        ColorPicker("Color", selection: Binding(
-                            get: { ThemeManager.shared.customDayAlarmColor },
-                            set: { ThemeManager.shared.setCustomDayAlarmColor($0) }
-                        ), supportsOpacity: false)
-                    }
                 }
                 
             }
