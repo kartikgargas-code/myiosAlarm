@@ -44,6 +44,7 @@ targets:
       - path: AlarmClock/SharedAlarmService.swift
       - path: AlarmClock/SmartWakeService.swift
       - path: AlarmClock/AlarmPlaybackService.swift
+      - path: AlarmClock/CopyToastManager.swift
     info:
       path: AlarmClock/Info.plist
       properties:
