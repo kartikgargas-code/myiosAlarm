@@ -64,48 +64,66 @@ public enum PlaylistSortOption: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct Playlist: Identifiable, Codable, Hashable {
-    public let id: UUID
-    public var name: String
-    public var soundIDs: [UUID]
-    public var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
-    public var dateCreated: Date
-    public var playOrder: PlaylistPlayOrder  // New: Random vs Sequence
-    public var sortOption: PlaylistSortOption  // New: How songs are sorted in editor
-    
-    public init(
-        id: UUID = UUID(),
-        name: String,
-        soundIDs: [UUID] = [],
-        selectedSoundIDs: [UUID]? = nil,
-        dateCreated: Date = Date(),
-        playOrder: PlaylistPlayOrder = .random,
-        sortOption: PlaylistSortOption = .name
-    ) {
-        self.id = id
-        self.name = name
-        self.soundIDs = soundIDs
-        self.selectedSoundIDs = selectedSoundIDs ?? soundIDs
-        self.dateCreated = dateCreated
-        self.playOrder = playOrder
-        self.sortOption = sortOption
+/// A playlist song entry that may be missing (file not yet on device).
+    /// Kept so we can reconnect it after a later mp3-folder import.
+    public struct MissingSong: Codable, Hashable {
+        public let fileName: String
+        public var folder: String? = nil
+        public var duration: TimeInterval? = nil
+        
+        public init(fileName: String, folder: String? = nil, duration: TimeInterval? = nil) {
+            self.fileName = fileName
+            self.folder = folder
+            self.duration = duration
+        }
     }
     
-    private enum CodingKeys: String, CodingKey {
-        case id, name, soundIDs, selectedSoundIDs, dateCreated, playOrder, sortOption
+    public struct Playlist: Identifiable, Codable, Hashable {
+        public let id: UUID
+        public var name: String
+        public var soundIDs: [UUID]
+        public var selectedSoundIDs: [UUID]  // Tracks which songs are selected for playback
+        public var dateCreated: Date
+        public var playOrder: PlaylistPlayOrder  // New: Random vs Sequence
+        public var sortOption: PlaylistSortOption  // New: How songs are sorted in editor
+        public var missingSongs: [MissingSong] = []  // Songs not yet on device (from backup)
+        
+        public init(
+            id: UUID = UUID(),
+            name: String,
+            soundIDs: [UUID] = [],
+            selectedSoundIDs: [UUID]? = nil,
+            dateCreated: Date = Date(),
+            playOrder: PlaylistPlayOrder = .random,
+            sortOption: PlaylistSortOption = .name,
+            missingSongs: [MissingSong] = []
+        ) {
+            self.id = id
+            self.name = name
+            self.soundIDs = soundIDs
+            self.selectedSoundIDs = selectedSoundIDs ?? soundIDs
+            self.dateCreated = dateCreated
+            self.playOrder = playOrder
+            self.sortOption = sortOption
+            self.missingSongs = missingSongs
+        }
+        
+        private enum CodingKeys: String, CodingKey {
+            case id, name, soundIDs, selectedSoundIDs, dateCreated, playOrder, sortOption, missingSongs
+        }
+        
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(UUID.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            soundIDs = try container.decode([UUID].self, forKey: .soundIDs)
+            selectedSoundIDs = try container.decodeIfPresent([UUID].self, forKey: .selectedSoundIDs) ?? soundIDs
+            dateCreated = try container.decode(Date.self, forKey: .dateCreated)
+            playOrder = try container.decodeIfPresent(PlaylistPlayOrder.self, forKey: .playOrder) ?? .random
+            sortOption = try container.decodeIfPresent(PlaylistSortOption.self, forKey: .sortOption) ?? .name
+            missingSongs = try container.decodeIfPresent([MissingSong].self, forKey: .missingSongs) ?? []
+        }
     }
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
-        soundIDs = try container.decode([UUID].self, forKey: .soundIDs)
-        selectedSoundIDs = try container.decodeIfPresent([UUID].self, forKey: .selectedSoundIDs) ?? soundIDs
-        dateCreated = try container.decode(Date.self, forKey: .dateCreated)
-        playOrder = try container.decodeIfPresent(PlaylistPlayOrder.self, forKey: .playOrder) ?? .random
-        sortOption = try container.decodeIfPresent(PlaylistSortOption.self, forKey: .sortOption) ?? .name
-    }
-}
 
 public enum AlarmSound: Codable, Equatable, Hashable {
     case systemDefault

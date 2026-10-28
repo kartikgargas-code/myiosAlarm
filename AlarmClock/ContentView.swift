@@ -1106,6 +1106,7 @@ private func makeCreatorSheet() -> some View {
         let colors = ThemeManager.shared.colors
         let soundCount = playlist.soundIDs.count
         let selectedCount = playlist.selectedSoundIDs.count
+        let missingCount = playlist.missingSongs.count
         
         return HStack(spacing: 12) {
             Image(systemName: "music.note.list")
@@ -1121,9 +1122,15 @@ private func makeCreatorSheet() -> some View {
                     .foregroundStyle(colors.primaryText)
                     .lineLimit(1)
                 
-                Text("\(soundCount) song\(soundCount == 1 ? "" : "s") · \(selectedCount) selected")
-                    .font(.caption)
-                    .foregroundStyle(colors.secondaryText)
+                if missingCount > 0 {
+                    Text("\(soundCount) song\(soundCount == 1 ? "" : "s") · \(selectedCount) selected · \(missingCount) missing")
+                        .font(.caption)
+                        .foregroundStyle(colors.destructive)
+                } else {
+                    Text("\(soundCount) song\(soundCount == 1 ? "" : "s") · \(selectedCount) selected")
+                        .font(.caption)
+                        .foregroundStyle(colors.secondaryText)
+                }
             }
             
             Spacer()
@@ -1226,7 +1233,9 @@ private func makeCreatorSheet() -> some View {
         do {
             let _ = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
-            SmartWakeDebugLog.log("MP3 folder import finished - rebuilding alarm schedule")
+            SmartWakeDebugLog.log("MP3 folder import finished - reconnecting missing entries")
+            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+            SmartWakeDebugLog.log("MP3 FOLDER IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
             await coordinator.synchronize()
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"

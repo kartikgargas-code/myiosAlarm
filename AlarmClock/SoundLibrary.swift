@@ -389,6 +389,108 @@ final class SoundLibrary {
         savePlaylists()
         return remap
     }
+    
+    /// Restore playlists from v3 backup that includes missingSongs field.
+    /// Keeps ALL entries (even missing ones), marks missing so they can be reconnected later.
+    /// Returns (remap, reconnectedCount, stillMissingCount).
+    func restorePlaylistsFromBackupV3(_ restored: [Playlist]) -> ([UUID: UUID], Int, Int) {
+        var remap: [UUID: UUID] = [:]
+        var reconnectedCount = 0
+        var stillMissingCount = 0
+        
+        // Build a lookup of imported sounds by fileName for reconnection
+        let soundsByFileName = Dictionary(grouping: importedSounds, by: { $0.fileName.lowercased() })
+        
+        for candidate in restored {
+            if let index = playlists.firstIndex(where: { $0.name == candidate.name }) {
+                // Playlist already exists - merge entries, keeping missing ones
+                var existing = playlists[index]
+                var existingSongsByFileName = Set(existing.soundIDs.compactMap { id in
+                    importedSounds.first(where: { $0.id == id })?.fileName.lowercased()
+                })
+                
+                // First, handle missingSongs from backup - try to reconnect them
+                for missingSong in candidate.missingSongs {
+                    let fileNameKey = missingSong.fileName.lowercased()
+                    if let matchingSounds = soundsByFileName[fileNameKey],
+                       let match = matchingSounds.first {
+                        // Song now exists in library - add its UUID
+                        if !existing.soundIDs.contains(match.id) {
+                            existing.soundIDs.append(match.id)
+                        }
+                        if !existing.selectedSoundIDs.contains(match.id) {
+                            existing.selectedSoundIDs.append(match.id)
+                        }
+                        reconnectedCount += 1
+                    } else {
+                        // Still missing - keep in missingSongs
+                        if !existing.missingSongs.contains(where: { $0.fileName.lowercased() == fileNameKey }) {
+                            existing.missingSongs.append(missingSong)
+                        }
+                        stillMissingCount += 1
+                    }
+                }
+                
+                // Also try to reconnect any existing missingSongs in the playlist
+                var newMissingSongs: [Playlist.MissingSong] = []
+                for missingSong in existing.missingSongs {
+                    let fileNameKey = missingSong.fileName.lowercased()
+                    if let matchingSounds = soundsByFileName[fileNameKey],
+                       let match = matchingSounds.first {
+                        // Song now exists - reconnect
+                        if !existing.soundIDs.contains(match.id) {
+                            existing.soundIDs.append(match.id)
+                        }
+                        if !existing.selectedSoundIDs.contains(match.id) {
+                            existing.selectedSoundIDs.append(match.id)
+                        }
+                        reconnectedCount += 1
+                    } else {
+                        // Still missing
+                        newMissingSongs.append(missingSong)
+                    }
+                }
+                existing.missingSongs = newMissingSongs
+                
+                playlists[index] = existing
+                remap[candidate.id] = existing.id
+            } else {
+                // New playlist - build it with whatever songs we can connect
+                var newSoundIDs: [UUID] = []
+                var newSelectedIDs: [UUID] = []
+                var newMissingSongs: [Playlist.MissingSong] = []
+                
+                // First process missingSongs from backup
+                for missingSong in candidate.missingSongs {
+                    let fileNameKey = missingSong.fileName.lowercased()
+                    if let matchingSounds = soundsByFileName[fileNameKey],
+                       let match = matchingSounds.first {
+                        newSoundIDs.append(match.id)
+                        newSelectedIDs.append(match.id)
+                        reconnectedCount += 1
+                    } else {
+                        newMissingSongs.append(missingSong)
+                        stillMissingCount += 1
+                    }
+                }
+                
+                let newPlaylist = Playlist(
+                    name: candidate.name,
+                    soundIDs: newSoundIDs,
+                    selectedSoundIDs: newSelectedIDs,
+                    dateCreated: candidate.dateCreated,
+                    playOrder: candidate.playOrder,
+                    sortOption: candidate.sortOption,
+                    missingSongs: newMissingSongs
+                )
+                playlists.append(newPlaylist)
+                remap[candidate.id] = newPlaylist.id
+                stillMissingCount += newMissingSongs.count
+            }
+        }
+        savePlaylists()
+        return (remap, reconnectedCount, stillMissingCount)
+    }
 
     private func loadPlaylists() {
         guard let data = UserDefaults.standard.data(forKey: playlistKey),
@@ -620,6 +722,12 @@ final class SoundLibrary {
                 self.playlists.append(playlist)
             }
             self.savePlaylists()
+            
+            // After folder import, reconnect any missing playlist entries by fileName
+            // and rebuild alarm sounds so playlists with now-available songs work
+            let (reconnected, stillMissing) = self.reconnectMissingPlaylistEntries()
+            SmartWakeDebugLog.log("MP3 FOLDER IMPORT: imported \(importedSoundInfos.count) sounds for '\(folderName)'; reconnected \(reconnected) missing entries; \(stillMissing) still missing")
+            // Note: alarm rebuild (synchronize) is called by the UI layer after import completes
         }
 
         if !errors.isEmpty {
@@ -636,6 +744,46 @@ final class SoundLibrary {
         return playlist
     }
 
+    /// Reconnect missing playlist entries by matching fileName in importedSounds.
+    /// Called after mp3 folder import to hook up songs that were missing at backup-restore time.
+    /// Returns (reconnectedCount, stillMissingCount).
+    func reconnectMissingPlaylistEntries() -> (Int, Int) {
+        let soundsByFileName = Dictionary(grouping: importedSounds, by: { $0.fileName.lowercased() })
+        var reconnectedCount = 0
+        var stillMissingCount = 0
+        
+        for i in playlists.indices {
+            var playlist = playlists[i]
+            var newMissingSongs: [Playlist.MissingSong] = []
+            
+            // Process missingSongs - try to reconnect them
+            for missingSong in playlist.missingSongs {
+                let fileNameKey = missingSong.fileName.lowercased()
+                if let matchingSounds = soundsByFileName[fileNameKey],
+                   let match = matchingSounds.first {
+                    // Song now exists in library - reconnect
+                    if !playlist.soundIDs.contains(match.id) {
+                        playlist.soundIDs.append(match.id)
+                    }
+                    if !playlist.selectedSoundIDs.contains(match.id) {
+                        playlist.selectedSoundIDs.append(match.id)
+                    }
+                    reconnectedCount += 1
+                } else {
+                    // Still missing
+                    newMissingSongs.append(missingSong)
+                    stillMissingCount += 1
+                }
+            }
+            
+            playlist.missingSongs = newMissingSongs
+            playlists[i] = playlist
+        }
+        savePlaylists()
+        
+        return (reconnectedCount, stillMissingCount)
+    }
+    
     func createPlaylist(name: String, soundIDs: [UUID]) -> Playlist {
         let playlist = Playlist(name: name, soundIDs: soundIDs)
         playlists.append(playlist)

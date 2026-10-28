@@ -41,6 +41,7 @@ final class BackupRestoreService {
 
         // Added later - optional, so older backup files still decode.
         var playlists: [Playlist]? = nil
+        var backupPlaylists: [Playlist]? = nil  // v3+ with missingSongs field
         var activeThemeName: String? = nil
         var activeUserThemeID: UUID? = nil
         var widgetSettings: [String: Double]? = nil
@@ -57,6 +58,27 @@ final class BackupRestoreService {
             var folder: String? = nil
             var duration: TimeInterval? = nil
             var dataBase64: String? = nil   // nil = metadata-only (v2). v1 files still decode.
+        }
+
+        /// A playlist song entry for backup — stores the file name so we can reconnect
+        /// after a later mp3-folder import. Missing keys decode to defaults for old backups.
+        struct BackupPlaylistSong: Codable {
+            let fileName: String
+            var folder: String? = nil
+            var duration: TimeInterval? = nil
+        }
+
+        /// Backup representation of a playlist with song entries by fileName (not UUID).
+        /// Old backups without this field decode to nil and are handled gracefully.
+        struct BackupPlaylist: Codable {
+            let id: UUID
+            let name: String
+            var soundIDs: [UUID] = []           // legacy — kept for old backups
+            var selectedSoundIDs: [UUID] = []   // legacy
+            var dateCreated: Date = Date()
+            var playOrder: String = "random"
+            var sortOption: String = "name"
+            var songs: [BackupPlaylistSong] = []  // new: file-name-based entries
         }
     }
     
@@ -186,6 +208,10 @@ final class BackupRestoreService {
         archive.playlists = soundLibrary.playlistsForBackup()
         archive.activeThemeName = themeManager.currentTheme.rawValue
         archive.activeUserThemeID = themeManager.activeUserThemeID
+        
+        // v3: also store playlists with missingSongs for reconnect after later import
+        let playlists = soundLibrary.playlistsForBackup()
+        archive.backupPlaylists = playlists
         archive.widgetSettings = exportWidgetSettings()
         archive.buttonSettings = exportButtonSettings()
         archive.interfaceTextSize = String(describing: themeManager.interfaceTextSize)
@@ -278,12 +304,25 @@ final class BackupRestoreService {
         // Stage 3: Reload sound library
         soundLibrary.loadSounds()
         
-        // Stage 3b: Restore playlists (older backups simply have none). The returned map
-        // points backed-up playlist ids at the surviving playlist ids.
+        // Stage 3b: Restore playlists with file-name entries (v3) or legacy (v2)
         var playlistRemap: [UUID: UUID] = [:]
-        if let backedUpPlaylists = archive.playlists {
+        var reconnectedCount = 0
+        var stillMissingCount = 0
+        
+        if let backupPlaylists = archive.backupPlaylists {
+            // v3+: restore playlists with missingSongs field, keep missing as-is
+            (playlistRemap, reconnectedCount, stillMissingCount) = soundLibrary.restorePlaylistsFromBackupV3(backupPlaylists)
+        } else if let backedUpPlaylists = archive.playlists {
+            // v2: legacy restore (may drop missing entries)
             playlistRemap = soundLibrary.restorePlaylistsFromBackup(backedUpPlaylists)
         }
+        
+        // Log reconnect stats
+        if reconnectedCount > 0 || stillMissingCount > 0 {
+            os_log(.info, log: log, "PLAYLIST RESTORE: reconnected=%d stillMissing=%d", reconnectedCount, stillMissingCount)
+            SmartWakeDebugLog.log("PLAYLIST RESTORE: reconnected \(reconnectedCount) stillMissing \(stillMissingCount)")
+        }
+        
         // Stage 4: Validate alarm sound references - reset missing imported sounds to Default
         var restoredAlarms = archive.alarms.alarms
         var changed = false
@@ -368,6 +407,18 @@ final class BackupRestoreService {
         
         // Stage 7: Re-schedule alarms
         await coordinator.synchronize()
+        
+        // Stage 8: After restore, reconnect any missing playlist entries that might now be available
+        // (e.g., if user already imported the mp3 folder before restoring backup)
+        let (reconnectAfterRestore, stillMissingAfterRestore) = soundLibrary.reconnectMissingPlaylistEntries()
+        if reconnectAfterRestore > 0 || stillMissingAfterRestore > 0 {
+            os_log(.info, log: log, "POST-RESTORE RECONNECT: reconnected=%d stillMissing=%d", reconnectAfterRestore, stillMissingAfterRestore)
+            SmartWakeDebugLog.log("POST-RESTORE RECONNECT: reconnected \(reconnectAfterRestore) stillMissing \(stillMissingAfterRestore)")
+            // Re-schedule alarms if we reconnected anything
+            if reconnectAfterRestore > 0 {
+                await coordinator.synchronize()
+            }
+        }
         
         os_log(.info, log: log, "Imported backup (%d sounds, %d alarms, %d themes)", archive.sounds.count, archive.alarms.alarms.count, archive.userThemes.count)
     }
