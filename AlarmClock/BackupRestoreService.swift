@@ -323,15 +323,20 @@ final class BackupRestoreService {
             SmartWakeDebugLog.log("PLAYLIST RESTORE: reconnected \(reconnectedCount) stillMissing \(stillMissingCount)")
         }
         
-        // Stage 4: Validate alarm sound references - reset missing imported sounds to Default
+        // Stage 4: an alarm may point at an imported song that is not on the phone yet.
+        // KEEP the stored .imported(id): the ids are derived from the file name, so the
+        // reference matches again as soon as the song is imported. Scheduling, the alarm
+        // list, the editor and playback all fall back to the default tone for the moment.
         var restoredAlarms = archive.alarms.alarms
-        var changed = false
-        for i in restoredAlarms.indices {
-            if case .imported(let id) = restoredAlarms[i].sound,
+        var missingImportedCount = 0
+        for alarm in archive.alarms.alarms {
+            if case .imported(let id) = alarm.sound,
                !soundLibrary.importedSounds.contains(where: { $0.id == id }) {
-                restoredAlarms[i].sound = .systemDefault
-                changed = true
+                missingImportedCount += 1
             }
+        }
+        if missingImportedCount > 0 {
+            SmartWakeDebugLog.log("RESTORE: \(missingImportedCount) alarms keep a missing imported song")
         }
         
         // Stage 4b: an alarm may refer to a playlist that was matched by NAME, in which case its

@@ -532,7 +532,8 @@ struct AlarmEditorView: View {
             if let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
                 return sound.name
             }
-            return "Imported"
+            // Restored before its song was re-imported - the stored pick is kept
+            return "song not imported yet"
         case .random(let playlistID):
             if let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
                let firstSoundID = playlist.soundIDs.first,

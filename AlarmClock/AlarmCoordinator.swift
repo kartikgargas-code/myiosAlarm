@@ -760,6 +760,13 @@ final class AlarmCoordinator {
                         SmartWakeDebugLog.log("DESIRED ALARMS: primary sound failed (\(err)), falling back to classic-bell")
                         resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav")
                         warnings.append("\(label): primary sound unavailable, using default")
+                    } catch is SoundLibraryError {
+                        // A restored alarm may keep an imported song that is not on the
+                        // phone yet - ring the default tone for THIS occurrence only;
+                        // the stored alarm keeps its .imported pick.
+                        SmartWakeDebugLog.log("DESIRED ALARMS: imported song missing, falling back to classic-bell")
+                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav")
+                        warnings.append("\(label): song not imported yet, using default")
                     }
                     let alarmKitSound = resolvedAlarmKitSound.sound
                     if let soundFileName = resolvedAlarmKitSound.fileName {

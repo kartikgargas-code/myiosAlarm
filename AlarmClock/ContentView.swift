@@ -496,6 +496,9 @@ struct ContentView: View {
         if case .imported(let id) = alarm.sound,
            let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id }) {
             soundDisplay = sound.name
+        } else if case .imported = alarm.sound {
+            // Restored before its song was re-imported - the stored pick is kept
+            soundDisplay = "song not imported yet"
         } else {
             soundDisplay = alarm.sound.appDisplayName
         }
