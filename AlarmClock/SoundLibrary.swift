@@ -432,7 +432,7 @@ final class SoundLibrary {
                 }
                 
                 // Also try to reconnect any existing missingSongs in the playlist
-                var newMissingSongs: [Playlist.MissingSong] = []
+                var newMissingSongs: [MissingSong] = []
                 for missingSong in existing.missingSongs {
                     let fileNameKey = missingSong.fileName.lowercased()
                     if let matchingSounds = soundsByFileName[fileNameKey],
@@ -458,7 +458,7 @@ final class SoundLibrary {
                 // New playlist - build it with whatever songs we can connect
                 var newSoundIDs: [UUID] = []
                 var newSelectedIDs: [UUID] = []
-                var newMissingSongs: [Playlist.MissingSong] = []
+                var newMissingSongs: [MissingSong] = []
                 
                 // First process missingSongs from backup
                 for missingSong in candidate.missingSongs {
@@ -754,7 +754,7 @@ final class SoundLibrary {
         
         for i in playlists.indices {
             var playlist = playlists[i]
-            var newMissingSongs: [Playlist.MissingSong] = []
+            var newMissingSongs: [MissingSong] = []
             
             // Process missingSongs - try to reconnect them
             for missingSong in playlist.missingSongs {
