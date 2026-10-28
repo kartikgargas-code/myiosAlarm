@@ -178,6 +178,7 @@ struct ContentView: View {
                 AlarmEditorView(
                     existingAlarm: presentation.alarm,
                     alarms: coordinator.alarms,
+                    coordinator: coordinator,
                     onSave: { alarm in
                         await coordinator.save(alarm)
                     },

@@ -7,6 +7,7 @@ struct AlarmEditorView: View {
 
     let existingAlarm: AlarmRecord?
     let alarms: [AlarmRecord]
+    let coordinator: AlarmCoordinator
     let onSave: (AlarmRecord) async -> Void
     let onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)?
 
@@ -43,9 +44,10 @@ struct AlarmEditorView: View {
     @State private var testAlarmTask: Task<Void, Never>?
     private let testSchedulingDelay: TimeInterval = 10 // Internal minimal delay for reliable scheduling
 
-    init(existingAlarm: AlarmRecord? = nil, alarms: [AlarmRecord], onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
+    init(existingAlarm: AlarmRecord? = nil, alarms: [AlarmRecord], coordinator: AlarmCoordinator, onSave: @escaping (AlarmRecord) async -> Void, onTestAlarm: ((AlarmRecord, TimeInterval) async -> Void)? = nil) {
         self.existingAlarm = existingAlarm
         self.alarms = alarms
+        self.coordinator = coordinator
         self.onSave = onSave
         self.onTestAlarm = onTestAlarm
         // Capture the alarm ID once at init
