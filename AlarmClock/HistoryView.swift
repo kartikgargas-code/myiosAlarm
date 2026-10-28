@@ -6,34 +6,14 @@ import UIKit
 struct HistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: AlarmCoordinator
-    @State private var showingClearAllConfirmation = false
-    @State private var toastMessage: String? = nil
-    @State private var toastTask: Task<Void, Never>? = nil
     
     init(coordinator: AlarmCoordinator) {
         _coordinator = State(initialValue: coordinator)
     }
     
-    private func showToast(_ message: String) {
-        SmartWakeDebugLog.log("HISTORY TOAST: showing message=\(message)")
-        toastTask?.cancel()
-        withAnimation { toastMessage = message }
-        let generator = UIImpactFeedbackGenerator(style: .light)
-        generator.impactOccurred()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if !Task.isCancelled {
-                await MainActor.run {
-                    SmartWakeDebugLog.log("HISTORY TOAST: clearing message")
-                    withAnimation { toastMessage = nil }
-                }
-            }
-        }
-    }
-    
     private func copyToClipboard(_ text: String) {
         UIPasteboard.general.string = text
-        showToast("Copied")
+        CopyToastManager.shared.show("Copied")
     }
     
     var body: some View {
@@ -85,20 +65,6 @@ struct HistoryView: View {
                 }
             } message: { _ in
                 Text("Delete this song?")
-            }
-            .overlay(alignment: .bottom) {
-                if let toastMessage {
-                    Text(toastMessage)
-                        .font(.callout)
-                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(ThemeManager.shared.colors.card.opacity(0.95))
-                        .clipShape(Capsule())
-                        .shadow(radius: 4)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 100)
-                }
             }
         }
     }

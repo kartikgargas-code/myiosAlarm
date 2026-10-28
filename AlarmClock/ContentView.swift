@@ -609,27 +609,10 @@ struct EditorPresentation: Identifiable {
 struct SoundsView: View {
     @Environment(\.dismiss) private var dismiss
     let coordinator: AlarmCoordinator
-    // Copy feedback for the song names in this list (HistoryView has the same pair)
-    @State private var toastMessage: String? = nil
-    @State private var toastTask: Task<Void, Never>? = nil
-    private func showToast(_ message: String) {
-        SmartWakeDebugLog.log("SOUNDS TOAST: showing message=\(message)")
-        toastTask?.cancel()
-        withAnimation { toastMessage = message }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            if !Task.isCancelled {
-                await MainActor.run {
-                    SmartWakeDebugLog.log("SOUNDS TOAST: clearing message")
-                    withAnimation { toastMessage = nil }
-                }
-            }
-        }
-    }
+    // Copy feedback uses shared CopyToastManager so list refreshes cannot remove it
     private func copyToClipboard(_ text: String) {
         UIPasteboard.general.string = text
-        showToast("Copied")
+        CopyToastManager.shared.show("Copied")
     }
     
     @State private var showingDocumentPicker = false
@@ -794,20 +777,6 @@ struct SoundsView: View {
         }
         .sheet(isPresented: $showingPlaylistCreator) {
             makeCreatorSheet()
-        }
-        .overlay(alignment: .bottom) {
-            if let toastMessage {
-                Text(toastMessage)
-                    .font(.callout)
-                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(ThemeManager.shared.colors.card.opacity(0.95))
-                    .clipShape(Capsule())
-                    .shadow(radius: 4)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.bottom, 100)
-            }
         }
         .onDisappear {
             preview.stop()
