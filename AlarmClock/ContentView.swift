@@ -1257,6 +1257,8 @@ private func makeCreatorSheet() -> some View {
         do {
             let _ = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
+            SmartWakeDebugLog.log("MP3 folder import finished - rebuilding alarm schedule")
+            await coordinator.synchronize()
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"
         }

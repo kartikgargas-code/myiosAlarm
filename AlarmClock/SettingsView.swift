@@ -204,6 +204,7 @@ struct SettingsView: View {
                         Task {
                             do {
                                 try await BackupRestoreService.shared.importArchive(from: url)
+                                SmartWakeDebugLog.log("Backup import finished - alarms rebuilt and rescheduled")
                                 coordinator.lastError = nil
                             } catch {
                                 coordinator.lastError = "Import failed: \(error.localizedDescription)"
