@@ -35,14 +35,20 @@ struct SoundPickerView: View {
     private let preview = SoundPreviewService.shared
 
     // Group imported sounds by folder (like SoundsView visibleGroups)
-    private var pickerVisibleGroups: [(id: String, title: String, sounds: [ImportedSound])] {
+    private struct PickerSoundGroup: Identifiable {
+        let id: String
+        let title: String
+        let sounds: [ImportedSound]
+    }
+    
+    private var pickerVisibleGroups: [PickerSoundGroup] {
         let sounds = SoundLibrary.shared.importedSounds.filter { sound in
             guard let url = SoundLibrary.shared.resolvedURL(for: sound) else { return false }
             return FileManager.default.fileExists(atPath: url.path)
         }
         let dict = Dictionary(grouping: sounds) { $0.folder }
         return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
-            (id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+            PickerSoundGroup(id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
         }
     }
 
