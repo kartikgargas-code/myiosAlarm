@@ -50,6 +50,8 @@ final class BackupRestoreService {
         var secondsMorphStyle: String? = nil
         var customDayAlarmColorEnabled: Bool? = nil
         var customDayAlarmColor: String? = nil
+        var customRingtoneCardColorEnabled: Bool? = nil
+        var customRingtoneCardColor: String? = nil
         var compactModeEnabled: Bool? = nil
         
         struct BackupSoundFile: Codable {
@@ -220,6 +222,10 @@ final class BackupRestoreService {
         if let data = try? JSONEncoder().encode(ColorData(from: themeManager.customDayAlarmColor)) {
             archive.customDayAlarmColor = String(data: data, encoding: .utf8)
         }
+        archive.customRingtoneCardColorEnabled = themeManager.customRingtoneCardColorEnabled
+        if let data = try? JSONEncoder().encode(ColorData(from: themeManager.customRingtoneCardColor)) {
+            archive.customRingtoneCardColor = String(data: data, encoding: .utf8)
+        }
         archive.compactModeEnabled = themeManager.isCompactModeEnabled
         
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
@@ -237,6 +243,26 @@ final class BackupRestoreService {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(archive)
         try data.write(to: archiveURL, options: .atomic)
+        
+        // Count settings written for logging
+        var settingsCount = 0
+        // widget settings
+        settingsCount += (archive.widgetSettings?.count ?? 0)
+        // button settings
+        settingsCount += (archive.buttonSettings?.count ?? 0)
+        // individual settings
+        if archive.interfaceTextSize != nil { settingsCount += 1 }
+        if archive.secondsMorphStyle != nil { settingsCount += 1 }
+        if archive.customDayAlarmColorEnabled != nil { settingsCount += 1 }
+        if archive.customDayAlarmColor != nil { settingsCount += 1 }
+        if archive.customRingtoneCardColorEnabled != nil { settingsCount += 1 }
+        if archive.customRingtoneCardColor != nil { settingsCount += 1 }
+        if archive.compactModeEnabled != nil { settingsCount += 1 }
+        if archive.activeThemeName != nil { settingsCount += 1 }
+        if archive.activeUserThemeID != nil { settingsCount += 1 }
+        
+        os_log(.info, log: log, "BACKUP EXPORT: %{public}d settings written", settingsCount)
+        SmartWakeDebugLog.log("BACKUP EXPORT: \(settingsCount) settings written")
         
         // Log the file details
         let exists = fileManager.fileExists(atPath: archiveURL.path)
@@ -407,6 +433,15 @@ final class BackupRestoreService {
            let colorData = try? JSONDecoder().decode(ColorData.self, from: data) {
             ThemeManager.shared.setCustomDayAlarmColor(colorData.color)
         }
+        // Stage 6f-2: Restore custom ringtone card color settings (backward compatible)
+        if let customRingtoneCardColorEnabled = archive.customRingtoneCardColorEnabled {
+            ThemeManager.shared.setCustomRingtoneCardColorEnabled(customRingtoneCardColorEnabled)
+        }
+        if let customRingtoneCardColorData = archive.customRingtoneCardColor,
+           let data = customRingtoneCardColorData.data(using: .utf8),
+           let colorData = try? JSONDecoder().decode(ColorData.self, from: data) {
+            ThemeManager.shared.setCustomRingtoneCardColor(colorData.color)
+        }
         // Stage 6g: Restore compact mode (backward compatible)
         if let compactModeEnabled = archive.compactModeEnabled {
             ThemeManager.shared.setCompactMode(compactModeEnabled)
@@ -426,6 +461,23 @@ final class BackupRestoreService {
                 await coordinator.synchronize()
             }
         }
+        
+        // Count settings applied for logging
+        var settingsApplied = 0
+        if archive.widgetSettings != nil { settingsApplied += (archive.widgetSettings?.count ?? 0) }
+        if archive.buttonSettings != nil { settingsApplied += (archive.buttonSettings?.count ?? 0) }
+        if archive.interfaceTextSize != nil { settingsApplied += 1 }
+        if archive.secondsMorphStyle != nil { settingsApplied += 1 }
+        if archive.customDayAlarmColorEnabled != nil { settingsApplied += 1 }
+        if archive.customDayAlarmColor != nil { settingsApplied += 1 }
+        if archive.customRingtoneCardColorEnabled != nil { settingsApplied += 1 }
+        if archive.customRingtoneCardColor != nil { settingsApplied += 1 }
+        if archive.compactModeEnabled != nil { settingsApplied += 1 }
+        if archive.activeThemeName != nil { settingsApplied += 1 }
+        if archive.activeUserThemeID != nil { settingsApplied += 1 }
+        
+        os_log(.info, log: log, "RESTORE: %{public}d settings applied", settingsApplied)
+        SmartWakeDebugLog.log("RESTORE: \(settingsApplied) settings applied")
         
         os_log(.info, log: log, "Imported backup (%d sounds, %d alarms, %d themes)", archive.sounds.count, archive.alarms.alarms.count, archive.userThemes.count)
         SmartWakeDebugLog.log("IMPORT DONE kind=restore songs=\(archive.sounds.count), rescheduling")
