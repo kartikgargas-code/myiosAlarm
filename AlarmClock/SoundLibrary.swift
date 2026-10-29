@@ -38,7 +38,10 @@ struct ImportedSound: Identifiable, Codable, Hashable {
 
     // Mock helpers for UI preview/placeholder rows (not persisted)
     static func mockBuiltIn(_ name: String) -> ImportedSound {
-        ImportedSound(id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012x", name.hashValue))")!,
+        // Use a deterministic UUID based on the name's stable hash
+        let stableHash = name.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        let uuidString = String(format: "00000000-0000-0000-0000-%012x", abs(stableHash) % 0x1_000_000_000_000)
+        return ImportedSound(id: UUID(uuidString: uuidString)!,
                      name: name,
                      fileName: "built-in-\(name.lowercased())",
                      duration: nil,
