@@ -38,9 +38,19 @@ struct ImportedSound: Identifiable, Codable, Hashable {
 
     // Mock helpers for UI preview/placeholder rows (not persisted)
     static func mockBuiltIn(_ name: String) -> ImportedSound {
-        // Use a deterministic UUID based on the name's stable hash
-        let stableHash = name.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        let uuidString = String(format: "00000000-0000-0000-0000-%012x", abs(stableHash) % 0x1_000_000_000_000)
+        // Use fixed UUIDs for each built-in sound to ensure consistency
+        let uuidString: String
+        switch name {
+        case "Classic Bell": uuidString = "00000000-0000-0000-0000-000000000010"
+        case "Digital": uuidString = "00000000-0000-0000-0000-000000000011"
+        case "Gentle Wake": uuidString = "00000000-0000-0000-0000-000000000012"
+        case "Morning": uuidString = "00000000-0000-0000-0000-000000000013"
+        case "Pulse": uuidString = "00000000-0000-0000-0000-000000000014"
+        case "Chime": uuidString = "00000000-0000-0000-0000-000000000015"
+        case "Soft": uuidString = "00000000-0000-0000-0000-000000000016"
+        case "Bright": uuidString = "00000000-0000-0000-0000-000000000017"
+        default: uuidString = "00000000-0000-0000-0000-000000000010"
+        }
         return ImportedSound(id: UUID(uuidString: uuidString)!,
                      name: name,
                      fileName: "built-in-\(name.lowercased())",
