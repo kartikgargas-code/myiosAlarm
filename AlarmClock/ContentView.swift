@@ -639,6 +639,9 @@ struct SoundsView: View {
     @State private var playlistToDelete: Playlist? = nil
     @State private var playlistDeleteError: String? = nil
     
+    // Collapsible sections state
+    @State private var expandedSections: Set<String> = []
+    
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
         get { SoundSortOption(rawValue: sortOptionRaw) ?? .name }
@@ -867,9 +870,14 @@ struct SoundsView: View {
 
     private var soundsListContent: some View {
         List {
-            playlistsSection
-            importSection
+            // Imported sounds and folder groups FIRST
             importedSoundsSection
+            
+            // Built-in sounds
+            builtInSoundsSection
+            
+            // Default at the very bottom
+            defaultSoundSection
         }
     }
 
@@ -954,7 +962,14 @@ struct SoundsView: View {
             }
         } else {
             ForEach(visibleGroups) { group in
-                Section(group.title) { ForEach(group.sounds) { soundRow(sound: $0) } }
+                CollapsibleSection(
+                    id: group.id,
+                    title: "\(group.title) (\(group.sounds.count))",
+                    isExpanded: isSectionExpanded(group.id),
+                    onToggle: { toggleSection(group.id) }
+                ) {
+                    ForEach(group.sounds) { soundRow(sound: $0) }
+                }
             }
         }
         if let importError {
@@ -962,6 +977,77 @@ struct SoundsView: View {
                 Text(importError)
                     .font(.footnote)
                     .foregroundStyle(ThemeManager.shared.colors.destructive)
+            }
+        }
+    }
+    
+    private var builtInSoundsSection: some View {
+        Section("Built-in Sounds") {
+            ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
+                soundRow(sound: ImportedSound.mockBuiltIn(builtIn.rawValue))
+            }
+        }
+    }
+    
+    private var defaultSoundSection: some View {
+        Section("Default") {
+            soundRow(sound: ImportedSound.mockDefault())
+        }
+    }
+    
+    // MARK: - Collapsible Section Helper
+    
+    private func isSectionExpanded(_ id: String) -> Bool {
+        // If search is active, show all sections expanded
+        if !searchText.isEmpty {
+            return true
+        }
+        // Default: expandedSections is empty initially, so sections are closed
+        // On first appearance, expand the first imported group
+        if expandedSections.isEmpty && !visibleGroups.isEmpty {
+            return id == visibleGroups.first?.id
+        }
+        return expandedSections.contains(id)
+    }
+    
+    private func toggleSection(_ id: String) {
+        if expandedSections.contains(id) {
+            expandedSections.remove(id)
+        } else {
+            expandedSections.insert(id)
+        }
+    }
+    
+    private struct CollapsibleSection<Content: View>: View {
+        let id: String
+        let title: String
+        let isExpanded: Bool
+        let onToggle: () -> Void
+        let content: () -> Content
+        
+        var body: some View {
+            Section {
+                if isExpanded {
+                    content()
+                }
+            } header: {
+                Button {
+                    onToggle()
+                } label: {
+                    HStack {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                            .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }

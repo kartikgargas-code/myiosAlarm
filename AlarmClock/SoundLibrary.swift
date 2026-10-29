@@ -35,6 +35,27 @@ struct ImportedSound: Identifiable, Codable, Hashable {
         guard let soundsDirectory else { return nil }
         return soundsDirectory.appendingPathComponent(fileName)
     }
+
+    // Mock helpers for UI preview/placeholder rows (not persisted)
+    static func mockBuiltIn(_ name: String) -> ImportedSound {
+        ImportedSound(id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012x", name.hashValue))")!,
+                     name: name,
+                     fileName: "built-in-\(name.lowercased())",
+                     duration: nil,
+                     dateAdded: Date.distantPast,
+                     folder: nil,
+                     isLinked: false)
+    }
+    
+    static func mockDefault() -> ImportedSound {
+        ImportedSound(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                     name: "Default",
+                     fileName: "system-default",
+                     duration: nil,
+                     dateAdded: Date.distantPast,
+                     folder: nil,
+                     isLinked: false)
+    }
 }
 
 /// Persisted record for a linked sound (bookmark to original file location)

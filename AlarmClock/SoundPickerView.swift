@@ -18,6 +18,10 @@ struct SoundPickerView: View {
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
 
+    // Collapsible sections state
+    @State private var expandedSections: Set<String> = []
+
+
     // Local copy for Cancel/Save behavior
     @State private var initialSelection: AlarmSound
     
@@ -29,6 +33,75 @@ struct SoundPickerView: View {
     }
 
     private let preview = SoundPreviewService.shared
+
+    // Group imported sounds by folder (like SoundsView visibleGroups)
+    private var pickerVisibleGroups: [(id: String, title: String, sounds: [ImportedSound])] {
+        let sounds = SoundLibrary.shared.importedSounds.filter { sound in
+            guard let url = SoundLibrary.shared.resolvedURL(for: sound) else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        let dict = Dictionary(grouping: sounds) { $0.folder }
+        return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
+            (id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+        }
+    }
+
+    private func isSectionExpanded(_ id: String) -> Bool {
+        // If search is active, show all sections expanded (no search in picker yet)
+        // For alarm sound picker: open the section containing the currently selected sound
+        if expandedSections.isEmpty && !pickerVisibleGroups.isEmpty {
+            // Find which group contains the selected sound
+            if case .imported(let selectedId) = selectedSound,
+               let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
+                return id == group.id
+            }
+            // Default: expand first imported group
+            return id == pickerVisibleGroups.first?.id
+        }
+        return expandedSections.contains(id)
+    }
+
+    private func toggleSection(_ id: String) {
+        if expandedSections.contains(id) {
+            expandedSections.remove(id)
+        } else {
+            expandedSections.insert(id)
+        }
+    }
+
+    private struct CollapsibleSection<Content: View>: View {
+        let id: String
+        let title: String
+        let isExpanded: Bool
+        let onToggle: () -> Void
+        let content: () -> Content
+        
+        var body: some View {
+            Section {
+                if isExpanded {
+                    content()
+                }
+            } header: {
+                Button {
+                    onToggle()
+                } label: {
+                    HStack {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                            .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
     
     // Computed properties for Selected section
     private var selectedSoundDisplayName: String {
@@ -136,6 +209,29 @@ struct SoundPickerView: View {
                     }
                 }
 
+                // Imported sounds and folder groups FIRST
+                if !pickerVisibleGroups.isEmpty {
+                    Section("Imported Sounds") {
+                        ForEach(pickerVisibleGroups) { group in
+                            CollapsibleSection(
+                                id: group.id,
+                                title: "\(group.title) (\(group.sounds.count))",
+                                isExpanded: isSectionExpanded(group.id),
+                                onToggle: { toggleSection(group.id) }
+                            ) {
+                                ForEach(group.sounds) { sound in
+                                    soundRow(
+                                        sound: .imported(sound.id),
+                                        label: sound.name,
+                                        description: "",
+                                        previewURL: SoundLibrary.shared.resolvedURL(for: sound)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Section("Random from Playlist") {
                     if SoundLibrary.shared.playlists.isEmpty {
                         Text("No playlists available. Import a folder to create one.")
@@ -177,21 +273,6 @@ struct SoundPickerView: View {
                             label: builtIn.rawValue,
                             description: "Bundled alarm sound",
                             previewURL: builtInSoundURL(builtIn)
-                        )
-                    }
-                }
-
-                Section("Imported Sounds") {
-                    ForEach(SoundLibrary.shared.importedSounds.filter { sound in
-                        // Skip sounds that no longer exist on disk
-                        guard let url = SoundLibrary.shared.resolvedURL(for: sound) else { return false }
-                        return FileManager.default.fileExists(atPath: url.path)
-                    }) { sound in
-                        soundRow(
-                            sound: .imported(sound.id),
-                            label: sound.name,
-                            description: "",
-                            previewURL: SoundLibrary.shared.resolvedURL(for: sound)
                         )
                     }
                 }
