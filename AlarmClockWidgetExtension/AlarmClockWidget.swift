@@ -261,17 +261,22 @@ struct BatteryWidgetProvider: TimelineProvider {
         // asks are free, so this only has to cover a phone that is left alone.
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 120, to: Date()) ?? Date()
         let entry = makeEntry()
-        SmartWakeDebugLog.log("WIDGET battery timeline level=\(entry.level.map { String(Int(($0 * 100).rounded())) } ?? "-")", force: true)
+        let levelStr = entry.level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        let reading = BatterySource.currentDetailed()
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        SmartWakeDebugLog.log("WIDGET battery kind=circular source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)", force: true)
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
 
     private func makeEntry() -> BatteryWidgetEntry {
         let defaults = widgetDefaults()
-        let level = BatterySource.current()
-        SmartWakeDebugLog.log(
-            "WIDGET battery level=\(level.map { String(Int(($0 * 100).rounded())) } ?? "none")",
-            force: true
-        )
+        let reading = BatterySource.currentDetailed()
+        let level = reading.level
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        SmartWakeDebugLog.log("WIDGET battery kind=circular source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)")
         return BatteryWidgetEntry(
             date: Date(),
             level: level,
@@ -284,6 +289,15 @@ struct BatteryWidgetProvider: TimelineProvider {
             homeShowCircle: defaults.object(forKey: "widgetHomeShowCircle") as? Bool ?? true,
             homeShowText: defaults.object(forKey: "widgetHomeShowText") as? Bool ?? true
         )
+    }
+    
+    private func sourceDescription(_ source: BatterySource.Source) -> String {
+        switch source {
+        case .cache(let age): return "cache(\(Int(age))s)"
+        case .live: return "live"
+        case .staleCache(let age): return "staleCache(\(Int(age))s)"
+        case .unknown: return "unknown"
+        }
     }
 }
 
@@ -446,6 +460,12 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         }
 
         let defaults = widgetDefaults()
+        let reading = BatterySource.currentDetailed()
+        let level = reading.level
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        SmartWakeDebugLog.log("WIDGET battery kind=inline-nextalarm source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)")
         return NextAlarmWidgetEntry(
             date: date,
             alarmLabel: alarm.label,
@@ -453,7 +473,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: alarm.id,
-            batteryLevel: BatterySource.current(),
+            batteryLevel: level,
             nextDate: occurrence.effectiveDate,
             showBatteryInline: defaults.object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
             showPercentSign: defaults.object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
@@ -503,6 +523,12 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateFormatter.dateFormat = "MMM d"
             dateIndicator = dateFormatter.string(from: fireDate)
         }
+        let reading = BatterySource.currentDetailed()
+        let level = reading.level
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        SmartWakeDebugLog.log("WIDGET battery kind=inline-nextalarm source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)")
         return NextAlarmWidgetEntry(
             date: date,
             alarmLabel: "Alarm",
@@ -510,7 +536,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: nil,
-            batteryLevel: BatterySource.current(),
+            batteryLevel: level,
             nextDate: fireDate
         )
     }
@@ -612,6 +638,12 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator = dateFormatter.string(from: snapshot.nextOccurrenceDate)
         }
         
+        let reading = BatterySource.currentDetailed()
+        let level = reading.level
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        SmartWakeDebugLog.log("WIDGET battery kind=inline-nextalarm source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)")
         let entry = NextAlarmWidgetEntry(
             date: Date(),
             alarmLabel: snapshot.label,
@@ -619,7 +651,7 @@ final class NextAlarmWidgetProvider: TimelineProvider {
             dateIndicator: dateIndicator,
             hasAlarm: true,
             alarmID: snapshot.alarmID,
-            batteryLevel: BatterySource.current(),
+            batteryLevel: level,
             nextDate: snapshot.nextOccurrenceDate,
             showBatteryInline: widgetDefaults().object(forKey: "widgetInlineShowBattery") as? Bool ?? false,
             showPercentSign: widgetDefaults().object(forKey: "widgetBatteryShowPercentSign") as? Bool ?? true,
@@ -628,8 +660,16 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         
         return entry
     }
-}
 
+    private func sourceDescription(_ source: BatterySource.Source) -> String {
+        switch source {
+        case .cache(let age): return "cache(\(Int(age))s)"
+        case .live: return "live"
+        case .staleCache(let age): return "staleCache(\(Int(age))s)"
+        case .unknown: return "unknown"
+        }
+    }
+}
 /// Timeline entry for the next alarm widget
 struct NextAlarmWidgetEntry: TimelineEntry {
     var date: Date

@@ -196,7 +196,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
 
 enum BatteryReporter {
-    static let widgetKind = "com.example.alarmclock.battery-widget"
+    static let batteryWidgetKind = "com.example.alarmclock.battery-widget"
+    static let nextAlarmWidgetKind = "com.example.alarmclock.next-alarm-widget"
+    
     /// The level a reload was last asked for, and when. iOS budgets widget reloads (about 40-70
     /// a day), so asking on every 1% step while charging spent the budget and the widget then
     /// froze on an old number. Only a 5% move, an hour of silence, or a moment that does not
@@ -246,8 +248,10 @@ enum BatteryReporter {
         guard forceReload || movedFive || silentTooLong else { return }
         lastReloadPercent = percent
         lastReloadAt = Date()
-        WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
-        SmartWakeDebugLog.log("BATTERY reload asked n=\(percent)% force=\(forceReload) moved5=\(movedFive) silent=\(silentTooLong)")
+        // Reload BOTH widget kinds that show battery: circular battery + inline next-alarm
+        WidgetCenter.shared.reloadTimelines(ofKind: batteryWidgetKind)
+        WidgetCenter.shared.reloadTimelines(ofKind: nextAlarmWidgetKind)
+        SmartWakeDebugLog.log("BATTERY reload asked n=\(percent)% force=\(forceReload) moved5=\(movedFive) silent=\(silentTooLong) kinds=\(batteryWidgetKind),\(nextAlarmWidgetKind)")
     }
 }
 
@@ -273,7 +277,7 @@ enum SharedStorage {
             try? data.write(to: container.appendingPathComponent("alarms.json"), options: .atomic)
         }
 
-        var kinds = [BatteryReporter.widgetKind, "com.example.alarmclock.memory-widget"]
+        var kinds = [BatteryReporter.batteryWidgetKind, "com.example.alarmclock.memory-widget"]
         if let nextAlarmKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
             kinds.append(nextAlarmKind)
         }
