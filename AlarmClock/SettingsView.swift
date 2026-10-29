@@ -4,6 +4,64 @@ import AlarmKit
 import AlarmClockShared
 import WidgetKit
 
+/// TextField that places cursor at the start and scrolls to show the beginning
+struct StartCursorTextField: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.placeholder = placeholder
+        field.delegate = context.coordinator
+        field.clearButtonMode = .whileEditing
+        return field
+    }
+    
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        let parent: StartCursorTextField
+        private var didPositionCursor = false
+        
+        init(_ parent: StartCursorTextField) {
+            self.parent = parent
+        }
+        
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            if !didPositionCursor {
+                // Place cursor at the start and scroll to beginning
+                let startPosition = textField.beginningOfDocument
+                textField.selectedTextRange = textField.textRange(from: startPosition, to: startPosition)
+                didPositionCursor = true
+            }
+        }
+        
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            didPositionCursor = false
+            parent.text = textField.text ?? ""
+        }
+        
+        func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+            if let currentText = textField.text,
+               let range = Range(range, in: currentText) {
+                let updated = currentText.replacingCharacters(in: range, with: string)
+                DispatchQueue.main.async {
+                    self.parent.text = updated
+                }
+            }
+            return true
+        }
+    }
+}
+
 /// Reads/writes the widget settings in the shared App Group container, so the
 /// Lock Screen battery widget sees the same values the app writes here.
 enum WidgetSettingsStore {
@@ -220,12 +278,13 @@ struct SettingsView: View {
                     ShareSheet(activityItems: [shareURL])
                 }
             }
-            .alert("Export Backup", isPresented: $showingExportAlert) {
-                TextField("Backup name", text: $exportName)
-                Button("Cancel", role: .cancel) {}
-                Button("Export") { runExport(named: exportName) }
-            } message: {
-                Text("Saves your alarms and settings (no audio). You'll choose where to save it next.")
+            .sheet(isPresented: $showingExportAlert) {
+                ExportBackupSheet(exportName: $exportName, onExport: { name in
+                    runExport(named: name)
+                    showingExportAlert = false
+                }, onCancel: {
+                    showingExportAlert = false
+                })
             }
         }
     }
@@ -259,6 +318,36 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView(coordinator: AlarmCoordinator())
+}
+
+/// Sheet for export backup with cursor at start
+struct ExportBackupSheet: View {
+    @Binding var exportName: String
+    let onExport: (String) -> Void
+    let onCancel: () -> Void
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    StartCursorTextField(text: $exportName, placeholder: "Backup name")
+                        .font(.body)
+                }
+            }
+            .navigationTitle("Export Backup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", role: .cancel) { onCancel() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Export") { onExport(exportName) }
+                }
+            }
+        }
+        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
+        .presentationDetents([.medium])
+    }
 }
 
 /// SwiftUI wrapper for UIActivityViewController (system share sheet)
