@@ -400,20 +400,17 @@ final class SoundLibrary {
         var reconnectedCount = 0
         var stillMissingCount = 0
         
-        // Build a lookup of imported sounds by fileName for reconnection
-        let soundsByFileName = Dictionary(grouping: importedSounds, by: { $0.fileName.lowercased() })
+        // Build a lookup of imported sounds by normalized fileName for reconnection
+        let soundsByFileName = Dictionary(grouping: importedSounds, by: { normalizeFileName($0.fileName) })
         
         for candidate in restored {
             if let index = playlists.firstIndex(where: { $0.name == candidate.name }) {
                 // Playlist already exists - merge entries, keeping missing ones
                 var existing = playlists[index]
-                var existingSongsByFileName = Set(existing.soundIDs.compactMap { id in
-                    importedSounds.first(where: { $0.id == id })?.fileName.lowercased()
-                })
                 
                 // First, handle missingSongs from backup - try to reconnect them
                 for missingSong in candidate.missingSongs {
-                    let fileNameKey = missingSong.fileName.lowercased()
+                    let fileNameKey = normalizeFileName(missingSong.fileName)
                     if let matchingSounds = soundsByFileName[fileNameKey],
                        let match = matchingSounds.first {
                         // Song now exists in library - add its UUID
@@ -426,7 +423,7 @@ final class SoundLibrary {
                         reconnectedCount += 1
                     } else {
                         // Still missing - keep in missingSongs
-                        if !existing.missingSongs.contains(where: { $0.fileName.lowercased() == fileNameKey }) {
+                        if !existing.missingSongs.contains(where: { normalizeFileName($0.fileName) == fileNameKey }) {
                             existing.missingSongs.append(missingSong)
                         }
                         stillMissingCount += 1
@@ -436,7 +433,7 @@ final class SoundLibrary {
                 // Also try to reconnect any existing missingSongs in the playlist
                 var newMissingSongs: [MissingSong] = []
                 for missingSong in existing.missingSongs {
-                    let fileNameKey = missingSong.fileName.lowercased()
+                    let fileNameKey = normalizeFileName(missingSong.fileName)
                     if let matchingSounds = soundsByFileName[fileNameKey],
                        let match = matchingSounds.first {
                         // Song now exists - reconnect
@@ -464,7 +461,7 @@ final class SoundLibrary {
                 
                 // First process missingSongs from backup
                 for missingSong in candidate.missingSongs {
-                    let fileNameKey = missingSong.fileName.lowercased()
+                    let fileNameKey = normalizeFileName(missingSong.fileName)
                     if let matchingSounds = soundsByFileName[fileNameKey],
                        let match = matchingSounds.first {
                         newSoundIDs.append(match.id)
@@ -754,9 +751,11 @@ final class SoundLibrary {
 
     /// Reconnect missing playlist entries by matching fileName in importedSounds.
     /// Called after mp3 folder import to hook up songs that were missing at backup-restore time.
+    /// Uses Unicode NFC normalization and case-insensitive comparison.
     /// Returns (reconnectedCount, stillMissingCount).
     func reconnectMissingPlaylistEntries() -> (Int, Int) {
-        let soundsByFileName = Dictionary(grouping: importedSounds, by: { $0.fileName.lowercased() })
+        // Build lookup with normalized keys (NFC + lowercase)
+        let soundsByFileName = Dictionary(grouping: importedSounds, by: { normalizeFileName($0.fileName) })
         var reconnectedCount = 0
         var stillMissingCount = 0
         
@@ -766,7 +765,7 @@ final class SoundLibrary {
             
             // Process missingSongs - try to reconnect them
             for missingSong in playlist.missingSongs {
-                let fileNameKey = missingSong.fileName.lowercased()
+                let fileNameKey = normalizeFileName(missingSong.fileName)
                 if let matchingSounds = soundsByFileName[fileNameKey],
                    let match = matchingSounds.first {
                     // Song now exists in library - reconnect
@@ -788,8 +787,14 @@ final class SoundLibrary {
             playlists[i] = playlist
         }
         savePlaylists()
+        SmartWakeDebugLog.log("RECONNECT: matched \(reconnectedCount), still missing \(stillMissingCount)")
         
         return (reconnectedCount, stillMissingCount)
+    }
+    
+    /// Normalize file name for matching: Unicode NFC + lowercase
+    private func normalizeFileName(_ fileName: String) -> String {
+        fileName.precomposedStringWithCanonicalMapping.lowercased()
     }
     
     func createPlaylist(name: String, soundIDs: [UUID]) -> Playlist {
@@ -956,12 +961,12 @@ final class SoundLibrary {
             if !fileManager.fileExists(atPath: dest.path) {
                 let cacheDest = dest.appendingPathExtension("tmp")
                 try? fileManager.removeItem(at: cacheDest)
-                if let duration = sound.duration, duration > AlarmCoordinator.backupSoundCapSeconds {
+                if let duration = sound.duration, duration > TimeInterval(AlarmCoordinator.backupSoundCapSeconds) {
                     // Longer than the cap - render a truncated WAV (raw, no gain)
                     try? AudioProcessingService.shared.renderCappedAlarmSound(
                         from: url,
                         to: cacheDest,
-                        maxDuration: AlarmCoordinator.backupSoundCapSeconds
+                        maxDuration: TimeInterval(AlarmCoordinator.backupSoundCapSeconds)
                     )
                 } else {
                     try? fileManager.copyItem(at: url, to: cacheDest)
