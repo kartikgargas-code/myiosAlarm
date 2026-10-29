@@ -59,16 +59,26 @@ final class AudioProcessingService {
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
         
-        guard let soundsDir else {
-            throw AudioProcessingError.soundsDirectoryUnavailable
-        }
         guard let processedDir else {
             throw AudioProcessingError.processedDirectoryUnavailable
         }
 
-        let originalURL = soundsDir.appendingPathComponent(originalSound.fileName)
-        guard fileManager.fileExists(atPath: originalURL.path) else {
-            throw AudioProcessingError.originalFileMissing(originalSound.fileName)
+        // Linked sounds live outside the app container - resolve the bookmark.
+        // resolvedURL starts (and tracks) security-scoped access; end it after the read.
+        let originalURL: URL
+        if originalSound.isLinked {
+            guard let resolved = SoundLibrary.shared.resolvedURL(for: originalSound) else {
+                throw AudioProcessingError.originalFileMissing(originalSound.fileName)
+            }
+            originalURL = resolved
+        } else {
+            guard let soundsDir else {
+                throw AudioProcessingError.soundsDirectoryUnavailable
+            }
+            originalURL = soundsDir.appendingPathComponent(originalSound.fileName)
+            guard fileManager.fileExists(atPath: originalURL.path) else {
+                throw AudioProcessingError.originalFileMissing(originalSound.fileName)
+            }
         }
 
         let baseName = (originalSound.fileName as NSString).deletingPathExtension
@@ -77,12 +87,15 @@ final class AudioProcessingService {
 
         // If already exists, return it
         if fileManager.fileExists(atPath: processedURL.path) {
+            if originalSound.isLinked {
+                SoundLibrary.shared.endAccess(for: originalSound)
+            }
             return processedURL
         }
 
         // Process on background queue
         let gainFactor = loudness.gainFactor
-        return try await Task.detached(priority: .userInitiated) {
+        let result = try await Task.detached(priority: .userInitiated) {
             let audioFile = try AVAudioFile(forReading: originalURL)
             let format = audioFile.processingFormat
             let frameCount = UInt32(audioFile.length)
@@ -120,6 +133,12 @@ final class AudioProcessingService {
 
             return processedURL
         }.value
+
+        // The detached read is done - release the security-scoped access
+        if originalSound.isLinked {
+            SoundLibrary.shared.endAccess(for: originalSound)
+        }
+        return result
     }
 
     /// Get or generate the processed sound URL for an alarm
@@ -141,6 +160,71 @@ final class AudioProcessingService {
                 try? fileManager.removeItem(at: file)
             }
         }
+    }
+
+    /// Remove cache files for linked sounds (prefix "cache_") from Library/Sounds
+    /// Called when a linked sound is deleted or during cache pruning
+    func removeCacheFiles(for soundID: UUID) {
+        guard let soundsDir = SoundLibrary.shared.soundsDirectory else { return }
+        let prefix = "cache_\(soundID.uuidString.prefix(8))_"
+        
+        let files = (try? fileManager.contentsOfDirectory(at: soundsDir, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.lastPathComponent.hasPrefix(prefix) {
+            try? fileManager.removeItem(at: file)
+            SmartWakeDebugLog.log("CACHE: removed cache file \(file.lastPathComponent)")
+        }
+    }
+
+    /// Remove all cache files (prefix "cache_") from Library/Sounds
+    /// Can be called during pruning or cleanup
+    func removeAllCacheFiles() {
+        let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
+        
+        for directory in directories {
+            let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.lastPathComponent.hasPrefix("cache_") {
+                try? fileManager.removeItem(at: file)
+                SmartWakeDebugLog.log("CACHE: removed cache file \(file.lastPathComponent)")
+            }
+        }
+    }
+
+    /// Render a raw (no gain) WAV copy of an audio file, truncated at maxDuration.
+    /// Used for the temporary AlarmKit cache copy of a linked single whose length
+    /// exceeds the 120 s backup-sound cap.
+    func renderCappedAlarmSound(from sourceURL: URL, to destURL: URL, maxDuration: TimeInterval) throws {
+        let audioFile = try AVAudioFile(forReading: sourceURL)
+        let format = audioFile.processingFormat
+        let capFrames = Int64(maxDuration * format.sampleRate)
+        let framesToWrite = min(audioFile.length, max(capFrames, 0))
+        guard framesToWrite > 0 else {
+            throw AudioProcessingError.bufferCreationFailed
+        }
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: format.sampleRate,
+            AVNumberOfChannelsKey: format.channelCount,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false
+        ]
+        let outputFile = try AVAudioFile(forWriting: destURL, settings: settings)
+
+        let chunkFrames = AVAudioFrameCount(262_144) // 64k frames per read chunk
+        var remaining = framesToWrite
+        while remaining > 0 {
+            let thisChunk = AVAudioFrameCount(min(Int64(chunkFrames), remaining))
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: thisChunk) else {
+                throw AudioProcessingError.bufferCreationFailed
+            }
+            try audioFile.read(into: buffer, frameCount: thisChunk)
+            guard buffer.frameLength > 0 else { break }
+            try outputFile.write(from: buffer)
+            remaining -= Int64(buffer.frameLength)
+        }
+        SmartWakeDebugLog.log("CACHE: rendered capped alarm sound \(destURL.lastPathComponent) (max \(Int(maxDuration))s)")
     }
 
     /// Clean up all processed sounds
@@ -260,9 +344,13 @@ final class AudioProcessingService {
             let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
             for file in files {
                 let name = file.lastPathComponent
-                guard name.hasPrefix("playlist_"),
-                      name.contains("pct"),
-                      file.pathExtension == "wav" || file.pathExtension == "caf" else { continue }
+                // Two families live here: "playlist_...pct..." stitch renders and
+                // "cache_..." AlarmKit copies for linked singles. Both are pruned
+                // when not referenced by an armed alarm (kept via `keeping`).
+                let isStitch = name.hasPrefix("playlist_") && name.contains("pct")
+                    && (file.pathExtension == "wav" || file.pathExtension == "caf")
+                let isCache = name.hasPrefix("cache_")
+                guard isStitch || isCache else { continue }
                 if keepFileNames.contains(name) {
                     kept += 1
                     continue

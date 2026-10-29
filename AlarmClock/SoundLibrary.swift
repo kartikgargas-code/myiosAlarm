@@ -162,7 +162,9 @@ final class SoundLibrary {
                 guard Self.supportedAudioExtensions.contains(ext) else { return nil }
                 // "playlist_..." is the app's own stitched playlist render, not a song anybody
                 // imported - keep it out of the list even when an old build left one in this folder.
-                guard !url.lastPathComponent.hasPrefix("playlist_") else { return nil }
+                // "cache_..." is the temporary AlarmKit copy for a linked song - same rule.
+                guard !url.lastPathComponent.hasPrefix("playlist_"),
+                      !url.lastPathComponent.hasPrefix("cache_") else { return nil }
                 let attrs = try? fileManager.attributesOfItem(atPath: url.path)
                 let creationDate = attrs?[.creationDate] as? Date ?? Date()
                 let fileName = url.lastPathComponent
@@ -566,9 +568,12 @@ final class SoundLibrary {
             throw SoundLibraryError.importFailed("Failed to create bookmark for \(fileName): \(error.localizedDescription)")
         }
         
+        // Stable ID derived from file name so re-import after restore gets the same ID
+        let stableId = stableID(for: fileName)
+        
         // Create linked record
         let record = LinkedSoundRecord(
-            id: UUID(),
+            id: stableId,
             name: displayName,
             fileName: fileName,
             duration: duration,
@@ -581,7 +586,7 @@ final class SoundLibrary {
         
         // Create ImportedSound with isLinked = true
         let sound = ImportedSound(
-            id: record.id,
+            id: stableId,
             name: displayName,
             fileName: fileName,
             duration: duration,
@@ -650,9 +655,12 @@ final class SoundLibrary {
                         continue
                     }
                     
+                    // Stable ID derived from file name so re-import after restore gets the same ID
+                    let stableId = stableID(for: fileName)
+                    
                     // Create linked record
                     let record = LinkedSoundRecord(
-                        id: UUID(),
+                        id: stableId,
                         name: displayName,
                         fileName: fileName,
                         duration: duration,
@@ -661,7 +669,7 @@ final class SoundLibrary {
                         bookmark: bookmark
                     )
                     linkedRecordsToAdd.append(record)
-                    importedSoundInfos.append((id: record.id, name: displayName, fileName: fileName, duration: duration))
+                    importedSoundInfos.append((id: stableId, name: displayName, fileName: fileName, duration: duration))
                 } catch {
                     errors.append("\(sourceFileURL.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -836,6 +844,9 @@ final class SoundLibrary {
     func deleteSound(_ sound: ImportedSound, referencedBy alarms: [AlarmRecord]) {
         guard !isReferenced(sound, by: alarms) else { return }
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        if sound.isLinked {
+            AudioProcessingService.shared.removeCacheFiles(for: sound.id)
+        }
         
         if sound.isLinked {
             // Linked sound - remove bookmark and end access, DON'T delete original file
@@ -869,6 +880,9 @@ final class SoundLibrary {
         
         // Remove processed sounds (gain-adjusted variants)
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        if sound.isLinked {
+            AudioProcessingService.shared.removeCacheFiles(for: sound.id)
+        }
         SmartWakeDebugLog.log("SOUND DELETE: removeProcessedSounds ran for id=\(soundID.uuidString) file=\(fileName)")
         
         if sound.isLinked {
@@ -931,14 +945,36 @@ final class SoundLibrary {
         guard let url, fileManager.fileExists(atPath: url.path) else {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
-        // If the sound is linked (not copied to Library/Sounds), materialize a copy
-        // so AlarmKit can find it by name inside the app container.
+        // If the sound is linked (not copied to Library/Sounds), create a temporary
+        // cache file in Library/Sounds so AlarmKit can find it by name. Capped at
+        // 120 s like the playlist backup sounds, pruned with the stitch cache,
+        // never listed in Sounds and not counted as an imported sound.
         if sound.isLinked, let soundsDir = soundsDirectory {
-            let dest = soundsDir.appendingPathComponent(sound.fileName)
+            // Use a cache file name with special prefix to distinguish from imported sounds
+            let cacheFileName = "cache_\(sound.id.uuidString.prefix(8))_\(sound.fileName)"
+            let dest = soundsDir.appendingPathComponent(cacheFileName)
             if !fileManager.fileExists(atPath: dest.path) {
-                try? fileManager.copyItem(at: url, to: dest)
-                SmartWakeDebugLog.log("LINKED: materialised Library/Sounds copy for alarm sound \(sound.fileName)")
+                let cacheDest = dest.appendingPathExtension("tmp")
+                try? fileManager.removeItem(at: cacheDest)
+                if let duration = sound.duration, duration > AlarmCoordinator.backupSoundCapSeconds {
+                    // Longer than the cap - render a truncated WAV (raw, no gain)
+                    try? AudioProcessingService.shared.renderCappedAlarmSound(
+                        from: url,
+                        to: cacheDest,
+                        maxDuration: AlarmCoordinator.backupSoundCapSeconds
+                    )
+                } else {
+                    try? fileManager.copyItem(at: url, to: cacheDest)
+                }
+                if (try? fileManager.attributesOfItem(atPath: cacheDest.path)[.size]) != nil {
+                    try? fileManager.moveItem(at: cacheDest, to: dest)
+                    SmartWakeDebugLog.log("LINKED: created cache file for alarm sound \(cacheFileName)")
+                } else {
+                    SmartWakeDebugLog.log("LINKED: cache file creation FAILED for \(cacheFileName)")
+                }
             }
+            endAccess(for: sound)
+            return cacheFileName
         }
         return sound.fileName
     }
@@ -1007,6 +1043,9 @@ final class SoundLibrary {
     /// For linked sounds, removes the bookmark and ends access but does NOT delete the original file
     private func purgeSoundFiles(_ sound: ImportedSound) {
         AudioProcessingService.shared.removeProcessedSounds(for: sound)
+        if sound.isLinked {
+            AudioProcessingService.shared.removeCacheFiles(for: sound.id)
+        }
         
         if sound.isLinked {
             // Linked sound - remove bookmark and end access, DON'T delete original file
