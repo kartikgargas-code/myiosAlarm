@@ -20,7 +20,7 @@ final class CopyToastManager {
     
     func show(_ message: String) {
         os_log(.info, log: log, "COPY TOAST: showing message=%{public}s", message)
-        SmartWakeDebugLog.log("COPY TOAST: showing message=\(message)")
+        SmartWakeDebugLog.log("COPY TOAST show message=\(message)")
         task?.cancel()
         self.message = message
         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -30,7 +30,7 @@ final class CopyToastManager {
             if !Task.isCancelled {
                 await MainActor.run {
                     os_log(.info, log: log, "COPY TOAST: clearing message")
-                    SmartWakeDebugLog.log("COPY TOAST: clearing message")
+                    SmartWakeDebugLog.log("COPY TOAST clear")
                     withAnimation { self.message = nil }
                 }
             }
@@ -40,6 +40,7 @@ final class CopyToastManager {
     func hide() {
         task?.cancel()
         task = nil
+        SmartWakeDebugLog.log("COPY TOAST clear")
         withAnimation { message = nil }
     }
 }

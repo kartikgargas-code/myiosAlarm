@@ -14,16 +14,39 @@ struct HistoryView: View {
     
     private func copyToClipboard(_ text: String) {
         UIPasteboard.general.string = text
+        SmartWakeDebugLog.log("COPY TOAST show")
         CopyToastManager.shared.show("Copied")
     }
     
     var body: some View {
         NavigationStack {
-            Group {
-                if coordinator.playHistory.isEmpty {
-                    emptyState
-                } else {
-                    historyList
+            ZStack {
+                Group {
+                    if coordinator.playHistory.isEmpty {
+                        emptyState
+                    } else {
+                        historyList
+                    }
+                }
+                
+                // Copy toast overlay - drawn as sibling on top
+                if let message = CopyToastManager.shared.message {
+                    VStack {
+                        Spacer()
+                        Text(message)
+                            .font(.callout)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(ThemeManager.shared.colors.card.opacity(0.95))
+                            .clipShape(Capsule())
+                            .shadow(radius: 4)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .padding(.bottom, 100)
+                            .allowsHitTesting(false)
+                            .zIndex(100)
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: CopyToastManager.shared.message)
                 }
             }
             .onAppear {
