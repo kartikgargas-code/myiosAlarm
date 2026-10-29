@@ -1127,7 +1127,7 @@ private func makeCreatorSheet() -> some View {
                     .lineLimit(1)
                 
                 if missingCount > 0 {
-                    Text("\(soundCount) song\(soundCount == 1 ? "" : "s") · \(selectedCount) selected · \(missingCount) missing")
+                    Text("\(missingCount) of \(soundCount + missingCount) songs missing, import your mp3 folder")
                         .font(.caption)
                         .foregroundStyle(colors.destructive)
                 } else {
@@ -1228,6 +1228,9 @@ private func makeCreatorSheet() -> some View {
         do {
             let _ = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
+            SmartWakeDebugLog.log("MP3 single import finished - reconnecting missing entries")
+            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+            SmartWakeDebugLog.log("MP3 SINGLE IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
             SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
             await coordinator.synchronize()
         } catch {

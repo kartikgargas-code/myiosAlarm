@@ -418,6 +418,9 @@ struct SoundPickerView: View {
             let sound = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
             selectedSound = .imported(sound.id)
+            SmartWakeDebugLog.log("MP3 single import finished - reconnecting missing entries")
+            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+            SmartWakeDebugLog.log("MP3 SINGLE IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
             SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
             await coordinator.synchronize()
         } catch {
