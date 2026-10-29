@@ -68,40 +68,6 @@ struct SoundPickerView: View {
             expandedSections.insert(id)
         }
     }
-
-    private struct CollapsibleSection<Content: View>: View {
-        let id: String
-        let title: String
-        let isExpanded: Bool
-        let onToggle: () -> Void
-        let content: () -> Content
-        
-        var body: some View {
-            Section {
-                if isExpanded {
-                    content()
-                }
-            } header: {
-                Button {
-                    onToggle()
-                } label: {
-                    HStack {
-                        Text(title)
-                            .font(.headline)
-                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                            .animation(.easeInOut(duration: 0.2), value: isExpanded)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
     
     // Computed properties for Selected section
     private var selectedSoundDisplayName: String {
@@ -167,140 +133,170 @@ struct SoundPickerView: View {
         }
     }
 
+    // MARK: - Body sub-views (kept small for type-checker)
+
+    @ViewBuilder
+    private var selectedSoundSection: some View {
+        if selectedSound != .systemDefault {
+            Section("Selected") {
+                soundRow(
+                    sound: selectedSound,
+                    label: selectedSoundDisplayName,
+                    description: selectedSoundDescription,
+                    previewURL: selectedSoundPreviewURL
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var importSection: some View {
+        Section("Import") {
+            Button {
+                pickerMode = .files
+                showingDocumentPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Import MP3 from Files")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
+            }
+
+            Button {
+                pickerMode = .folder
+                showingDocumentPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "folder.badge.plus")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Import MP3 Folder as Playlist")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var importedSoundsSection: some View {
+        if !pickerVisibleGroups.isEmpty {
+            Section("Imported Sounds") {
+                ForEach(pickerVisibleGroups) { group in
+                    CollapsibleSection(
+                        id: group.id,
+                        title: "\(group.title) (\(group.sounds.count))",
+                        isExpanded: isSectionExpanded(group.id),
+                        onToggle: { toggleSection(group.id) }
+                    ) {
+                        ForEach(group.sounds) { sound in
+                            soundRow(
+                                sound: .imported(sound.id),
+                                label: sound.name,
+                                description: "",
+                                previewURL: SoundLibrary.shared.resolvedURL(for: sound)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var randomPlaylistSection: some View {
+        Section("Random from Playlist") {
+            if SoundLibrary.shared.playlists.isEmpty {
+                Text("No playlists available. Import a folder to create one.")
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+            } else {
+                ForEach(SoundLibrary.shared.playlists) { playlist in
+                    randomPlaylistRow(playlist: playlist)
+                }
+            }
+
+            if !SoundLibrary.shared.playlists.isEmpty {
+                Button {
+                    showingPlaylistPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "music.note.list")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                        Text("Create New Playlist")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var defaultSoundSection: some View {
+        Section("Default") {
+            soundRow(
+                sound: .systemDefault,
+                label: "Default",
+                description: "System default alarm sound",
+                previewURL: nil
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var builtInSoundsSection: some View {
+        Section("Built-in Sounds") {
+            ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
+                soundRow(
+                    sound: .builtIn(builtIn.rawValue),
+                    label: builtIn.rawValue,
+                    description: "Bundled alarm sound",
+                    previewURL: builtInSoundURL(builtIn)
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var importErrorSection: some View {
+        if let importError {
+            Section("Import Error") {
+                Text(importError)
+                    .font(.footnote)
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+            }
+        }
+    }
+
+    private var bottomBar: some View {
+        BottomActionsBar(
+            leadingActions: [
+                .icon("Cancel", systemImage: "xmark") {
+                    selectedSound = initialSelection
+                    dismiss()
+                }
+            ],
+            trailingActions: [
+                .icon("Save", systemImage: "checkmark") { dismiss() }
+            ]
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
-                // Selected sound at top (pinned) - only show if not system default
-                if selectedSound != .systemDefault {
-                    Section("Selected") {
-                        soundRow(
-                            sound: selectedSound,
-                            label: selectedSoundDisplayName,
-                            description: selectedSoundDescription,
-                            previewURL: selectedSoundPreviewURL
-                        )
-                    }
-                }
-
-                // Import actions at top for easy access
-                Section("Import") {
-                    Button {
-                        pickerMode = .files
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import MP3 from Files")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
-                    }
-
-                    Button {
-                        pickerMode = .folder
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder.badge.plus")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Import MP3 Folder as Playlist")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
-                    }
-                }
-
-                // Imported sounds and folder groups FIRST
-                if !pickerVisibleGroups.isEmpty {
-                    Section("Imported Sounds") {
-                        ForEach(pickerVisibleGroups) { group in
-                            CollapsibleSection(
-                                id: group.id,
-                                title: "\(group.title) (\(group.sounds.count))",
-                                isExpanded: isSectionExpanded(group.id),
-                                onToggle: { toggleSection(group.id) }
-                            ) {
-                                ForEach(group.sounds) { sound in
-                                    soundRow(
-                                        sound: .imported(sound.id),
-                                        label: sound.name,
-                                        description: "",
-                                        previewURL: SoundLibrary.shared.resolvedURL(for: sound)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Section("Random from Playlist") {
-                    if SoundLibrary.shared.playlists.isEmpty {
-                        Text("No playlists available. Import a folder to create one.")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    } else {
-                        ForEach(SoundLibrary.shared.playlists) { playlist in
-                            randomPlaylistRow(playlist: playlist)
-                        }
-                    }
-
-                    if !SoundLibrary.shared.playlists.isEmpty {
-                        Button {
-                            showingPlaylistPicker = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "music.note.list")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                                Text("Create New Playlist")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                        }
-                    }
-                }
-
-                Section("Default") {
-                    soundRow(
-                        sound: .systemDefault,
-                        label: "Default",
-                        description: "System default alarm sound",
-                        previewURL: nil
-                    )
-                }
-
-                Section("Built-in Sounds") {
-                    ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
-                        soundRow(
-                            sound: .builtIn(builtIn.rawValue),
-                            label: builtIn.rawValue,
-                            description: "Bundled alarm sound",
-                            previewURL: builtInSoundURL(builtIn)
-                        )
-                    }
-                }
-
-                if let importError {
-                    Section("Import Error") {
-                        Text(importError)
-                            .font(.footnote)
-                            .foregroundStyle(ThemeManager.shared.colors.destructive)
-                    }
-                }
+                selectedSoundSection
+                importSection
+                importedSoundsSection
+                randomPlaylistSection
+                defaultSoundSection
+                builtInSoundsSection
+                importErrorSection
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Alarm Sound")
-            .safeAreaInset(edge: .bottom) {
-                BottomActionsBar(
-                    leadingActions: [
-                        .icon("Cancel", systemImage: "xmark") {
-                            selectedSound = initialSelection
-                            dismiss()
-                        }
-                    ],
-                    trailingActions: [
-                        .icon("Save", systemImage: "checkmark") { dismiss() }
-                    ]
-                )
-            }
+            .safeAreaInset(edge: .bottom) { bottomBar }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
         .fileImporter(
