@@ -162,6 +162,43 @@ final class AudioProcessingService {
         }
     }
 
+    /// Clean up legacy loudness-adjusted single-song files (e.g., "song_85pct.wav")
+    /// that are no longer used since single-song alarms now use capped cache files.
+    /// Call this during reconciliation to remove unused processed files.
+    func cleanupLegacyProcessedSingleSounds(referencedBy keepFileNames: Set<String>) {
+        let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
+        var deleted = 0
+        var freedBytes: Int64 = 0
+
+        for directory in directories {
+            let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            for file in files {
+                let name = file.lastPathComponent
+                // Legacy processed single-song files: "basename_NNpct.wav"
+                let isLegacyProcessed = name.contains("pct.wav") && !name.hasPrefix("playlist_") && !name.hasPrefix("cache_")
+                guard isLegacyProcessed else { continue }
+                // Don't delete if still referenced by an armed alarm
+                if keepFileNames.contains(name) {
+                    continue
+                }
+                let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                do {
+                    try fileManager.removeItem(at: file)
+                    deleted += 1
+                    freedBytes += size
+                    SmartWakeDebugLog.log("LEGACY CLEANUP: removed processed single-song file \(name)")
+                } catch {
+                    SmartWakeDebugLog.log("LEGACY CLEANUP: failed to remove \(name): \(error.localizedDescription)")
+                }
+            }
+        }
+
+        if deleted > 0 {
+            let freedMB = Double(freedBytes) / (1_048_576.0)
+            SmartWakeDebugLog.log(String(format: "LEGACY CLEANUP: removed %d legacy processed files, freed %.1f MB", deleted, freedMB))
+        }
+    }
+
     /// Remove cache files for linked sounds (prefix "cache_") from Library/Sounds
     /// Called when a linked sound is deleted or during cache pruning
     func removeCacheFiles(for soundID: UUID) {
@@ -329,11 +366,12 @@ final class AudioProcessingService {
         return (deleted, freedBytes)
     }
 
-    /// Delete every cached stitch file that is NOT referenced by a currently
-    /// armed alarm. AlarmKit plays the file by filename, so a file an armed
-    /// alarm points at must never be deleted — the caller passes those names
-    /// in `keeping`. Per-sound processed variants (no "playlist_" prefix) are
-    /// left alone.
+    /// Delete every cached stitch file and capped alarm sound file that is NOT
+    /// referenced by a currently armed alarm. AlarmKit plays the file by filename,
+    /// so a file an armed alarm points at must never be deleted — the caller
+    /// passes those names in `keeping`. Per-sound processed variants
+    /// (no "playlist_" or "cache_" prefix) are left alone (but are now unused
+    /// for single-song alarms and will be cleaned up by removeProcessedSounds).
     func pruneUnusedStitchFiles(keeping keepFileNames: Set<String>) -> (deleted: Int, freedBytes: Int64, kept: Int) {
         let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
         var deleted = 0

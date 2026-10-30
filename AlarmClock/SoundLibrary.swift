@@ -984,12 +984,11 @@ final class SoundLibrary {
         guard let url, fileManager.fileExists(atPath: url.path) else {
             throw SoundLibraryError.soundFileMissing(sound.fileName)
         }
-        // If the sound is linked (not copied to Library/Sounds), create a temporary
-        // cache file in Library/Sounds so AlarmKit can find it by name. Capped at
-        // 120 s like the playlist backup sounds, pruned with the stitch cache,
-        // never listed in Sounds and not counted as an imported sound.
-        if sound.isLinked, let soundsDir = soundsDirectory {
-            // Use a cache file name with special prefix to distinguish from imported sounds
+        // For ALL imported single-song alarms, use a capped (120s max) cache file.
+        // One file per song (by sound ID), raw/no-gain, reused across alarms/loudness.
+        // Per-alarm loudness is NOT baked into system-played single songs.
+        // Linked sounds also end access after cache creation.
+        if let soundsDir = soundsDirectory {
             let cacheFileName = "cache_\(sound.id.uuidString.prefix(8))_\(sound.fileName)"
             let dest = soundsDir.appendingPathComponent(cacheFileName)
             if !fileManager.fileExists(atPath: dest.path) {
@@ -1007,12 +1006,14 @@ final class SoundLibrary {
                 }
                 if (try? fileManager.attributesOfItem(atPath: cacheDest.path)[.size]) != nil {
                     try? fileManager.moveItem(at: cacheDest, to: dest)
-                    SmartWakeDebugLog.log("LINKED: created cache file for alarm sound \(cacheFileName)")
+                    SmartWakeDebugLog.log("CACHE: created capped alarm sound \(cacheFileName)")
                 } else {
-                    SmartWakeDebugLog.log("LINKED: cache file creation FAILED for \(cacheFileName)")
+                    SmartWakeDebugLog.log("CACHE: capped alarm sound creation FAILED for \(cacheFileName)")
                 }
             }
-            endAccess(for: sound)
+            if sound.isLinked {
+                endAccess(for: sound)
+            }
             return cacheFileName
         }
         return sound.fileName

@@ -550,6 +550,8 @@ final class AlarmCoordinator {
             // After every reconcile, delete every cache sound file that no currently
             // scheduled alarm references, except a file being played right now.
             let _ = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+            // Clean up legacy loudness-adjusted single-song files (e.g., "song_85pct.wav")
+            AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
             try persistence.save(candidate.snapshot)
@@ -1145,29 +1147,8 @@ final class AlarmCoordinator {
             return (.named(fileName), fileName)
         case .imported(let id):
             let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
-            
-            // If loudness is not 100%, use the processed sound file
-            if loudness != .hundred {
-                // Get the original sound info
-                let originalSound = SoundLibrary.shared.importedSounds.first(where: { $0.id == id })
-                if let originalSound {
-                    // Get or create the processed sound
-                    let processedURL = try await AudioProcessingService.shared.getOrCreateProcessedSound(
-                        for: originalSound,
-                        loudness: loudness
-                    )
-                    // The processed file is a WAV in Library/ProcessedSounds
-                    // Copy it to Library/Sounds for AlarmKit access
-                    let processedFileName = processedURL.lastPathComponent
-                    let soundsDir = SoundLibrary.shared.soundsDirectory!
-                    let alarmKitURL = soundsDir.appendingPathComponent(processedFileName)
-                    
-                    if !FileManager.default.fileExists(atPath: alarmKitURL.path) {
-                        try FileManager.default.copyItem(at: processedURL, to: alarmKitURL)
-                    }
-                    return (.named(processedFileName), processedFileName)
-                }
-            }
+            // Single-song alarm: use the capped cache file directly (raw, no gain).
+            // Per-alarm loudness is NOT baked into system-played single songs.
             return (.named(fileName), fileName)
         case .random:
             // Random sound should have been resolved to precomposedPlaylist by the caller,
@@ -1654,6 +1635,8 @@ final class AlarmCoordinator {
     /// armed alarms. Synchronous - the Diagnostics screen calls it directly.
     func pruneStitchCacheNow() {
         let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+        // Clean up legacy loudness-adjusted single-song files
+        AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
         let defaults = UserDefaults.standard
         let pruneTime = now()
         defaults.set(pruneTime, forKey: Self.lastStitchPruneDateKey)
