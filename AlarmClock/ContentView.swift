@@ -256,7 +256,7 @@ struct ContentView: View {
                     heartbeatTimer?.cancel()
                     let heartbeat = DispatchSource.makeTimerSource(queue: .main)
                     heartbeat.schedule(deadline: .now() + 1800, repeating: 1800)
-                    heartbeat.setEventHandler { _ in
+                    heartbeat.setEventHandler {
                         let level = UIDevice.current.batteryLevel
                         let batteryPercent = level >= 0 ? Int((level * 100).rounded()) : -1
                         let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
