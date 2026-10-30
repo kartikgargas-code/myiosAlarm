@@ -1078,11 +1078,13 @@ struct SoundsView: View {
     }
     
     private func toggleSection(_ id: String) {
-        if expandedSections.contains(id) {
-            expandedSections.remove(id)
+        var set = expandedSections
+        if set.contains(id) {
+            set.remove(id)
         } else {
-            expandedSections.insert(id)
+            set.insert(id)
         }
+        expandedSectionsData = (try? JSONEncoder().encode(set)) ?? Data()
     }
     
     
