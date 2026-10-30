@@ -545,6 +545,10 @@ final class AlarmCoordinator {
             // cache prune must never delete these.
             lastArmedSoundFileNames = armedSoundNames
             maybePruneStitchCacheDaily()
+            
+            // After every reconcile, delete every cache sound file that no currently
+            // scheduled alarm references, except a file being played right now.
+            let _ = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
             // Include play history in the snapshot
             candidate.snapshot.playHistory = playHistory
             try persistence.save(candidate.snapshot)

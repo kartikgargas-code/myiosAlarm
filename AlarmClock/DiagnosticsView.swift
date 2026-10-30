@@ -209,6 +209,13 @@ struct DiagnosticsView: View {
                     loadCacheStats()
                 }
                 
+                Button("Clear unused sound files") {
+                    let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames ?? [])
+                    let freedMB = Double(result.freedBytes) / 1_048_576.0
+                    SmartWakeDebugLog.log("CACHE CLEANUP: removed \(result.deleted) files, freed \(String(format: "%.1f", freedMB)) MB, kept \(result.kept)")
+                    loadCacheStats()
+                }
+                
                 if !orphanedFiles.isEmpty {
                     Button("Clean orphaned sound files") {
                         let _ = AudioProcessingService.shared.cleanOrphanedSoundFiles()

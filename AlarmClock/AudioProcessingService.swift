@@ -376,7 +376,7 @@ final class AudioProcessingService {
         } else {
             playlistFiles = 0
         }
-        SmartWakeDebugLog.log(String(format: "PRECOMPOSE PRUNE: deleted %d files (%.1f MB), kept %d in use, playlist_* files: %d", deleted, freedMB, kept, playlistFiles))
+        SmartWakeDebugLog.log(String(format: "CACHE CLEANUP: removed %d files, freed %.1f MB, kept %d", deleted, freedMB, kept))
         return (deleted, freedBytes, kept)
     }
 
