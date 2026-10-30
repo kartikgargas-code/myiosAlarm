@@ -765,7 +765,7 @@ final class SoundLibrary {
             // After folder import, reconnect any missing playlist entries by fileName
             // and rebuild alarm sounds so playlists with now-available songs work
             let (reconnected, stillMissing) = self.reconnectMissingPlaylistEntries()
-            SmartWakeDebugLog.log("MP3 FOLDER IMPORT: imported \(importedSoundInfos.count) sounds for '\(folderName)'; reconnected \(reconnected) missing entries; \(stillMissing) still missing")
+            // RECONNECT is logged by the UI layer (ContentView/SoundPickerView) to avoid duplicate logs
             // Note: alarm rebuild (synchronize) is called by the UI layer after import completes
         }
 
@@ -1006,7 +1006,8 @@ final class SoundLibrary {
                 }
                 if (try? fileManager.attributesOfItem(atPath: cacheDest.path)[.size]) != nil {
                     try? fileManager.moveItem(at: cacheDest, to: dest)
-                    SmartWakeDebugLog.log("CACHE: created capped alarm sound \(cacheFileName)")
+                    // Log only on first creation - subsequent calls reuse the file
+                    SmartWakeDebugLog.log("CACHE: created capped alarm sound \(cacheFileName) (ONCE per song)")
                 } else {
                     SmartWakeDebugLog.log("CACHE: capped alarm sound creation FAILED for \(cacheFileName)")
                 }

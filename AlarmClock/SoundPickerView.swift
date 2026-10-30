@@ -18,8 +18,16 @@ struct SoundPickerView: View {
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
 
-    // Collapsible sections state
-    @State private var expandedSections: Set<String> = []
+    // Collapsible sections state - persisted so it survives view destruction/recreation
+    @AppStorage("soundPickerExpandedSections") private var expandedSectionsData: Data = Data()
+    private var expandedSections: Set<String> {
+        get {
+            (try? JSONDecoder().decode(Set<String>.self, from: expandedSectionsData)) ?? []
+        }
+        set {
+            expandedSectionsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+        }
+    }
 
 
     // Local copy for Cancel/Save behavior

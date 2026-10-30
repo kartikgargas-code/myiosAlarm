@@ -21,7 +21,10 @@ struct ContentView: View {
     @State private var isAppInForeground = true
     // Static property accessible from AlarmCoordinator
     static var isAppInForegroundStatic: Bool = true
-
+    
+    // HEARTBEAT timer - runs every 30 min while app is in background
+    @State private var heartbeatTimer: Timer?
+    
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
     
@@ -222,6 +225,9 @@ struct ContentView: View {
                 if newPhase == .active {
                     isAppInForeground = true
                     ContentView.isAppInForegroundStatic = true
+                    // Cancel HEARTBEAT timer when returning to foreground
+                    heartbeatTimer?.invalidate()
+                    heartbeatTimer = nil
                     // Apply any Control Center widget action queued while the
                     // app was closed/backgrounded (app is the sole AlarmKit party).
                     Task {
@@ -243,6 +249,21 @@ struct ContentView: View {
                 } else if newPhase == .background {
                     isAppInForeground = false
                     ContentView.isAppInForegroundStatic = false
+                    // Start HEARTBEAT timer when app goes to background (30 min interval)
+                    heartbeatTimer?.invalidate()
+                    heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { _ in
+                        let level = UIDevice.current.batteryLevel
+                        let batteryPercent = level >= 0 ? Int((level * 100).rounded()) : -1
+                        let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+                        let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+                        let thermal = ProcessInfo.processInfo.thermalState.rawValue
+                        let loopRunning = SmartWakeService.shared.isRunning
+                        let arming = SmartWakeService.shared.isArming
+                        let widgetReloads = BatteryReporter.widgetReloadsSinceLaunch
+                        let alarmCount = coordinator.alarms.filter { $0.isEnabled }.count
+                        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+                        SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") alarms=\(alarmCount) build=\(build)")
+                    }
                     // Start Smart Wake when app backgrounds if enabled and alarm armed
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
@@ -645,8 +666,16 @@ struct SoundsView: View {
     @State private var playlistToDelete: Playlist? = nil
     @State private var playlistDeleteError: String? = nil
     
-    // Collapsible sections state
-    @State private var expandedSections: Set<String> = []
+    // Collapsible sections state - persisted so it survives view destruction/recreation
+    @AppStorage("soundsExpandedSections") private var expandedSectionsData: Data = Data()
+    private var expandedSections: Set<String> {
+        get {
+            (try? JSONDecoder().decode(Set<String>.self, from: expandedSectionsData)) ?? []
+        }
+        set {
+            expandedSectionsData = (try? JSONEncoder().encode(newValue)) ?? Data()
+        }
+    }
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {

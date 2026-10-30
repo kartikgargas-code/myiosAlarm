@@ -261,7 +261,7 @@ final class AudioProcessingService {
             try outputFile.write(from: buffer)
             remaining -= Int64(buffer.frameLength)
         }
-        SmartWakeDebugLog.log("CACHE: rendered capped alarm sound \(destURL.lastPathComponent) (max \(Int(maxDuration))s)")
+        // Only log on first creation - the caller (SoundLibrary.alarmKitFileName) handles the "ONCE per song" log
     }
 
     /// Clean up all processed sounds

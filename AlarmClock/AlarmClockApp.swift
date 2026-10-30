@@ -44,19 +44,8 @@ struct AlarmClockApp: App {
         // Log previous day's silent loop total
         SmartWakeService.shared.logPreviousDayTotal()
         
-        // Start heartbeat timer: logs every 30 min while app is in background
-        Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { _ in
-            guard !ContentView.isAppInForegroundStatic else { return }
-            let level = UIDevice.current.batteryLevel
-            let batteryPercent = level >= 0 ? Int((level * 100).rounded()) : -1
-            let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
-            let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-            let thermal = ProcessInfo.processInfo.thermalState.rawValue
-            let loopRunning = SmartWakeService.shared.isRunning
-            let arming = SmartWakeService.shared.isArming
-            let widgetReloads = BatteryReporter.widgetReloadsSinceLaunch
-            SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging) lowPower=\(lowPower) thermal=\(thermal) loopRunning=\(loopRunning) tickInterval=\(SmartWakeService.shared.tickIntervalValue) arming=\(arming) widgetReloadsSince=\(widgetReloads)")
-        }
+        // HEARTBEAT timer will be started/stopped via scenePhase in ContentView
+        // No timer started here - it will be managed by scene phase changes
     }
     
     var body: some Scene {
