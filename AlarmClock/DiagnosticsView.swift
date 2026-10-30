@@ -210,10 +210,10 @@ struct DiagnosticsView: View {
                 }
                 
                 Button("Clear unused sound files") {
-                    let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames ?? [])
-                    AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames ?? [])
-                    let freedMB = Double(result.freedBytes) / 1_048_576.0
-                    SmartWakeDebugLog.log("CACHE CLEANUP: removed \(result.deleted) files, freed \(String(format: "%.1f", freedMB)) MB, kept \(result.kept)")
+                    // pruneStitchCacheNow already calls pruneUnusedStitchFiles +
+                    // cleanupLegacyProcessedSingleSounds and logs CACHE CLEANUP
+                    // once; repeating it here printed the line twice.
+                    AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
                     loadCacheStats()
                 }
                 

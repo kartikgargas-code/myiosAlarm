@@ -761,12 +761,6 @@ final class SoundLibrary {
                 self.playlists.append(playlist)
             }
             self.savePlaylists()
-            
-            // After folder import, reconnect any missing playlist entries by fileName
-            // and rebuild alarm sounds so playlists with now-available songs work
-            let (reconnected, stillMissing) = self.reconnectMissingPlaylistEntries()
-            // RECONNECT is logged by the UI layer (ContentView/SoundPickerView) to avoid duplicate logs
-            // Note: alarm rebuild (synchronize) is called by the UI layer after import completes
         }
 
         if !errors.isEmpty {
@@ -821,8 +815,9 @@ final class SoundLibrary {
             playlists[i] = playlist
         }
         savePlaylists()
-        SmartWakeDebugLog.log("RECONNECT: matched \(reconnectedCount), still missing \(stillMissingCount)")
-        
+        // No standalone RECONNECT log here: this runs once per event and the
+        // event's own line (IMPORT DONE / POST-RESTORE RECONNECT) already carries
+        // the matched/still-missing counts. Logging here too printed it twice.
         return (reconnectedCount, stillMissingCount)
     }
     
@@ -989,7 +984,14 @@ final class SoundLibrary {
         // Per-alarm loudness is NOT baked into system-played single songs.
         // Linked sounds also end access after cache creation.
         if let soundsDir = soundsDirectory {
-            let cacheFileName = "cache_\(sound.id.uuidString.prefix(8))_\(sound.fileName)"
+            // The cache name must match its real content: a plain copy keeps the
+            // song's own extension, but a re-render is always Linear-PCM WAV, so
+            // a WAV must not sit under an .mp3 name (it can fail to load).
+            let willRender = sound.duration.map { $0 > TimeInterval(AlarmCoordinator.backupSoundCapSeconds) } ?? false
+            let baseName = (sound.fileName as NSString).deletingPathExtension
+            let cacheFileName = willRender
+                ? "cache_\(sound.id.uuidString.prefix(8))_\(baseName).wav"
+                : "cache_\(sound.id.uuidString.prefix(8))_\(sound.fileName)"
             let dest = soundsDir.appendingPathComponent(cacheFileName)
             if !fileManager.fileExists(atPath: dest.path) {
                 let cacheDest = dest.appendingPathExtension("tmp")
