@@ -410,7 +410,15 @@ final class SmartWakeService {
     }
     
     private func loadPreference() {
-        isEnabled = UserDefaults.standard.bool(forKey: enabledKey)
+        // Default to ON when no stored value exists (fresh install or backup restore)
+        if UserDefaults.standard.object(forKey: enabledKey) == nil {
+            isEnabled = true
+            UserDefaults.standard.set(true, forKey: enabledKey)
+            os_log(.info, log: log, "SMART WAKE default applied: on")
+            SmartWakeDebugLog.log("SMART WAKE default applied: on")
+        } else {
+            isEnabled = UserDefaults.standard.bool(forKey: enabledKey)
+        }
     }
 
     var isSmartWakeEnabled: Bool {
