@@ -22,8 +22,11 @@ struct ContentView: View {
     // Static property accessible from AlarmCoordinator
     static var isAppInForegroundStatic: Bool = true
     
-    // HEARTBEAT timer - runs every 30 min while app is in background
-    @State private var heartbeatTimer: Timer?
+    // HEARTBEAT timer - runs every 30 min while app is in background.
+    // DispatchSourceTimer instead of Timer: a scheduledTimer lives on the main
+    // run loop and can be paused/starved when the app is backgrounded, while a
+    // dispatch source keeps firing as long as the process runs (silent loop).
+    @State private var heartbeatTimer: DispatchSourceTimer?
     
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
@@ -226,7 +229,7 @@ struct ContentView: View {
                     isAppInForeground = true
                     ContentView.isAppInForegroundStatic = true
                     // Cancel HEARTBEAT timer when returning to foreground
-                    heartbeatTimer?.invalidate()
+                    heartbeatTimer?.cancel()
                     heartbeatTimer = nil
                     // Apply any Control Center widget action queued while the
                     // app was closed/backgrounded (app is the sole AlarmKit party).
@@ -250,8 +253,10 @@ struct ContentView: View {
                     isAppInForeground = false
                     ContentView.isAppInForegroundStatic = false
                     // Start HEARTBEAT timer when app goes to background (30 min interval)
-                    heartbeatTimer?.invalidate()
-                    heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { _ in
+                    heartbeatTimer?.cancel()
+                    let heartbeat = DispatchSource.makeTimerSource(queue: .main)
+                    heartbeat.schedule(deadline: .now() + 1800, repeating: 1800)
+                    heartbeat.setEventHandler { _ in
                         let level = UIDevice.current.batteryLevel
                         let batteryPercent = level >= 0 ? Int((level * 100).rounded()) : -1
                         let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
@@ -264,6 +269,8 @@ struct ContentView: View {
                         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
                         SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") alarms=\(alarmCount) build=\(build)")
                     }
+                    heartbeatTimer = heartbeat
+                    heartbeat.resume()
                     // Start Smart Wake when app backgrounds if enabled and alarm armed
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
