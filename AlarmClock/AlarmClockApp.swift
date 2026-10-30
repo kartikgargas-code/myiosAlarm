@@ -43,6 +43,20 @@ struct AlarmClockApp: App {
         
         // Log previous day's silent loop total
         SmartWakeService.shared.logPreviousDayTotal()
+        
+        // Start heartbeat timer: logs every 30 min while app is in background
+        Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { _ in
+            guard !ContentView.isAppInForegroundStatic else { return }
+            let level = UIDevice.current.batteryLevel
+            let batteryPercent = level >= 0 ? Int((level * 100).rounded()) : -1
+            let charging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+            let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+            let thermal = ProcessInfo.processInfo.thermalState.rawValue
+            let loopRunning = SmartWakeService.shared.isRunning
+            let arming = SmartWakeService.shared.isArming
+            let widgetReloads = BatteryReporter.widgetReloadsSinceLaunch
+            SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging) lowPower=\(lowPower) thermal=\(thermal) loopRunning=\(loopRunning) tickInterval=\(SmartWakeService.shared.tickIntervalValue) arming=\(arming) widgetReloadsSince=\(widgetReloads)")
+        }
     }
     
     var body: some Scene {
@@ -205,6 +219,9 @@ enum BatteryReporter {
     /// count against the budget gets a reload now.
     private static var lastReloadPercent: Int? = nil
     private static var lastReloadAt: Date = .distantPast
+    /// Count of widget reloads since app launch (for heartbeat)
+    static var widgetReloadsSinceLaunch: Int = 0
+    
     static func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         write(forceReload: true)
@@ -251,6 +268,8 @@ enum BatteryReporter {
         // Reload BOTH widget kinds that show battery: circular battery + inline next-alarm
         WidgetCenter.shared.reloadTimelines(ofKind: batteryWidgetKind)
         WidgetCenter.shared.reloadTimelines(ofKind: nextAlarmWidgetKind)
+        widgetReloadsSinceLaunch += 2
+        // Only log when a reload actually happens
         SmartWakeDebugLog.log("BATTERY reload asked n=\(percent)% force=\(forceReload) moved5=\(movedFive) silent=\(silentTooLong) kinds=\(batteryWidgetKind),\(nextAlarmWidgetKind)")
     }
 }

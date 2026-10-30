@@ -84,6 +84,9 @@ final class AlarmCoordinator {
     private static let lastStitchPruneDateKey = "lastStitchPruneDate"
     private static let lastStitchPruneFreedBytesKey = "lastStitchPruneFreedBytes"
 
+    /// Track last alarm list order to only log when it changes
+    private var lastAlarmListOrder: String = ""
+
     /// Live Activity / Dynamic Island toggle — when false, never request and end all existing on launch
     static let liveActivityEnabled = false
 
@@ -162,24 +165,22 @@ final class AlarmCoordinator {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
         let beforeCount = idsBefore.count
         let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
-        SmartWakeDebugLog.log("ALARM SAVE: before count=\(beforeCount) ids=\(beforeIds)")
         await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
         let afterCount = idsAfter.count
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
-        SmartWakeDebugLog.log("ALARM SAVE: after count=\(afterCount) ids=\(afterIds)")
+        SmartWakeDebugLog.log("ALARM SAVE: before=\(beforeCount) ids=[\(beforeIds)] after=\(afterCount) ids=[\(afterIds)]")
     }
 
     func delete(id: UUID) async {
         let idsBefore = engine.snapshot.alarms.map { $0.id }
         let beforeCount = idsBefore.count
         let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
-        SmartWakeDebugLog.log("ALARM DELETE: before count=\(beforeCount) ids=\(beforeIds)")
         await commit({ $0.delete(id: id) }, reason: "delete")
         let idsAfter = engine.snapshot.alarms.map { $0.id }
         let afterCount = idsAfter.count
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
-        SmartWakeDebugLog.log("ALARM DELETE: after count=\(afterCount) ids=\(afterIds)")
+        SmartWakeDebugLog.log("ALARM DELETE: before=\(beforeCount) ids=[\(beforeIds)] after=\(afterCount) ids=[\(afterIds)]")
     }
     
     /// Reset alarms that use sounds we just deleted
@@ -1252,9 +1253,12 @@ final class AlarmCoordinator {
         let earliest = engine.earliestOccurrence(now: currentDate)
         nextOccurrence = earliest
         
-        // Log the alarm order for debugging
-        let order = alarms.map { "\($0.label)(\($0.id.uuidString.prefix(8)))@\(engine.calculator.nextEffectiveOccurrence(for: $0, after: currentDate)?.effectiveDate.description ?? "none")" }.joined(separator: " -> ")
-        SmartWakeDebugLog.log("ALARM LIST ORDER: \(order)")
+        // Log the alarm order for debugging only when it changes
+        let order = alarms.map { "\($0.label.isEmpty ? "Alarm" : $0.label)(\($0.id.uuidString.prefix(8)))@\(engine.calculator.nextEffectiveOccurrence(for: $0, after: currentDate)?.effectiveDate.description ?? "none")" }.joined(separator: " -> ")
+        if order != lastAlarmListOrder {
+            lastAlarmListOrder = order
+            SmartWakeDebugLog.log("ALARM LIST ORDER: \(order)")
+        }
         
         // Compute next alarm snapshot for widgets and Lock Screen controls
         if let earliest = earliest {

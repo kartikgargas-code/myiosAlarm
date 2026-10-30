@@ -545,10 +545,8 @@ struct SoundPickerView: View {
             let sound = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
             selectedSound = .imported(sound.id)
-            SmartWakeDebugLog.log("MP3 single import finished - reconnecting missing entries")
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-            SmartWakeDebugLog.log("MP3 SINGLE IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
-            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
+            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1 reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
             await coordinator.synchronize()
         } catch {
             importError = error.localizedDescription
@@ -560,7 +558,8 @@ struct SoundPickerView: View {
             let playlist = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
             selectedSound = .random(playlist.id)
-            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count), rescheduling")
+            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count) reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
             await coordinator.synchronize()
         } catch {
             importError = error.localizedDescription

@@ -4,11 +4,11 @@ import os.log
 /// File-based black-box recorder for Smart Wake / takeover / playback events.
 /// Written to the App Group container (falls back to Application Support when
 /// no group container exists) so it can be shown in the Diagnostics screen on
-/// device without a Mac. Capped ring buffer of recent lines.
+/// device without a Mac. Capped ring buffer of recent lines (newest kept).
 public enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
-    static let maxLines = 1000
-    static let copyMaxLines = 1000
+    static let maxLines = 5000
+    static let copyMaxLines = 5000
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
     private static var hasLoggedInterruption = false

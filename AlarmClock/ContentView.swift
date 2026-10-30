@@ -228,8 +228,14 @@ struct ContentView: View {
                         await coordinator.applyPendingWidgetActions()
                         
                         // Purge CC feedback notifications from Notification Center on foreground
-                        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["cc-feedback-extension", "cc-feedback"])
-                        SmartWakeDebugLog.log("CC FEEDBACK: cleared delivered cc-feedback notifications on foreground")
+                        let ids = ["cc-feedback-extension", "cc-feedback"]
+                        let center = UNUserNotificationCenter.current()
+                        let delivered = await center.deliveredNotifications()
+                        let hasMatching = delivered.contains { ids.contains($0.request.identifier) }
+                        if hasMatching {
+                            center.removeDeliveredNotifications(withIdentifiers: ids)
+                            SmartWakeDebugLog.log("CC FEEDBACK: cleared delivered cc-feedback notifications on foreground")
+                        }
                     }
                     // Refresh alarm list order and next-alarm snapshot on foreground
                     coordinator.publish()
@@ -1314,10 +1320,8 @@ private func makeCreatorSheet() -> some View {
         do {
             let _ = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
-            SmartWakeDebugLog.log("MP3 single import finished - reconnecting missing entries")
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-            SmartWakeDebugLog.log("MP3 SINGLE IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
-            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1, rescheduling")
+            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1 reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
             await coordinator.synchronize()
         } catch {
             importError = "Import failed: \(error.localizedDescription)"
@@ -1328,10 +1332,8 @@ private func makeCreatorSheet() -> some View {
         do {
             let playlist = try await SoundLibrary.shared.importFolder(from: url)
             importError = nil
-            SmartWakeDebugLog.log("MP3 folder import finished - reconnecting missing entries")
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-            SmartWakeDebugLog.log("MP3 FOLDER IMPORT: reconnected \(reconnected) missing entries; \(stillMissing) still missing")
-            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count), rescheduling")
+            SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count) reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
             await coordinator.synchronize()
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"
@@ -1355,7 +1357,6 @@ private struct MeltSeconds: View {
 
     var body: some View {
         let style = ThemeManager.shared.secondsMorphStyle
-        SmartWakeDebugLog.log("MELTSECONDS DRAW: style=\(style.rawValue) seconds=\(seconds)")
         return Group {
             switch style {
             case .fade:

@@ -51,6 +51,9 @@ final class SmartWakeService {
     /// Track which occurrence keys have already fired transition wake to prevent duplicates
     private var firedTransitionWakes: Set<String> = []
 
+    /// Current tick interval for the status tick loop (2s default, may adapt)
+    private var tickInterval: TimeInterval = 2
+
     // User preference key
     private let enabledKey = "SmartWakeEnabled"
 
@@ -84,6 +87,16 @@ final class SmartWakeService {
 
     var isRunning: Bool {
         isSessionActive && player?.isPlaying == true
+    }
+    
+    /// True when the transition arming task is active (an occurrence is within ~10 minutes)
+    var isArming: Bool {
+        armingSleepTask != nil
+    }
+    
+    /// Current tick interval for the status tick loop (2s default, may adapt)
+    var tickIntervalValue: TimeInterval {
+        tickInterval
     }
 
     init() {
