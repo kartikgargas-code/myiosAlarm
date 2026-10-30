@@ -870,14 +870,20 @@ struct SoundsView: View {
 
     private var soundsListContent: some View {
         List {
-            // Imported sounds and folder groups FIRST
+            // Playlists section first (Random from Playlist)
+            playlistsSection
+            
+            // Import buttons
+            importSection
+            
+            // Single files (loose files)
+            singleFilesSection
+            
+            // Imported sounds (folder groups)
             importedSoundsSection
             
-            // Built-in sounds
-            builtInSoundsSection
-            
-            // Default at the very bottom
-            defaultSoundSection
+            // Default sounds (merged Default + Built-in)
+            defaultSoundsSection
         }
     }
 
@@ -933,7 +939,7 @@ struct SoundsView: View {
                 HStack {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    Text("Import Audio from Files")
+                    Text("Import from file")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
@@ -945,7 +951,7 @@ struct SoundsView: View {
                 HStack {
                     Image(systemName: "folder.badge.plus")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    Text("Import Audio Folder as Playlist")
+                    Text("Import folder as playlist")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
@@ -953,23 +959,48 @@ struct SoundsView: View {
     }
 
     @ViewBuilder
+    private var singleFilesSection: some View {
+        // Loose files (no folder) - renamed to "Single files"
+        let looseGroup = visibleGroups.first(where: { $0.id == "__loose__" })
+        if let looseGroup = looseGroup, !looseGroup.sounds.isEmpty {
+            CollapsibleSection(
+                id: looseGroup.id,
+                title: "Single files (\(looseGroup.sounds.count))",
+                isExpanded: isSectionExpanded(looseGroup.id),
+                onToggle: { toggleSection(looseGroup.id) }
+            ) {
+                ForEach(looseGroup.sounds) { soundRow(sound: $0) }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var importedSoundsSection: some View {
-        if SoundLibrary.shared.importedSounds.isEmpty {
+        // Folder groups (excluding loose files)
+        let folderGroups = visibleGroups.filter { $0.id != "__loose__" && !$0.sounds.isEmpty }
+        if !folderGroups.isEmpty {
+            CollapsibleSection(
+                id: "importedSounds",
+                title: "Imported sounds",
+                isExpanded: isSectionExpanded("importedSounds"),
+                onToggle: { toggleSection("importedSounds") }
+            ) {
+                ForEach(folderGroups) { group in
+                    CollapsibleSection(
+                        id: group.id,
+                        title: "\(group.title) (\(group.sounds.count))",
+                        isExpanded: isSectionExpanded(group.id),
+                        onToggle: { toggleSection(group.id) }
+                    ) {
+                        ForEach(group.sounds) { soundRow(sound: $0) }
+                    }
+                }
+            }
+        } else if SoundLibrary.shared.importedSounds.isEmpty {
             Section("Imported Sounds") {
-                Text("No imported sounds yet. Tap 'Import Audio from Files' to add sounds.")
+                Text("No imported sounds yet. Tap 'Import from file' to add sounds.")
                     .font(.caption)
                     .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-            }
-        } else {
-            ForEach(visibleGroups) { group in
-                CollapsibleSection(
-                    id: group.id,
-                    title: "\(group.title) (\(group.sounds.count))",
-                    isExpanded: isSectionExpanded(group.id),
-                    onToggle: { toggleSection(group.id) }
-                ) {
-                    ForEach(group.sounds) { soundRow(sound: $0) }
-                }
             }
         }
         if let importError {
@@ -981,17 +1012,12 @@ struct SoundsView: View {
         }
     }
     
-    private var builtInSoundsSection: some View {
-        Section("Built-in Sounds") {
+    private var defaultSoundsSection: some View {
+        Section("Default sounds") {
+            soundRow(sound: ImportedSound.mockDefault())
             ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
                 soundRow(sound: ImportedSound.mockBuiltIn(builtIn.rawValue))
             }
-        }
-    }
-    
-    private var defaultSoundSection: some View {
-        Section("Default") {
-            soundRow(sound: ImportedSound.mockDefault())
         }
     }
     
@@ -1003,9 +1029,15 @@ struct SoundsView: View {
             return true
         }
         // Default: expandedSections is empty initially, so sections are closed
-        // On first appearance, expand the first imported group
+        // On first appearance, expand the first imported group (single files or imported sounds)
         if expandedSections.isEmpty && !visibleGroups.isEmpty {
-            return id == visibleGroups.first?.id
+            let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
+            if let firstGroup = firstGroup {
+                if firstGroup.id == "__loose__" {
+                    return id == "__loose__"
+                }
+                return id == "importedSounds"
+            }
         }
         return expandedSections.contains(id)
     }

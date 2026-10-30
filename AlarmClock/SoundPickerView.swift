@@ -59,10 +59,28 @@ struct SoundPickerView: View {
             // Find which group contains the selected sound
             if case .imported(let selectedId) = selectedSound,
                let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
-                return id == group.id
+                // If it's a loose file, open the singleFiles section
+                if group.id == "__loose__" {
+                    return id == "__loose__"
+                }
+                // Otherwise open the importedSounds parent section
+                return id == "importedSounds" || id == group.id
             }
-            // Default: expand first imported group
-            return id == pickerVisibleGroups.first?.id
+            // For built-in or default sound, open defaultSounds section
+            if case .builtIn = selectedSound {
+                return id == "defaultSounds"
+            }
+            if case .systemDefault = selectedSound {
+                return id == "defaultSounds"
+            }
+            // Default: expand first available section
+            let firstGroup = pickerVisibleGroups.first(where: { !$0.sounds.isEmpty })
+            if let firstGroup = firstGroup {
+                if firstGroup.id == "__loose__" {
+                    return id == "__loose__"
+                }
+                return id == "importedSounds"
+            }
         }
         return expandedSections.contains(id)
     }
@@ -165,7 +183,7 @@ struct SoundPickerView: View {
                 HStack {
                     Image(systemName: "plus.circle.fill")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    Text("Import MP3 from Files")
+                    Text("Import from file")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
@@ -177,7 +195,7 @@ struct SoundPickerView: View {
                 HStack {
                     Image(systemName: "folder.badge.plus")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    Text("Import MP3 Folder as Playlist")
+                    Text("Import folder as playlist")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
@@ -185,10 +203,40 @@ struct SoundPickerView: View {
     }
 
     @ViewBuilder
+    private var singleFilesSection: some View {
+        // Loose files (no folder) - renamed to "Single files"
+        let looseGroup = pickerVisibleGroups.first(where: { $0.id == "__loose__" })
+        if let looseGroup = looseGroup, !looseGroup.sounds.isEmpty {
+            CollapsibleSection(
+                id: looseGroup.id,
+                title: "Single files (\(looseGroup.sounds.count))",
+                isExpanded: isSectionExpanded(looseGroup.id),
+                onToggle: { toggleSection(looseGroup.id) }
+            ) {
+                ForEach(looseGroup.sounds) { sound in
+                    soundRow(
+                        sound: .imported(sound.id),
+                        label: sound.name,
+                        description: "",
+                        previewURL: SoundLibrary.shared.resolvedURL(for: sound)
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var importedSoundsSection: some View {
-        if !pickerVisibleGroups.isEmpty {
-            Section("Imported Sounds") {
-                ForEach(pickerVisibleGroups) { group in
+        // Folder groups (excluding loose files)
+        let folderGroups = pickerVisibleGroups.filter { $0.id != "__loose__" && !$0.sounds.isEmpty }
+        if !folderGroups.isEmpty {
+            CollapsibleSection(
+                id: "importedSounds",
+                title: "Imported sounds",
+                isExpanded: isSectionExpanded("importedSounds"),
+                onToggle: { toggleSection("importedSounds") }
+            ) {
+                ForEach(folderGroups) { group in
                     CollapsibleSection(
                         id: group.id,
                         title: "\(group.title) (\(group.sounds.count))",
@@ -238,20 +286,17 @@ struct SoundPickerView: View {
     }
 
     @ViewBuilder
-    private var defaultSoundSection: some View {
-        Section("Default") {
+    private var defaultSoundsSection: some View {
+        Section("Default sounds") {
+            // Default sound row
             soundRow(
                 sound: .systemDefault,
                 label: "Default",
                 description: "System default alarm sound",
                 previewURL: nil
             )
-        }
-    }
-
-    @ViewBuilder
-    private var builtInSoundsSection: some View {
-        Section("Built-in Sounds") {
+            
+            // Built-in sounds
             ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
                 soundRow(
                     sound: .builtIn(builtIn.rawValue),
@@ -291,12 +336,11 @@ struct SoundPickerView: View {
     var body: some View {
         NavigationStack {
             List {
-                selectedSoundSection
-                importSection
-                importedSoundsSection
                 randomPlaylistSection
-                defaultSoundSection
-                builtInSoundsSection
+                importSection
+                singleFilesSection
+                importedSoundsSection
+                defaultSoundsSection
                 importErrorSection
             }
             .scrollContentBackground(.hidden)
