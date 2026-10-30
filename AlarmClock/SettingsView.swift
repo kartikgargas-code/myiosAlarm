@@ -8,18 +8,27 @@ import WidgetKit
 struct StartCursorTextField: UIViewRepresentable {
     @Binding var text: String
     let placeholder: String
+    var isFocused: Binding<Bool>? = nil
     
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.placeholder = placeholder
         field.delegate = context.coordinator
         field.clearButtonMode = .whileEditing
+        // If we have a focus binding, store a weak reference to auto-focus
+        if isFocused != nil {
+            context.coordinator.textField = field
+        }
         return field
     }
     
     func updateUIView(_ uiView: UITextField, context: Context) {
         if uiView.text != text {
             uiView.text = text
+        }
+        // Handle auto-focus when sheet appears
+        if let isFocused = isFocused, isFocused.wrappedValue, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
         }
     }
     
@@ -30,12 +39,19 @@ struct StartCursorTextField: UIViewRepresentable {
     final class Coordinator: NSObject, UITextFieldDelegate {
         let parent: StartCursorTextField
         private var didPositionCursor = false
+        weak var textField: UITextField?
         
         init(_ parent: StartCursorTextField) {
             self.parent = parent
         }
         
         func textFieldDidBeginEditing(_ textField: UITextField) {
+            // Update focus binding if provided
+            if let isFocused = parent.isFocused {
+                DispatchQueue.main.async {
+                    isFocused.wrappedValue = true
+                }
+            }
             if !didPositionCursor {
                 // Place cursor at the start and scroll to beginning
                 let startPosition = textField.beginningOfDocument
@@ -46,6 +62,11 @@ struct StartCursorTextField: UIViewRepresentable {
         
         func textFieldDidEndEditing(_ textField: UITextField) {
             didPositionCursor = false
+            if let isFocused = parent.isFocused {
+                DispatchQueue.main.async {
+                    isFocused.wrappedValue = false
+                }
+            }
             parent.text = textField.text ?? ""
         }
         
@@ -325,12 +346,13 @@ struct ExportBackupSheet: View {
     @Binding var exportName: String
     let onExport: (String) -> Void
     let onCancel: () -> Void
+    @State private var isFieldFocused = false
     
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    StartCursorTextField(text: $exportName, placeholder: "Backup name")
+                    StartCursorTextField(text: $exportName, placeholder: "Backup name", isFocused: $isFieldFocused)
                         .font(.body)
                 }
             }
@@ -343,6 +365,10 @@ struct ExportBackupSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Export") { onExport(exportName) }
                 }
+            }
+            .onAppear {
+                // Auto-focus the field when sheet appears
+                isFieldFocused = true
             }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
