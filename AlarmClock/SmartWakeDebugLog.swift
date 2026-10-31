@@ -19,7 +19,16 @@ public enum SmartWakeDebugLog {
             "FOREGROUND START attempt: declined",
             "START attempt: declined",
             "FOREGROUND START: silent loop already running",
-            "FOREGROUND: loop already running"
+            "FOREGROUND: loop already running",
+            "SNOOZE-WATCH",
+            "PRECOMPOSE",
+            "ARM RECORD",
+            "DESIRED ITEM",
+            "ALARM ENGINE UPSERT",
+            "ICON KEYS",
+            "LINKED: ended access",
+            "PERF",
+            "CACHE CLEANUP removed 0 files"
         ]
         if !force && suppressedPrefixes.contains(where: message.hasPrefix) {
             return
@@ -43,7 +52,11 @@ public enum SmartWakeDebugLog {
             hasLoggedInterruption = true
         }
         
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        // Format timestamp with local timezone offset, e.g., [2026-10-31 08:04:25 +05:30]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+        formatter.timeZone = TimeZone.current
+        let timestamp = formatter.string(from: Date())
         let line = "[\(timestamp)] \(message)"
         queue.async {
             var lines: [String] = []
@@ -103,7 +116,10 @@ public enum SmartWakeDebugLog {
             inMemoryBuffer.removeAll()
             hasLoggedInterruption = false
             // Write a marker so the clear is visible
-            let marker = "[\(ISO8601DateFormatter().string(from: Date()))] LOG CLEARED BY USER\n"
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+            formatter.timeZone = TimeZone.current
+            let marker = "[\(formatter.string(from: Date()))] LOG CLEARED BY USER\n"
             try? marker.write(to: url, atomically: true, encoding: .utf8)
         }
     }
