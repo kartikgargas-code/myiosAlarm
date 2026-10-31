@@ -52,6 +52,10 @@ struct HistoryView: View {
             .onAppear {
                 SmartWakeDebugLog.log("HISTORY VIEW: built with \(coordinator.playHistory.count) entries")
             }
+            .onDisappear {
+                // Stop any preview playback started from history when the screen closes
+                coordinator.stopHistoryPlayback()
+            }
             .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .navigationTitle("Play History")
             .scrollContentBackground(.hidden)
