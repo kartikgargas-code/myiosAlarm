@@ -44,6 +44,11 @@ struct AlarmClockApp: App {
         // Log previous day's silent loop total
         SmartWakeService.shared.logPreviousDayTotal()
         
+        // Automatic cleanup at app launch
+        Task { @MainActor in
+            AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
+        }
+        
         // HEARTBEAT timer will be started/stopped via scenePhase in ContentView
         // No timer started here - it will be managed by scene phase changes
     }

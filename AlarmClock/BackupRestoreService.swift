@@ -54,6 +54,11 @@ final class BackupRestoreService {
         var customRingtoneCardColor: String? = nil
         var compactModeEnabled: Bool? = nil
         
+        // Melt clock / fullscreen clock settings
+        var fullscreenClockMelt: Double? = nil
+        var fullscreenClockSpeed: Double? = nil
+        var fullscreenClockInk: Double? = nil
+        
         struct BackupSoundFile: Codable {
             let fileName: String
             var name: String? = nil
@@ -228,6 +233,11 @@ final class BackupRestoreService {
         }
         archive.compactModeEnabled = themeManager.isCompactModeEnabled
         
+        // Export melt clock / fullscreen clock settings
+        archive.fullscreenClockMelt = UserDefaults.standard.object(forKey: "fullscreenClockMelt") as? Double
+        archive.fullscreenClockSpeed = UserDefaults.standard.object(forKey: "fullscreenClockSpeed") as? Double
+        archive.fullscreenClockInk = UserDefaults.standard.object(forKey: "fullscreenClockInk") as? Double
+        
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
         let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let backupDir = docsDir.appendingPathComponent("AlarmClock_Backups", isDirectory: true)
@@ -258,6 +268,9 @@ final class BackupRestoreService {
         if archive.customRingtoneCardColorEnabled != nil { settingsCount += 1 }
         if archive.customRingtoneCardColor != nil { settingsCount += 1 }
         if archive.compactModeEnabled != nil { settingsCount += 1 }
+        if archive.fullscreenClockMelt != nil { settingsCount += 1 }
+        if archive.fullscreenClockSpeed != nil { settingsCount += 1 }
+        if archive.fullscreenClockInk != nil { settingsCount += 1 }
         if archive.activeThemeName != nil { settingsCount += 1 }
         if archive.activeUserThemeID != nil { settingsCount += 1 }
         
@@ -446,9 +459,22 @@ final class BackupRestoreService {
         if let compactModeEnabled = archive.compactModeEnabled {
             ThemeManager.shared.setCompactMode(compactModeEnabled)
         }
+        // Stage 6h: Restore melt clock / fullscreen clock settings (backward compatible)
+        if let fullscreenClockMelt = archive.fullscreenClockMelt {
+            UserDefaults.standard.set(fullscreenClockMelt, forKey: "fullscreenClockMelt")
+        }
+        if let fullscreenClockSpeed = archive.fullscreenClockSpeed {
+            UserDefaults.standard.set(fullscreenClockSpeed, forKey: "fullscreenClockSpeed")
+        }
+        if let fullscreenClockInk = archive.fullscreenClockInk {
+            UserDefaults.standard.set(fullscreenClockInk, forKey: "fullscreenClockInk")
+        }
         
         // Stage 7: Re-schedule alarms
         await coordinator.synchronize()
+        
+        // Automatic cleanup after backup restore
+        coordinator.pruneStitchCacheNow()
         
         // Stage 8: After restore, reconnect any missing playlist entries that might now be available
         // (e.g., if user already imported the mp3 folder before restoring backup)
@@ -473,6 +499,9 @@ final class BackupRestoreService {
         if archive.customRingtoneCardColorEnabled != nil { settingsApplied += 1 }
         if archive.customRingtoneCardColor != nil { settingsApplied += 1 }
         if archive.compactModeEnabled != nil { settingsApplied += 1 }
+        if archive.fullscreenClockMelt != nil { settingsApplied += 1 }
+        if archive.fullscreenClockSpeed != nil { settingsApplied += 1 }
+        if archive.fullscreenClockInk != nil { settingsApplied += 1 }
         if archive.activeThemeName != nil { settingsApplied += 1 }
         if archive.activeUserThemeID != nil { settingsApplied += 1 }
         

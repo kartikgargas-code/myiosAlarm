@@ -414,7 +414,9 @@ final class AudioProcessingService {
         } else {
             playlistFiles = 0
         }
-        SmartWakeDebugLog.log(String(format: "CACHE CLEANUP: removed %d files, freed %.1f MB, kept %d", deleted, freedMB, kept))
+        if deleted > 0 {
+            SmartWakeDebugLog.log(String(format: "CLEANUP removed %d files, freed %.1f MB", deleted, freedMB))
+        }
         return (deleted, freedBytes, kept)
     }
 

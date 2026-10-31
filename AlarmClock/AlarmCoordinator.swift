@@ -181,6 +181,9 @@ final class AlarmCoordinator {
         let afterCount = idsAfter.count
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         SmartWakeDebugLog.log("ALARM DELETE: before=\(beforeCount) ids=[\(beforeIds)] after=\(afterCount) ids=[\(afterIds)]")
+        
+        // Automatic cleanup after alarm deletion
+        pruneStitchCacheNow()
     }
     
     /// Reset alarms that use sounds we just deleted

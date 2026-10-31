@@ -1373,6 +1373,9 @@ private func makeCreatorSheet() -> some View {
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
             SmartWakeDebugLog.log("IMPORT DONE kind=folder songs=\(playlist.soundIDs.count) reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
             await coordinator.synchronize()
+            
+            // Automatic cleanup after folder import
+            coordinator.pruneStitchCacheNow()
         } catch {
             importError = "Folder import failed: \(error.localizedDescription)"
         }
