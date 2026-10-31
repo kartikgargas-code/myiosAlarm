@@ -157,6 +157,8 @@ struct SettingsView: View {
     @AppStorage("widgetMemoryPlateOpacity", store: WidgetSettingsStore.defaults) private var memoryPlateOpacity = 1.0
     @State private var memoryText = "Reading..."
     @State private var freedMemoryMB: Int? = nil
+    @State private var showClearMemoryToast = false
+    @State private var clearMemoryToastMessage = ""
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
@@ -225,10 +227,17 @@ struct SettingsView: View {
                     SettingsRow(
                         icon: "trash",
                         iconColor: .gray,
-                        title: "Clear unused files",
+                        title: "Clear memory",
                         showChevron: false,
                         action: {
-                            coordinator.pruneStitchCacheNow()
+                            let result = coordinator.pruneStitchCacheNowWithResult()
+                            if result.freedBytes > 0 {
+                                let freedMB = Double(result.freedBytes) / (1_048_576.0)
+                                clearMemoryToastMessage = "Freed \(String(format: "%.1f", freedMB)) MB"
+                            } else {
+                                clearMemoryToastMessage = "Nothing to clear"
+                            }
+                            showClearMemoryToast = true
                             refreshMemory()
                         }
                     )
@@ -362,6 +371,29 @@ struct SettingsView: View {
                         .icon("Done", systemImage: "checkmark") { dismiss() }
                     ]
                 )
+            }
+            .overlay {
+                if showClearMemoryToast {
+                    VStack {
+                        Spacer()
+                        Text(clearMemoryToastMessage)
+                            .font(.callout)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(ThemeManager.shared.colors.card.opacity(0.95))
+                            .clipShape(Capsule())
+                            .shadow(radius: 4)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .padding(.bottom, 100)
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: showClearMemoryToast)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            showClearMemoryToast = false
+                        }
+                    }
+                }
             }
             .sheet(isPresented: $showingDiagnostics) {
                 DiagnosticsView(coordinator: coordinator)

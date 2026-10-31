@@ -1647,6 +1647,19 @@ final class AlarmCoordinator {
         lastStitchPruneDate = pruneTime
         lastStitchPruneFreedBytes = result.freedBytes
     }
+    
+    /// Returns the cleanup result (freed bytes, etc.) for UI feedback
+    func pruneStitchCacheNowWithResult() -> (deleted: Int, freedBytes: Int64, kept: Int) {
+        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+        AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
+        let defaults = UserDefaults.standard
+        let pruneTime = now()
+        defaults.set(pruneTime, forKey: Self.lastStitchPruneDateKey)
+        defaults.set(Double(result.freedBytes), forKey: Self.lastStitchPruneFreedBytesKey)
+        lastStitchPruneDate = pruneTime
+        lastStitchPruneFreedBytes = result.freedBytes
+        return result
+    }
 
     /// Roll a fresh random selection (song set AND order) for the arming path.
     /// Returns nil for sequence playlists (listed order is intentional) or an
