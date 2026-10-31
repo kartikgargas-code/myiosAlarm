@@ -204,15 +204,7 @@ struct DiagnosticsView: View {
             }
             
             HStack {
-                Button("Clear unused cached sounds") {
-                    AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
-                    loadCacheStats()
-                }
-                
-                Button("Clear unused sound files") {
-                    // pruneStitchCacheNow already calls pruneUnusedStitchFiles +
-                    // cleanupLegacyProcessedSingleSounds and logs CACHE CLEANUP
-                    // once; repeating it here printed the line twice.
+                Button("Clear unused files") {
                     AlarmCoordinator.sharedInstance?.pruneStitchCacheNow()
                     loadCacheStats()
                 }
