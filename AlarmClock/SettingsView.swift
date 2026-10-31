@@ -326,12 +326,6 @@ struct SettingsView: View {
                 }
                 
                 Section {
-                    if let buildLine = SmartWakeDebugLog.latestBuildLine() {
-                        Text(buildLine)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
                     // Hidden Diagnostics entry - tap 5 times in 3 seconds
                     Text("myNextAlarm v\(buildNumber)")
                         .font(.caption2.monospaced())
