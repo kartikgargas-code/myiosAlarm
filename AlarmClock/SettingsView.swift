@@ -249,7 +249,8 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Lock Screen circles") {
+                Section("Widgets") {
+                    // Lock Screen circles
                     Toggle("Show the circle", isOn: $batteryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     Toggle("Show the percentage", isOn: $batteryShowText)
@@ -273,21 +274,18 @@ struct SettingsView: View {
                             .font(.caption)
                         Slider(value: $batteryPlateOpacity, in: 0.0...1.0)
                     }
-                }
-
-
-                Section("One-line widget") {
+                    
+                    // One-line widget
                     Toggle("Also show the battery", isOn: $inlineShowBattery)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                }
-
-                Section("Home Screen widget") {
+                    
+                    // Home Screen widget
                     Toggle("Show the circle", isOn: $homeShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     Toggle("Show the percentage", isOn: $homeShowText)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                }
-                Section("Memory widget") {
+                    
+                    // Memory widget
                     Toggle("Show the circle", isOn: $memoryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     Toggle("Show the percentage", isOn: $memoryShowText)
