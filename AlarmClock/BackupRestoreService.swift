@@ -59,6 +59,16 @@ final class BackupRestoreService {
         var fullscreenClockSpeed: Double? = nil
         var fullscreenClockInk: Double? = nil
         
+        // Fullscreen clock color/cycle settings
+        var fullscreenClockCycle: Bool? = nil
+        var fullscreenClockCycleSeconds: Double? = nil
+        var fullscreenClockCustomR: Double? = nil
+        var fullscreenClockCustomG: Double? = nil
+        var fullscreenClockCustomB: Double? = nil
+        var fullscreenClockScreenR: Double? = nil
+        var fullscreenClockScreenG: Double? = nil
+        var fullscreenClockScreenB: Double? = nil
+        
         struct BackupSoundFile: Codable {
             let fileName: String
             var name: String? = nil
@@ -238,6 +248,16 @@ final class BackupRestoreService {
         archive.fullscreenClockSpeed = UserDefaults.standard.object(forKey: "fullscreenClockSpeed") as? Double
         archive.fullscreenClockInk = UserDefaults.standard.object(forKey: "fullscreenClockInk") as? Double
         
+        // Export fullscreen clock color/cycle settings
+        archive.fullscreenClockCycle = UserDefaults.standard.object(forKey: "fullscreenClockCycle") as? Bool
+        archive.fullscreenClockCycleSeconds = UserDefaults.standard.object(forKey: "fullscreenClockCycleSeconds") as? Double
+        archive.fullscreenClockCustomR = UserDefaults.standard.object(forKey: "fullscreenClockCustomR") as? Double
+        archive.fullscreenClockCustomG = UserDefaults.standard.object(forKey: "fullscreenClockCustomG") as? Double
+        archive.fullscreenClockCustomB = UserDefaults.standard.object(forKey: "fullscreenClockCustomB") as? Double
+        archive.fullscreenClockScreenR = UserDefaults.standard.object(forKey: "fullscreenClockScreenR") as? Double
+        archive.fullscreenClockScreenG = UserDefaults.standard.object(forKey: "fullscreenClockScreenG") as? Double
+        archive.fullscreenClockScreenB = UserDefaults.standard.object(forKey: "fullscreenClockScreenB") as? Double
+        
         // Write JSON directly to a stable temp file in Documents (survives until exporter finishes)
         let docsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let backupDir = docsDir.appendingPathComponent("AlarmClock_Backups", isDirectory: true)
@@ -271,6 +291,14 @@ final class BackupRestoreService {
         if archive.fullscreenClockMelt != nil { settingsCount += 1 }
         if archive.fullscreenClockSpeed != nil { settingsCount += 1 }
         if archive.fullscreenClockInk != nil { settingsCount += 1 }
+        if archive.fullscreenClockCycle != nil { settingsCount += 1 }
+        if archive.fullscreenClockCycleSeconds != nil { settingsCount += 1 }
+        if archive.fullscreenClockCustomR != nil { settingsCount += 1 }
+        if archive.fullscreenClockCustomG != nil { settingsCount += 1 }
+        if archive.fullscreenClockCustomB != nil { settingsCount += 1 }
+        if archive.fullscreenClockScreenR != nil { settingsCount += 1 }
+        if archive.fullscreenClockScreenG != nil { settingsCount += 1 }
+        if archive.fullscreenClockScreenB != nil { settingsCount += 1 }
         if archive.activeThemeName != nil { settingsCount += 1 }
         if archive.activeUserThemeID != nil { settingsCount += 1 }
         
@@ -469,6 +497,31 @@ final class BackupRestoreService {
         if let fullscreenClockInk = archive.fullscreenClockInk {
             UserDefaults.standard.set(fullscreenClockInk, forKey: "fullscreenClockInk")
         }
+        // Stage 6i: Restore fullscreen clock color/cycle settings (backward compatible)
+        if let fullscreenClockCycle = archive.fullscreenClockCycle {
+            UserDefaults.standard.set(fullscreenClockCycle, forKey: "fullscreenClockCycle")
+        }
+        if let fullscreenClockCycleSeconds = archive.fullscreenClockCycleSeconds {
+            UserDefaults.standard.set(fullscreenClockCycleSeconds, forKey: "fullscreenClockCycleSeconds")
+        }
+        if let fullscreenClockCustomR = archive.fullscreenClockCustomR {
+            UserDefaults.standard.set(fullscreenClockCustomR, forKey: "fullscreenClockCustomR")
+        }
+        if let fullscreenClockCustomG = archive.fullscreenClockCustomG {
+            UserDefaults.standard.set(fullscreenClockCustomG, forKey: "fullscreenClockCustomG")
+        }
+        if let fullscreenClockCustomB = archive.fullscreenClockCustomB {
+            UserDefaults.standard.set(fullscreenClockCustomB, forKey: "fullscreenClockCustomB")
+        }
+        if let fullscreenClockScreenR = archive.fullscreenClockScreenR {
+            UserDefaults.standard.set(fullscreenClockScreenR, forKey: "fullscreenClockScreenR")
+        }
+        if let fullscreenClockScreenG = archive.fullscreenClockScreenG {
+            UserDefaults.standard.set(fullscreenClockScreenG, forKey: "fullscreenClockScreenG")
+        }
+        if let fullscreenClockScreenB = archive.fullscreenClockScreenB {
+            UserDefaults.standard.set(fullscreenClockScreenB, forKey: "fullscreenClockScreenB")
+        }
         
         // Stage 7: Re-schedule alarms
         await coordinator.synchronize()
@@ -502,6 +555,14 @@ final class BackupRestoreService {
         if archive.fullscreenClockMelt != nil { settingsApplied += 1 }
         if archive.fullscreenClockSpeed != nil { settingsApplied += 1 }
         if archive.fullscreenClockInk != nil { settingsApplied += 1 }
+        if archive.fullscreenClockCycle != nil { settingsApplied += 1 }
+        if archive.fullscreenClockCycleSeconds != nil { settingsApplied += 1 }
+        if archive.fullscreenClockCustomR != nil { settingsApplied += 1 }
+        if archive.fullscreenClockCustomG != nil { settingsApplied += 1 }
+        if archive.fullscreenClockCustomB != nil { settingsApplied += 1 }
+        if archive.fullscreenClockScreenR != nil { settingsApplied += 1 }
+        if archive.fullscreenClockScreenG != nil { settingsApplied += 1 }
+        if archive.fullscreenClockScreenB != nil { settingsApplied += 1 }
         if archive.activeThemeName != nil { settingsApplied += 1 }
         if archive.activeUserThemeID != nil { settingsApplied += 1 }
         
