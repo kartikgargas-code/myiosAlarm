@@ -92,6 +92,43 @@ enum WidgetSettingsStore {
     }
 }
 
+/// Settings row with icon tile, title, optional chevron
+private struct SettingsRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let showChevron: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                // Icon tile: 28pt, 7pt corner radius, white SF Symbol
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(iconColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                if showChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showingDiagnostics = false
@@ -123,36 +160,78 @@ struct SettingsView: View {
     let coordinator: AlarmCoordinator
     @State private var smartWakeService = SmartWakeService.shared
     
+    private var buildNumber: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        let stamp = info?["AlarmClockBuildStamp"] as? String ?? "unknown"
+        return "\(version) (\(build)) \(stamp)"
+    }
+    
+    // Track build number taps for hidden Diagnostics entry
+    @State private var buildTapTimes: [Date] = []
+    
     var body: some View {
         NavigationStack {
             List {
+                // Group 1 (no header) - with chevrons
                 Section {
-                    Button("Appearance") { showingAppearance = true }
-                    Button("Play History") { showingHistory = true }
-                    Button("Sounds") { showingSounds = true }
-                    Button("Export Backup") {
-                        exportName = BackupRestoreService.suggestedExportName()
-                        showingExportAlert = true
-                    }
-                    Button("Import Backup") {
-                        showingImportPicker = true
-                    }
-                    Button("Diagnostics") { showingDiagnostics = true }
+                    SettingsRow(
+                        icon: "paintbrush",
+                        iconColor: .orange,
+                        title: "Appearance",
+                        showChevron: true,
+                        action: { showingAppearance = true }
+                    )
+                    SettingsRow(
+                        icon: "clock.arrow.circlepath",
+                        iconColor: .blue,
+                        title: "Play History",
+                        showChevron: true,
+                        action: { showingHistory = true }
+                    )
+                    SettingsRow(
+                        icon: "music.note.list",
+                        iconColor: .pink,
+                        title: "Sounds",
+                        showChevron: true,
+                        action: { showingSounds = true }
+                    )
                 }
-
-                Section("Memory") {
-                    Button("Free memory") {
-                        Task {
-                            freedMemoryMB = await SystemMemory.freeMemory()
+                
+                // Group "Backup" - no chevrons (run actions directly)
+                Section("Backup") {
+                    SettingsRow(
+                        icon: "square.and.arrow.up",
+                        iconColor: .green,
+                        title: "Export backup",
+                        showChevron: false,
+                        action: {
+                            exportName = BackupRestoreService.suggestedExportName()
+                            showingExportAlert = true
+                        }
+                    )
+                    SettingsRow(
+                        icon: "square.and.arrow.down",
+                        iconColor: .cyan,
+                        title: "Import backup",
+                        showChevron: false,
+                        action: { showingImportPicker = true }
+                    )
+                }
+                
+                // Group "Storage"
+                Section("Storage") {
+                    SettingsRow(
+                        icon: "trash",
+                        iconColor: .gray,
+                        title: "Clear unused files",
+                        showChevron: false,
+                        action: {
+                            coordinator.pruneStitchCacheNow()
                             refreshMemory()
                         }
-                    }
-                    if let freedMemoryMB {
-                        Text(freedMemoryMB > 0 ? "Freed about \(freedMemoryMB) MB" : "Nothing to free right now")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    }
-                    
+                    )
                     HStack {
                         Text("In use")
                         Spacer()
@@ -246,10 +325,30 @@ struct SettingsView: View {
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
+                    // Hidden Diagnostics entry - tap 5 times in 3 seconds
+                    Text("myNextAlarm v\(buildNumber)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 8)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            let now = Date()
+                            buildTapTimes.append(now)
+                            // Keep only taps within last 3 seconds
+                            buildTapTimes = buildTapTimes.filter { now.timeIntervalSince($0) <= 3 }
+                            if buildTapTimes.count >= 5 {
+                                buildTapTimes = []
+                                showingDiagnostics = true
+                                SmartWakeDebugLog.log("DIAGNOSTICS opened via build-tap")
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
+            .listStyle(.insetGrouped)
             .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)|\(memoryShowCircle)|\(memoryShowText)|\(memoryCircleScale)|\(memoryTextScale)|\(memoryPlateOpacity)") { _, _ in
                 WidgetCenter.shared.reloadAllTimelines()
             }

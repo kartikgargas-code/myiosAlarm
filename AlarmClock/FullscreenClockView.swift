@@ -12,6 +12,7 @@ struct FullscreenClockView: View {
     @State private var showClockSettings = false
     @State private var lastTouch = Date()
     @State private var controlsVisible = true
+    @State private var showingDiagnostics = false
     private let hideAfter: TimeInterval = 5
     @AppStorage("fullscreenClockCustomR") private var customRed = -1.0
     @AppStorage("fullscreenClockCustomG") private var customGreen = -1.0
@@ -73,7 +74,12 @@ struct FullscreenClockView: View {
                     cycleSeconds: colourCycle ? cycleSeconds : 0
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 1.0) {
+                    showingDiagnostics = true
+                    SmartWakeDebugLog.log("DIAGNOSTICS opened via clock")
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
 
 
 
@@ -85,6 +91,9 @@ struct FullscreenClockView: View {
         }
         .sheet(isPresented: $showClockSettings) {
             ClockSettingsSheet()
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            DiagnosticsView(coordinator: AlarmCoordinator.sharedInstance!)
         }
         .safeAreaInset(edge: .bottom) {
             BottomActionsBar(
