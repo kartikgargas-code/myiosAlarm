@@ -113,7 +113,7 @@ private struct SettingsRow: View {
                 
                 Text(title)
                     .font(.body)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
                 
                 Spacer()
                 
@@ -262,16 +262,19 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Circle thickness: " + String(format: "%.1f", batteryCircleScale) + "\u{00d7}")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $batteryCircleScale, in: 0.5...3.0)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Percentage size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $batteryTextScale, in: 0.5...3.0)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Plate behind it: " + String(format: "%.0f", batteryPlateOpacity * 100) + "%")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $batteryPlateOpacity, in: 0.0...1.0)
                     }
                     
@@ -293,16 +296,19 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Circle thickness: " + String(format: "%.1f", memoryCircleScale) + "\u{00d7}")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $memoryCircleScale, in: 0.5...3.0)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Percentage size: " + String(format: "%.1f", memoryTextScale) + "\u{00d7}")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $memoryTextScale, in: 0.5...3.0)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Plate behind it: " + String(format: "%.0f", memoryPlateOpacity * 100) + "%")
                             .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         Slider(value: $memoryPlateOpacity, in: 0.0...1.0)
                     }
                 }
