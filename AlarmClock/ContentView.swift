@@ -842,8 +842,8 @@ struct SoundsView: View {
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,
-                allowedContentTypes: pickerContentTypes,
-                allowsMultipleSelection: pickerMode == .files
+                allowedContentTypes: [.audio, .movie],
+                allowsMultipleSelection: true
             ) { result in
                 handlePickedFiles(result)
             }

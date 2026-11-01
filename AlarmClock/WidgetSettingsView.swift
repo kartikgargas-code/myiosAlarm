@@ -102,8 +102,16 @@ struct WidgetSettingsView: View {
             .navigationTitle("Widgets")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                ToolbarItem(placement: .bottomBar) {
+                    HStack {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                .frame(width: 44, height: 44)
+                        }
+                        Spacer()
+                    }
                 }
             }
         }
