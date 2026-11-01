@@ -654,6 +654,7 @@ struct SoundsView: View {
     }
     
     @State private var showingDocumentPicker = false
+    @State private var showingFolderPicker = false
     @State private var importError: String?
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
@@ -846,6 +847,13 @@ struct SoundsView: View {
             ) { result in
                 handlePickedFiles(result)
             }
+            .fileImporter(
+                isPresented: $showingFolderPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                handlePickedFiles(result)
+            }
     }
 
     private var soundsListBase: some View {
@@ -1003,7 +1011,7 @@ struct SoundsView: View {
 
             Button {
                 pickerMode = .folder
-                showingDocumentPicker = true
+                showingFolderPicker = true
             } label: {
                 HStack(spacing: 12) {
                     // Icon tile: 28pt, 7pt corner radius, white SF Symbol

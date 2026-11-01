@@ -101,6 +101,11 @@ struct WidgetSettingsView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Widgets")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
