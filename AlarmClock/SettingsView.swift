@@ -120,7 +120,7 @@ private struct SettingsRow: View {
                 if showChevron {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
             }
             .contentShape(Rectangle())
@@ -202,7 +202,7 @@ struct SettingsView: View {
                 }
                 
                 // Group "Backup" - no chevrons (run actions directly)
-                Section("Backup") {
+                Section(header: Text("Backup").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
                     SettingsRow(
                         icon: "square.and.arrow.up",
                         iconColor: .green,
@@ -223,7 +223,7 @@ struct SettingsView: View {
                 }
                 
                 // Group "Storage"
-                Section("Storage") {
+                Section(header: Text("Storage").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
                     SettingsRow(
                         icon: "trash",
                         iconColor: .gray,
@@ -243,13 +243,14 @@ struct SettingsView: View {
                     )
                     HStack {
                         Text("In use")
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
                         Spacer()
                         Text(memoryText)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                 }
 
-                Section("Widgets") {
+                Section(header: Text("Widgets").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
                     // Lock Screen circles
                     Toggle("Show the circle", isOn: $batteryShowCircle)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
@@ -313,7 +314,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Smart Wake") {
+                Section(header: Text("Smart Wake").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
                     Toggle("Keep app active overnight (Smart Wake)", isOn: $smartWakeService.isSmartWakeEnabled)
                         .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
                     if smartWakeService.isSmartWakeEnabled {

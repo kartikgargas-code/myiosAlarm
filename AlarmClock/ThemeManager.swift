@@ -593,6 +593,7 @@ struct ThemedToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack {
             configuration.label
+                .foregroundStyle(colors.primaryText)
             Spacer()
             RoundedRectangle(cornerRadius: 16)
                 .fill(configuration.isOn ? colors.toggleOn : colors.toggleOff)
