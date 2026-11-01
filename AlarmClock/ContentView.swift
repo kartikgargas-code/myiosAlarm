@@ -951,8 +951,10 @@ struct SoundsView: View {
                 guard let url = urls.first else { return }
                 Task { await importFolder(from: url) }
             }
+            pickerMode = .none
         case .failure(let error):
             importError = "Picker failed: \(error.localizedDescription)"
+            pickerMode = .none
         }
     }
 
