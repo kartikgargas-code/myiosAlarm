@@ -966,8 +966,17 @@ struct SoundsView: View {
                 Button {
                     showingPlaylistCreator = true
                 } label: {
-                    Label("Create New Playlist", systemImage: "plus.circle.fill")
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    HStack(spacing: 12) {
+                        // Icon tile: 28pt, 7pt corner radius, white SF Symbol
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(.green)
+                            .clipShape(RoundedRectangle(cornerRadius: 7))
+                        Text("Create New Playlist")
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                    }
                 }
             }
         }
@@ -979,11 +988,16 @@ struct SoundsView: View {
                 pickerMode = .files
                 showingDocumentPicker = true
             } label: {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                HStack(spacing: 12) {
+                    // Icon tile: 28pt, 7pt corner radius, white SF Symbol
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
                     Text("Import from file")
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
                 }
             }
 
@@ -991,11 +1005,16 @@ struct SoundsView: View {
                 pickerMode = .folder
                 showingDocumentPicker = true
             } label: {
-                HStack {
+                HStack(spacing: 12) {
+                    // Icon tile: 28pt, 7pt corner radius, white SF Symbol
                     Image(systemName: "folder.badge.plus")
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(.orange)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
                     Text("Import folder as playlist")
-                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
                 }
             }
         }
@@ -1262,12 +1281,13 @@ private func makeCreatorSheet() -> some View {
         let missingCount = playlist.missingSongs.count
         
         return HStack(spacing: 12) {
+            // Icon tile: 28pt, 7pt corner radius, white SF Symbol
             Image(systemName: "music.note.list")
-                .font(.title2)
-                .foregroundStyle(colors.accent)
-                .frame(width: 44, height: 44)
-                .background(colors.accent.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(.purple)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(playlist.name)
