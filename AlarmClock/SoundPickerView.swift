@@ -109,7 +109,32 @@ struct SoundPickerView: View {
         expandedSectionsData = (try? JSONEncoder().encode(set)) ?? Data()
     }
 
-    // Computed properties for Selected section
+    // Seeds the persisted set with the sections the default logic auto-opens.
+    // Without this, a child folder opened only by the default (e.g. the folder
+    // holding the selected sound) has no entry in the set - the default branch
+    // is dead as soon as anything is toggled - so collapsing and reopening the
+    // parent re-derives the child from the set and it comes back closed.
+    private func seedDefaultExpandedSectionsIfEmpty() {
+        guard expandedSections.isEmpty, !pickerVisibleGroups.isEmpty else { return }
+        var seed: Set<String> = []
+        if case .imported(let selectedId) = selectedSound,
+           let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
+            if group.id == "__loose__" {
+                seed.insert("__loose__")
+            } else {
+                seed.insert("importedSounds")
+                seed.insert(group.id)
+            }
+        } else if case .builtIn = selectedSound {
+            seed.insert("defaultSounds")
+        } else if case .systemDefault = selectedSound {
+            seed.insert("defaultSounds")
+        } else if let firstGroup = pickerVisibleGroups.first(where: { !$0.sounds.isEmpty }) {
+            seed.insert(firstGroup.id == "__loose__" ? "__loose__" : "importedSounds")
+        }
+        guard !seed.isEmpty else { return }
+        expandedSectionsData = (try? JSONEncoder().encode(seed)) ?? Data()
+    }
     private var selectedSoundDisplayName: String {
         switch selectedSound {
         case .systemDefault: return "Default"
@@ -362,6 +387,7 @@ struct SoundPickerView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Alarm Sound")
+            .onAppear { seedDefaultExpandedSectionsIfEmpty() }
             .safeAreaInset(edge: .bottom) { bottomBar }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)

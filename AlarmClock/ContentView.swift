@@ -820,6 +820,7 @@ struct SoundsView: View {
                 headerRow
                 soundsList
             }
+            .onAppear { seedDefaultExpandedSectionsIfEmpty() }
         }
         .sheet(item: $playlistToEdit) { playlist in
             makeEditorSheet(playlist)
@@ -1097,6 +1098,19 @@ struct SoundsView: View {
             set.insert(id)
         }
         expandedSectionsData = (try? JSONEncoder().encode(set)) ?? Data()
+    }
+
+    // Seeds the persisted set with what the default logic auto-opens (the first
+    // section that has sounds). A section opened only by the default has no
+    // entry in the set, so collapsing/reopening the parent re-derives it from
+    // the set and it comes back closed. Seeding makes the set the single
+    // source of truth from the first tap on.
+    private func seedDefaultExpandedSectionsIfEmpty() {
+        guard expandedSections.isEmpty, !visibleGroups.isEmpty else { return }
+        let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
+        guard let firstGroup else { return }
+        let seed: Set<String> = [firstGroup.id == "__loose__" ? "__loose__" : "importedSounds"]
+        expandedSectionsData = (try? JSONEncoder().encode(seed)) ?? Data()
     }
     
     
