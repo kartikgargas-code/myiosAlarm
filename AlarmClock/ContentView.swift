@@ -654,10 +654,9 @@ struct SoundsView: View {
     }
     
     @State private var showingDocumentPicker = false
-    @State private var showingFolderPicker = false
     @State private var importError: String?
-    @State private var pickerMode: PickerMode = .files
-    private enum PickerMode { case files, folder }
+    @State private var pickerMode: ImportMode = .none
+    private enum ImportMode { case none, files, folder }
     @State private var showingDeleteAll = false
     @State private var folderToDelete: String? = nil
     @State private var showingSortOptions = false
@@ -842,15 +841,8 @@ struct SoundsView: View {
             }
             .fileImporter(
                 isPresented: $showingDocumentPicker,
-                allowedContentTypes: [.audio, .movie],
-                allowsMultipleSelection: true
-            ) { result in
-                handlePickedFiles(result)
-            }
-            .fileImporter(
-                isPresented: $showingFolderPicker,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
+                allowedContentTypes: pickerMode == .folder ? [.folder] : [.audio, .movie],
+                allowsMultipleSelection: pickerMode == .folder ? false : true
             ) { result in
                 handlePickedFiles(result)
             }
@@ -940,10 +932,10 @@ struct SoundsView: View {
 
     // Explicit identifiers keep the type-checker off the slow path.
     private var pickerContentTypes: [UTType] {
-        if pickerMode == .files {
-            return [.audio, .movie]
+        if pickerMode == .folder {
+            return [.folder]
         }
-        return [.folder]
+        return [.audio, .movie]
     }
 
     private func handlePickedFiles(_ result: Result<[URL], Error>) {
@@ -1011,7 +1003,7 @@ struct SoundsView: View {
 
             Button {
                 pickerMode = .folder
-                showingFolderPicker = true
+                showingDocumentPicker = true
             } label: {
                 HStack(spacing: 12) {
                     // Icon tile: 28pt, 7pt corner radius, white SF Symbol
