@@ -132,11 +132,11 @@ struct DiagnosticsView: View {
             if let fingerprint = buildFingerprint {
                 Text(fingerprint)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
             } else {
                 Text("Build fingerprint not found in log")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
         }
     }
@@ -148,7 +148,7 @@ struct DiagnosticsView: View {
                 .font(.subheadline.weight(.semibold))
             Text("Renders the current 60s floor stitch a second time as compressed CAF (IMA4), logs both byte sizes, and schedules a one-shot test alarm 15 s out using the CAF. If it rings with your playlist audio, AlarmKit accepts compressed files; if it rings with the stock system sound, it refused the CAF.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             Button("Test CAF floor sound") {
                 Task { await AlarmCoordinator.sharedInstance?.scheduleCAFTestAlarm() }
             }
@@ -189,7 +189,7 @@ struct DiagnosticsView: View {
                 ForEach(orphanedFiles, id: \.fileName) { orphan in
                     Text("\(orphan.fileName) — \(String(format: "%.1f", Double(orphan.sizeBytes) / 1_048_576.0)) MB")
                         .font(.caption2.monospaced())
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
                         .lineLimit(2)
                 }
             }
@@ -200,7 +200,7 @@ struct DiagnosticsView: View {
             } else {
                 Text("Last cleanup: never")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
             
             HStack {
@@ -271,7 +271,7 @@ struct DiagnosticsView: View {
             if armedRecords.isEmpty {
                 Text("No alarms currently armed")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             } else {
                 ForEach(armedRecords, id: \.alarmID) { record in
                     VStack(alignment: .leading, spacing: 2) {
@@ -289,7 +289,7 @@ struct DiagnosticsView: View {
                             Spacer()
                             Text(record.format)
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                             if record.isCapped {
                                 Text("CAPPED")
                                     .font(.caption2.monospaced())
@@ -302,7 +302,7 @@ struct DiagnosticsView: View {
                         }
                         Text("Fire: \(record.effectiveDate.formatted(date: .abbreviated, time: .standard))  Duration: \(String(format: "%.1f", record.duration))s  Bytes: \(record.bytes)")
                             .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         if record.firedAt != nil {
                             Text("FIRED at \(record.firedAt!.formatted(date: .abbreviated, time: .standard))")
                                 .font(.caption2.monospaced())
@@ -318,7 +318,7 @@ struct DiagnosticsView: View {
                         } else {
                             Text("Armed at \(record.armedAt.formatted(date: .abbreviated, time: .standard))")
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                         }
                     }
                     .padding(.vertical, 4)
@@ -343,16 +343,16 @@ struct DiagnosticsView: View {
                     if let details = lastEvent.details {
                         Text(details)
                             .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     }
                     Text("At: \(lastEvent.timestamp.formatted(date: .abbreviated, time: .standard))")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
             } else {
                 Text("No alarm events recorded yet")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
         }
     }
@@ -380,7 +380,7 @@ struct DiagnosticsView: View {
             } else {
                 Text("No upcoming alarm scheduled")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
             }
         }
     }
@@ -400,7 +400,7 @@ struct DiagnosticsView: View {
             
             Text("Status tick: \(SmartWakeService.shared.statusTextPublished)")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
     }
     
@@ -418,11 +418,11 @@ struct DiagnosticsView: View {
             
             Text("Today: \(timeString)")
                 .font(.caption.monospaced())
-                .foregroundStyle(.primary)
+                .foregroundStyle(ThemeManager.shared.colors.primaryText)
             
             Text("Time spent in AlarmKit alerting state (not battery). Derived from SCENE -> alerting transitions.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
         }
     }
     
@@ -436,7 +436,7 @@ struct DiagnosticsView: View {
                 if showUTCNotice {
                     Text("Times shown in UTC (device is local)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
             }
             
@@ -447,7 +447,7 @@ struct DiagnosticsView: View {
             } else if logLines.isEmpty {
                 Text("No log entries yet")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
