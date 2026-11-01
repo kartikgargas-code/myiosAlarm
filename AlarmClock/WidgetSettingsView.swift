@@ -100,22 +100,16 @@ struct WidgetSettingsView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Widgets")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .bottomBar) {
-                    HStack {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                .frame(width: 44, height: 44)
-                        }
-                        Spacer()
-                    }
-                }
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [],
+                    trailingActions: [
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
+                    ]
+                )
             }
         }
-        .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
     }
 }
 
