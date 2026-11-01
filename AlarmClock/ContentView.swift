@@ -820,7 +820,15 @@ struct SoundsView: View {
                 headerRow
                 soundsList
             }
-            .onAppear { seedDefaultExpandedSectionsIfEmpty() }
+            .onAppear { 
+                seedDefaultExpandedSectionsIfEmpty()
+                SmartWakeDebugLog.log("SOUNDS screen appeared closeButton=visible")
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }
+            }
         }
         .sheet(item: $playlistToEdit) { playlist in
             makeEditorSheet(playlist)
