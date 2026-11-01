@@ -222,8 +222,8 @@ struct SettingsView: View {
                     )
                 }
                 
-                // Group "Storage"
-                Section(header: Text("Storage").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
+                // Group "Memory"
+                Section(header: Text("Memory").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
                     SettingsRow(
                         icon: "trash",
                         iconColor: .gray,
