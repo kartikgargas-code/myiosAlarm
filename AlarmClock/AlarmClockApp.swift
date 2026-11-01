@@ -56,6 +56,7 @@ struct AlarmClockApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environmentObject(SoundsUIState())
         }
     }
 }

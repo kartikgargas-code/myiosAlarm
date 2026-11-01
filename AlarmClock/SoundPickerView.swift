@@ -5,6 +5,7 @@ import AlarmClockShared
 
 struct SoundPickerView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var soundsUIState: SoundsUIState
     @Binding var selectedSound: AlarmSound
     let alarms: [AlarmRecord]
     let coordinator: AlarmCoordinator
@@ -17,17 +18,6 @@ struct SoundPickerView: View {
     // Single fileImporter driven by enum — avoids SwiftUI conflict of two modifiers
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
-
-    // Collapsible sections state - persisted so it survives view destruction/recreation
-    @AppStorage("soundPickerExpandedSections") private var expandedSectionsData: Data = Data()
-    private var expandedSections: Set<String> {
-        get {
-            (try? JSONDecoder().decode(Set<String>.self, from: expandedSectionsData)) ?? []
-        }
-        set {
-            expandedSectionsData = (try? JSONEncoder().encode(newValue)) ?? Data()
-        }
-    }
 
 
     // Local copy for Cancel/Save behavior
@@ -60,16 +50,17 @@ struct SoundPickerView: View {
         }
     }
 
-    private func isSectionExpanded(_ id: String) -> Bool {
+        private func isSectionExpanded(_ id: String) -> Bool {
         // If search is active, show all sections expanded (no search in picker yet)
         // For child folders (inner folders inside "Imported sounds"), always use persisted state
         // so they stay open/closed as the user left them when parent collapses/reopens
         let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
         if isChildFolder {
-            return expandedSections.contains(id)
+            return soundsUIState.isExpanded(id)
         }
         // For alarm sound picker: open the section containing the currently selected sound
-        if expandedSections.isEmpty && !pickerVisibleGroups.isEmpty {
+        // This only applies when the set is empty (first load)
+        if soundsUIState.expandedIds.isEmpty && !pickerVisibleGroups.isEmpty {
             // Find which group contains the currently selected sound
             if case .imported(let selectedId) = selectedSound,
                let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
@@ -96,44 +87,38 @@ struct SoundPickerView: View {
                 return id == "importedSounds"
             }
         }
-        return expandedSections.contains(id)
+        return soundsUIState.isExpanded(id)
     }
-
+    
     private func toggleSection(_ id: String) {
-        var set = expandedSections
-        if set.contains(id) {
-            set.remove(id)
-        } else {
-            set.insert(id)
-        }
-        expandedSectionsData = (try? JSONEncoder().encode(set)) ?? Data()
+        soundsUIState.toggle(id)
     }
-
+    
     // Seeds the persisted set with the sections the default logic auto-opens.
     // Without this, a child folder opened only by the default (e.g. the folder
     // holding the selected sound) has no entry in the set - the default branch
     // is dead as soon as anything is toggled - so collapsing and reopening the
     // parent re-derives the child from the set and it comes back closed.
     private func seedDefaultExpandedSectionsIfEmpty() {
-        guard expandedSections.isEmpty, !pickerVisibleGroups.isEmpty else { return }
-        var seed: Set<String> = []
+        guard soundsUIState.expandedIds.isEmpty, !pickerVisibleGroups.isEmpty else { return }
+        var seedIds: [String] = []
         if case .imported(let selectedId) = selectedSound,
            let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
             if group.id == "__loose__" {
-                seed.insert("__loose__")
+                seedIds.append("__loose__")
             } else {
-                seed.insert("importedSounds")
-                seed.insert(group.id)
+                seedIds.append("importedSounds")
+                seedIds.append(group.id)
             }
         } else if case .builtIn = selectedSound {
-            seed.insert("defaultSounds")
+            seedIds.append("defaultSounds")
         } else if case .systemDefault = selectedSound {
-            seed.insert("defaultSounds")
+            seedIds.append("defaultSounds")
         } else if let firstGroup = pickerVisibleGroups.first(where: { !$0.sounds.isEmpty }) {
-            seed.insert(firstGroup.id == "__loose__" ? "__loose__" : "importedSounds")
+            seedIds.append(firstGroup.id == "__loose__" ? "__loose__" : "importedSounds")
         }
-        guard !seed.isEmpty else { return }
-        expandedSectionsData = (try? JSONEncoder().encode(seed)) ?? Data()
+        guard !seedIds.isEmpty else { return }
+        soundsUIState.seedIfEmpty(ids: seedIds)
     }
     private var selectedSoundDisplayName: String {
         switch selectedSound {

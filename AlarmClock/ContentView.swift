@@ -646,6 +646,7 @@ struct EditorPresentation: Identifiable {
 // MARK: - Sounds View (Sound Manager)
 struct SoundsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var soundsUIState: SoundsUIState
     let coordinator: AlarmCoordinator
     // Copy feedback uses shared CopyToastManager so list refreshes cannot remove it
     private func copyToClipboard(_ text: String) {
@@ -672,17 +673,6 @@ struct SoundsView: View {
     @State private var showingPlaylistCreator = false
     @State private var playlistToDelete: Playlist? = nil
     @State private var playlistDeleteError: String? = nil
-    
-    // Collapsible sections state - persisted so it survives view destruction/recreation
-    @AppStorage("soundsExpandedSections") private var expandedSectionsData: Data = Data()
-    private var expandedSections: Set<String> {
-        get {
-            (try? JSONDecoder().decode(Set<String>.self, from: expandedSectionsData)) ?? []
-        }
-        set {
-            expandedSectionsData = (try? JSONEncoder().encode(newValue)) ?? Data()
-        }
-    }
     
     @AppStorage("soundSortOption") private var sortOptionRaw: String = SoundSortOption.name.rawValue
     private var sortOption: SoundSortOption {
@@ -1104,42 +1094,27 @@ struct SoundsView: View {
         // so they stay open/closed as the user left them when parent collapses/reopens
         let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
         if isChildFolder {
-            return expandedSections.contains(id)
+            return soundsUIState.isExpanded(id)
         }
         // Default logic for top-level sections only
-        if expandedSections.isEmpty && !visibleGroups.isEmpty {
-            let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
-            if let firstGroup = firstGroup {
-                if firstGroup.id == "__loose__" {
-                    return id == "__loose__"
-                }
-                return id == "importedSounds"
-            }
-        }
-        return expandedSections.contains(id)
+        return soundsUIState.isExpanded(id)
     }
     
     private func toggleSection(_ id: String) {
-        var set = expandedSections
-        if set.contains(id) {
-            set.remove(id)
-        } else {
-            set.insert(id)
-        }
-        expandedSectionsData = (try? JSONEncoder().encode(set)) ?? Data()
+        soundsUIState.toggle(id)
     }
-
+    
     // Seeds the persisted set with what the default logic auto-opens (the first
     // section that has sounds). A section opened only by the default has no
     // entry in the set, so collapsing/reopening the parent re-derives it from
     // the set and it comes back closed. Seeding makes the set the single
     // source of truth from the first tap on.
     private func seedDefaultExpandedSectionsIfEmpty() {
-        guard expandedSections.isEmpty, !visibleGroups.isEmpty else { return }
+        guard !visibleGroups.isEmpty else { return }
         let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
         guard let firstGroup else { return }
-        let seed: Set<String> = [firstGroup.id == "__loose__" ? "__loose__" : "importedSounds"]
-        expandedSectionsData = (try? JSONEncoder().encode(seed)) ?? Data()
+        let seedId = firstGroup.id == "__loose__" ? "__loose__" : "importedSounds"
+        soundsUIState.seedIfEmpty(ids: [seedId])
     }
     
     
