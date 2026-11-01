@@ -62,9 +62,15 @@ struct SoundPickerView: View {
 
     private func isSectionExpanded(_ id: String) -> Bool {
         // If search is active, show all sections expanded (no search in picker yet)
+        // For child folders (inner folders inside "Imported sounds"), always use persisted state
+        // so they stay open/closed as the user left them when parent collapses/reopens
+        let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
+        if isChildFolder {
+            return expandedSections.contains(id)
+        }
         // For alarm sound picker: open the section containing the currently selected sound
         if expandedSections.isEmpty && !pickerVisibleGroups.isEmpty {
-            // Find which group contains the selected sound
+            // Find which group contains the currently selected sound
             if case .imported(let selectedId) = selectedSound,
                let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
                 // If it's a loose file, open the singleFiles section

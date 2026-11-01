@@ -1070,8 +1070,13 @@ struct SoundsView: View {
         if !searchText.isEmpty {
             return true
         }
-        // Default: expandedSections is empty initially, so sections are closed
-        // On first appearance, expand the first imported group (single files or imported sounds)
+        // For child folders (inner folders inside "Imported sounds"), always use persisted state
+        // so they stay open/closed as the user left them when parent collapses/reopens
+        let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
+        if isChildFolder {
+            return expandedSections.contains(id)
+        }
+        // Default logic for top-level sections only
         if expandedSections.isEmpty && !visibleGroups.isEmpty {
             let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
             if let firstGroup = firstGroup {
