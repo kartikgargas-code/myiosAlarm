@@ -83,15 +83,6 @@ struct StartCursorTextField: UIViewRepresentable {
     }
 }
 
-/// Reads/writes the widget settings in the shared App Group container, so the
-/// Lock Screen battery widget sees the same values the app writes here.
-enum WidgetSettingsStore {
-    static var defaults: UserDefaults {
-        guard let group = AppGroupResolver.resolve() else { return .standard }
-        return UserDefaults(suiteName: group) ?? .standard
-    }
-}
-
 /// Settings row with icon tile, title, optional chevron
 private struct SettingsRow: View {
     let icon: String
@@ -142,20 +133,6 @@ struct SettingsView: View {
     @State private var shareURL: URL?
     @State private var showingExportAlert = false
     @State private var exportName = ""
-    @AppStorage("widgetBatteryShowCircle", store: WidgetSettingsStore.defaults) private var batteryShowCircle = true
-    @AppStorage("widgetBatteryShowText", store: WidgetSettingsStore.defaults) private var batteryShowText = true
-    @AppStorage("widgetBatteryCircleScale", store: WidgetSettingsStore.defaults) private var batteryCircleScale = 1.0
-    @AppStorage("widgetBatteryTextScale", store: WidgetSettingsStore.defaults) private var batteryTextScale = 1.0
-    @AppStorage("widgetBatteryShowPercentSign", store: WidgetSettingsStore.defaults) private var batteryShowPercentSign = true
-    @AppStorage("widgetBatteryPlateOpacity", store: WidgetSettingsStore.defaults) private var batteryPlateOpacity = 1.0
-    @AppStorage("widgetInlineShowBattery", store: WidgetSettingsStore.defaults) private var inlineShowBattery = false
-    @AppStorage("widgetHomeShowCircle", store: WidgetSettingsStore.defaults) private var homeShowCircle = true
-    @AppStorage("widgetHomeShowText", store: WidgetSettingsStore.defaults) private var homeShowText = true
-    @AppStorage("widgetMemoryShowCircle", store: WidgetSettingsStore.defaults) private var memoryShowCircle = true
-    @AppStorage("widgetMemoryShowText", store: WidgetSettingsStore.defaults) private var memoryShowText = true
-    @AppStorage("widgetMemoryCircleScale", store: WidgetSettingsStore.defaults) private var memoryCircleScale = 1.0
-    @AppStorage("widgetMemoryTextScale", store: WidgetSettingsStore.defaults) private var memoryTextScale = 1.0
-    @AppStorage("widgetMemoryPlateOpacity", store: WidgetSettingsStore.defaults) private var memoryPlateOpacity = 1.0
     @State private var memoryText = "Reading..."
     @State private var freedMemoryMB: Int? = nil
     @State private var showClearMemoryToast = false
@@ -301,9 +278,6 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
             .listStyle(.insetGrouped)
-            .onChange(of: "\(batteryShowCircle)|\(batteryShowText)|\(batteryCircleScale)|\(batteryTextScale)|\(batteryShowPercentSign)|\(inlineShowBattery)|\(batteryPlateOpacity)|\(homeShowCircle)|\(homeShowText)|\(memoryShowCircle)|\(memoryShowText)|\(memoryCircleScale)|\(memoryTextScale)|\(memoryPlateOpacity)") { _, _ in
-                WidgetCenter.shared.reloadAllTimelines()
-            }
             .onAppear { refreshMemory() }
             .navigationTitle("Settings")
             .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
