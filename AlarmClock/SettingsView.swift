@@ -135,6 +135,7 @@ struct SettingsView: View {
     @State private var showingAppearance = false
     @State private var showingHistory = false
     @State private var showingSounds = false
+    @State private var showingWidgetSettings = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
     @State private var showingShareSheet = false
@@ -199,6 +200,13 @@ struct SettingsView: View {
                         showChevron: true,
                         action: { showingSounds = true }
                     )
+                    SettingsRow(
+                        icon: "square.grid.2x2",
+                        iconColor: .purple,
+                        title: "Widgets",
+                        showChevron: true,
+                        action: { showingWidgetSettings = true }
+                    )
                 }
                 
                 // Group "Backup" - no chevrons (run actions directly)
@@ -247,70 +255,6 @@ struct SettingsView: View {
                         Spacer()
                         Text(memoryText)
                             .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                    }
-                }
-
-                Section(header: Text("Widgets").foregroundStyle(ThemeManager.shared.colors.primaryText)) {
-                    // Lock Screen circles
-                    Toggle("Show the circle", isOn: $batteryShowCircle)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    Toggle("Show the percentage", isOn: $batteryShowText)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    if batteryShowText {
-                        Toggle("Show the % sign", isOn: $batteryShowPercentSign)
-                            .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Circle thickness: " + String(format: "%.1f", batteryCircleScale) + "\u{00d7}")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $batteryCircleScale, in: 0.5...3.0)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Percentage size: " + String(format: "%.1f", batteryTextScale) + "\u{00d7}")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $batteryTextScale, in: 0.5...3.0)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Plate behind it: " + String(format: "%.0f", batteryPlateOpacity * 100) + "%")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $batteryPlateOpacity, in: 0.0...1.0)
-                    }
-                    
-                    // One-line widget
-                    Toggle("Also show the battery", isOn: $inlineShowBattery)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    
-                    // Home Screen widget
-                    Toggle("Show the circle", isOn: $homeShowCircle)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    Toggle("Show the percentage", isOn: $homeShowText)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    
-                    // Memory widget
-                    Toggle("Show the circle", isOn: $memoryShowCircle)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    Toggle("Show the percentage", isOn: $memoryShowText)
-                        .toggleStyle(ThemedToggleStyle(colors: ThemeManager.shared.colors))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Circle thickness: " + String(format: "%.1f", memoryCircleScale) + "\u{00d7}")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $memoryCircleScale, in: 0.5...3.0)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Percentage size: " + String(format: "%.1f", memoryTextScale) + "\u{00d7}")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $memoryTextScale, in: 0.5...3.0)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Plate behind it: " + String(format: "%.0f", memoryPlateOpacity * 100) + "%")
-                            .font(.caption)
-                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        Slider(value: $memoryPlateOpacity, in: 0.0...1.0)
                     }
                 }
 
@@ -405,6 +349,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingSounds) {
                 SoundsView(coordinator: coordinator)
+            }
+            .sheet(isPresented: $showingWidgetSettings) {
+                WidgetSettingsView()
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
