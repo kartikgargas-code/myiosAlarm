@@ -269,7 +269,13 @@ struct SoundPickerView: View {
 
     @ViewBuilder
     private var defaultSoundsSection: some View {
-        Section("Default sounds") {
+        let defaultCount = 1 + BuiltInSound.allCases.count
+        CollapsibleSection(
+            id: "defaultSounds",
+            title: "Default sounds (\(defaultCount))",
+            isExpanded: isSectionExpanded("defaultSounds"),
+            onToggle: { toggleSection("defaultSounds", parent: nil) }
+        ) {
             // Default sound row
             soundRow(
                 sound: .systemDefault,

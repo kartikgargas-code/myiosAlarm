@@ -1070,7 +1070,13 @@ struct SoundsView: View {
     }
     
     private var defaultSoundsSection: some View {
-        Section("Default sounds") {
+        let defaultCount = 1 + BuiltInSound.allCases.count
+        CollapsibleSection(
+            id: "defaultSounds",
+            title: "Default sounds (\(defaultCount))",
+            isExpanded: isSectionExpanded("defaultSounds"),
+            onToggle: { toggleSection("defaultSounds", parent: nil) }
+        ) {
             soundRow(sound: ImportedSound.mockDefault())
             ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
                 soundRow(sound: ImportedSound.mockBuiltIn(builtIn.rawValue))
