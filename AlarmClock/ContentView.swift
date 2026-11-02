@@ -1069,6 +1069,7 @@ struct SoundsView: View {
         }
     }
     
+    @ViewBuilder
     private var defaultSoundsSection: some View {
         let defaultCount = 1 + BuiltInSound.allCases.count
         CollapsibleSection(
