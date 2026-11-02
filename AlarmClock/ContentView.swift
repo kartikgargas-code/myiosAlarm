@@ -1077,7 +1077,7 @@ struct SoundsView: View {
             isExpanded: isSectionExpanded("defaultSounds"),
             onToggle: { toggleSection("defaultSounds", parent: nil) }
         ) {
-            Group {
+            VStack(alignment: .leading, spacing: 0) {
                 soundRow(sound: ImportedSound.mockDefault())
                 ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
                     soundRow(sound: ImportedSound.mockBuiltIn(builtIn.rawValue))
