@@ -276,22 +276,24 @@ struct SoundPickerView: View {
             isExpanded: isSectionExpanded("defaultSounds"),
             onToggle: { toggleSection("defaultSounds", parent: nil) }
         ) {
-            // Default sound row
-            soundRow(
-                sound: .systemDefault,
-                label: "Default",
-                description: "System default alarm sound",
-                previewURL: nil
-            )
-            
-            // Built-in sounds
-            ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
+            Group {
+                // Default sound row
                 soundRow(
-                    sound: .builtIn(builtIn.rawValue),
-                    label: builtIn.rawValue,
-                    description: "Bundled alarm sound",
-                    previewURL: builtInSoundURL(builtIn)
+                    sound: .systemDefault,
+                    label: "Default",
+                    description: "System default alarm sound",
+                    previewURL: nil
                 )
+                
+                // Built-in sounds
+                ForEach(BuiltInSound.allCases, id: \.self) { builtIn in
+                    soundRow(
+                        sound: .builtIn(builtIn.rawValue),
+                        label: builtIn.rawValue,
+                        description: "Bundled alarm sound",
+                        previewURL: builtInSoundURL(builtIn)
+                    )
+                }
             }
         }
     }
