@@ -21,7 +21,7 @@ final class SoundsUIState: ObservableObject {
     }
     
     /// Toggle a section's expanded state
-    func toggle(_ id: String) {
+    func toggle(_ id: String, parent: String? = nil) {
         var set = expandedIds
         let wasOpen = set.contains(id)
         if wasOpen {
@@ -29,10 +29,12 @@ final class SoundsUIState: ObservableObject {
         } else {
             set.insert(id)
         }
-        os_log(.info, log: log, "SECTION toggle id=%{public}s parent=none wasOpen=%{public}d nowOpen=%{public}d openSet=%{public}s",
-               id, wasOpen, !wasOpen, Array(set).sorted().joined(separator: ","))
+        let parentStr = parent ?? "none"
+        os_log(.info, log: log, "SECTION toggle id=%{public}s parent=%{public}s wasOpen=%{public}d nowOpen=%{public}d openSet=%{public}s",
+               id, parentStr, wasOpen, !wasOpen, Array(set).sorted().joined(separator: ","))
+        let oldSet = expandedIds
         expandedIds = set
-        saveToStorage()
+        saveToStorage(oldSet: oldSet, newSet: set, reason: "toggle_\(id)")
     }
     
     /// Load from UserDefaults with safe fallback
@@ -49,18 +51,25 @@ final class SoundsUIState: ObservableObject {
     }
     
     /// Save to UserDefaults
-    private func saveToStorage() {
+    private func saveToStorage(oldSet: Set<String>? = nil, newSet: Set<String>? = nil, reason: String) {
         let encoded = (try? JSONEncoder().encode(expandedIds)) ?? Data()
         UserDefaults.standard.set(encoded, forKey: storageKey)
+        let old = oldSet ?? expandedIds
+        let new = newSet ?? expandedIds
+        if old != new {
+            os_log(.info, log: log, "SECTION set changed old=%{public}s new=%{public}s reason=%{public}s",
+                   Array(old).sorted().joined(separator: ","),
+                   Array(new).sorted().joined(separator: ","),
+                   reason)
+        }
     }
     
     /// Seed the set with default expanded sections (called once on first appear)
     func seedIfEmpty(ids: [String]) {
         guard expandedIds.isEmpty, !ids.isEmpty else { return }
+        let oldSet = expandedIds
         let seed = Set(ids)
-        os_log(.info, log: log, "SECTION set changed old=[] new=%{public}s reason=seedDefault",
-               Array(seed).sorted().joined(separator: ","))
         expandedIds = seed
-        saveToStorage()
+        saveToStorage(oldSet: oldSet, newSet: seed, reason: "seedDefault")
     }
 }

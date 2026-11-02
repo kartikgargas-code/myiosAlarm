@@ -90,8 +90,8 @@ struct SoundPickerView: View {
         return soundsUIState.isExpanded(id)
     }
     
-    private func toggleSection(_ id: String) {
-        soundsUIState.toggle(id)
+    private func toggleSection(_ id: String, parent: String? = nil) {
+        soundsUIState.toggle(id, parent: parent)
     }
     
     // Seeds the persisted set with the sections the default logic auto-opens.
@@ -237,7 +237,7 @@ struct SoundPickerView: View {
                 id: looseGroup.id,
                 title: "Single files (\(looseGroup.sounds.count))",
                 isExpanded: isSectionExpanded(looseGroup.id),
-                onToggle: { toggleSection(looseGroup.id) }
+                onToggle: { toggleSection(looseGroup.id, parent: nil) }
             ) {
                 ForEach(looseGroup.sounds) { sound in
                     soundRow(
@@ -260,14 +260,14 @@ struct SoundPickerView: View {
                 id: "importedSounds",
                 title: "Imported sounds",
                 isExpanded: isSectionExpanded("importedSounds"),
-                onToggle: { toggleSection("importedSounds") }
+                onToggle: { toggleSection("importedSounds", parent: nil) }
             ) {
                 ForEach(folderGroups) { group in
                     CollapsibleSection(
                         id: group.id,
                         title: "\(group.title) (\(group.sounds.count))",
                         isExpanded: isSectionExpanded(group.id),
-                        onToggle: { toggleSection(group.id) }
+                        onToggle: { toggleSection(group.id, parent: "importedSounds") }
                     ) {
                         ForEach(group.sounds) { sound in
                             soundRow(
