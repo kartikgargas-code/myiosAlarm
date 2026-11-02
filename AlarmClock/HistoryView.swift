@@ -14,7 +14,7 @@ struct HistoryView: View {
     
     private func copyToClipboard(_ text: String) {
         UIPasteboard.general.string = text
-        SmartWakeDebugLog.log("COPY TOAST show")
+        SmartWakeDebugLog.log("COPY TOAST shown source=history")
         CopyToastManager.shared.show("Copied")
     }
     
