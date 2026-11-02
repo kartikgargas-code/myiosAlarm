@@ -46,47 +46,15 @@ struct SoundPickerView: View {
         }
         let dict = Dictionary(grouping: sounds) { $0.folder }
         return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
-            PickerSoundGroup(id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+            let folderName = key ?? "__loose__"
+            let id = folderName == "__loose__" ? "__loose__" : "folder:\(folderName)"
+            return PickerSoundGroup(id: id, title: key ?? "Loose files", sounds: dict[key] ?? [])
         }
     }
 
         private func isSectionExpanded(_ id: String) -> Bool {
         // If search is active, show all sections expanded (no search in picker yet)
-        // For child folders (inner folders inside "Imported sounds"), always use persisted state
-        // so they stay open/closed as the user left them when parent collapses/reopens
-        let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
-        if isChildFolder {
-            return soundsUIState.isExpanded(id)
-        }
-        // For alarm sound picker: open the section containing the currently selected sound
-        // This only applies when the set is empty (first load)
-        if soundsUIState.expandedIds.isEmpty && !pickerVisibleGroups.isEmpty {
-            // Find which group contains the currently selected sound
-            if case .imported(let selectedId) = selectedSound,
-               let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
-                // If it's a loose file, open the singleFiles section
-                if group.id == "__loose__" {
-                    return id == "__loose__"
-                }
-                // Otherwise open the importedSounds parent section
-                return id == "importedSounds" || id == group.id
-            }
-            // For built-in or default sound, open defaultSounds section
-            if case .builtIn = selectedSound {
-                return id == "defaultSounds"
-            }
-            if case .systemDefault = selectedSound {
-                return id == "defaultSounds"
-            }
-            // Default: expand first available section
-            let firstGroup = pickerVisibleGroups.first(where: { !$0.sounds.isEmpty })
-            if let firstGroup = firstGroup {
-                if firstGroup.id == "__loose__" {
-                    return id == "__loose__"
-                }
-                return id == "importedSounds"
-            }
-        }
+        // All sections (Single files, folder:, defaultSounds) use persisted state
         return soundsUIState.isExpanded(id)
     }
     
@@ -104,18 +72,13 @@ struct SoundPickerView: View {
         var seedIds: [String] = []
         if case .imported(let selectedId) = selectedSound,
            let group = pickerVisibleGroups.first(where: { $0.sounds.contains(where: { $0.id == selectedId }) }) {
-            if group.id == "__loose__" {
-                seedIds.append("__loose__")
-            } else {
-                seedIds.append("importedSounds")
-                seedIds.append(group.id)
-            }
+            seedIds.append(group.id)
         } else if case .builtIn = selectedSound {
             seedIds.append("defaultSounds")
         } else if case .systemDefault = selectedSound {
             seedIds.append("defaultSounds")
         } else if let firstGroup = pickerVisibleGroups.first(where: { !$0.sounds.isEmpty }) {
-            seedIds.append(firstGroup.id == "__loose__" ? "__loose__" : "importedSounds")
+            seedIds.append(firstGroup.id)
         }
         guard !seedIds.isEmpty else { return }
         soundsUIState.seedIfEmpty(ids: seedIds)
@@ -253,30 +216,23 @@ struct SoundPickerView: View {
 
     @ViewBuilder
     private var importedSoundsSection: some View {
-        // Folder groups (excluding loose files)
+        // Folder groups (excluding loose files) - each folder is its own top-level row
         let folderGroups = pickerVisibleGroups.filter { $0.id != "__loose__" && !$0.sounds.isEmpty }
         if !folderGroups.isEmpty {
-            CollapsibleSection(
-                id: "importedSounds",
-                title: "Imported sounds",
-                isExpanded: isSectionExpanded("importedSounds"),
-                onToggle: { toggleSection("importedSounds", parent: nil) }
-            ) {
-                ForEach(folderGroups) { group in
-                    CollapsibleSection(
-                        id: group.id,
-                        title: "\(group.title) (\(group.sounds.count))",
-                        isExpanded: isSectionExpanded(group.id),
-                        onToggle: { toggleSection(group.id, parent: "importedSounds") }
-                    ) {
-                        ForEach(group.sounds) { sound in
-                            soundRow(
-                                sound: .imported(sound.id),
-                                label: sound.name,
-                                description: "",
-                                previewURL: SoundLibrary.shared.resolvedURL(for: sound)
-                            )
-                        }
+            ForEach(folderGroups) { group in
+                CollapsibleSection(
+                    id: group.id,
+                    title: "\(group.title) (\(group.sounds.count))",
+                    isExpanded: isSectionExpanded(group.id),
+                    onToggle: { toggleSection(group.id, parent: nil) }
+                ) {
+                    ForEach(group.sounds) { sound in
+                        soundRow(
+                            sound: .imported(sound.id),
+                            label: sound.name,
+                            description: "",
+                            previewURL: SoundLibrary.shared.resolvedURL(for: sound)
+                        )
                     }
                 }
             }

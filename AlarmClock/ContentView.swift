@@ -723,7 +723,9 @@ struct SoundsView: View {
     private var visibleGroups: [SoundGroup] {
         let dict = Dictionary(grouping: visibleSounds) { $0.folder }
         return dict.keys.sorted { ($0 ?? "~") < ($1 ?? "~") }.map { key in
-            SoundGroup(id: key ?? "__loose__", title: key ?? "Loose files", sounds: dict[key] ?? [])
+            let folderName = key ?? "__loose__"
+            let id = folderName == "__loose__" ? "__loose__" : "folder:\(folderName)"
+            return SoundGroup(id: id, title: key ?? "Loose files", sounds: dict[key] ?? [])
         }
     }
 
@@ -1038,24 +1040,17 @@ struct SoundsView: View {
 
     @ViewBuilder
     private var importedSoundsSection: some View {
-        // Folder groups (excluding loose files)
+        // Folder groups (excluding loose files) - each folder is its own top-level row
         let folderGroups = visibleGroups.filter { $0.id != "__loose__" && !$0.sounds.isEmpty }
         if !folderGroups.isEmpty {
-            CollapsibleSection(
-                id: "importedSounds",
-                title: "Imported sounds",
-                isExpanded: isSectionExpanded("importedSounds"),
-                onToggle: { toggleSection("importedSounds", parent: nil) }
-            ) {
-                ForEach(folderGroups) { group in
-                    CollapsibleSection(
-                        id: group.id,
-                        title: "\(group.title) (\(group.sounds.count))",
-                        isExpanded: isSectionExpanded(group.id),
-                        onToggle: { toggleSection(group.id, parent: "importedSounds") }
-                    ) {
-                        ForEach(group.sounds) { soundRow(sound: $0) }
-                    }
+            ForEach(folderGroups) { group in
+                CollapsibleSection(
+                    id: group.id,
+                    title: "\(group.title) (\(group.sounds.count))",
+                    isExpanded: isSectionExpanded(group.id),
+                    onToggle: { toggleSection(group.id, parent: nil) }
+                ) {
+                    ForEach(group.sounds) { soundRow(sound: $0) }
                 }
             }
         } else if SoundLibrary.shared.importedSounds.isEmpty {
@@ -1090,13 +1085,7 @@ struct SoundsView: View {
         if !searchText.isEmpty {
             return true
         }
-        // For child folders (inner folders inside "Imported sounds"), always use persisted state
-        // so they stay open/closed as the user left them when parent collapses/reopens
-        let isChildFolder = id != "importedSounds" && id != "__loose__" && id != "defaultSounds"
-        if isChildFolder {
-            return soundsUIState.isExpanded(id)
-        }
-        // Default logic for top-level sections only
+        // All sections (Single files, folder:, defaultSounds) use persisted state
         return soundsUIState.isExpanded(id)
     }
     
@@ -1113,7 +1102,8 @@ struct SoundsView: View {
         guard !visibleGroups.isEmpty else { return }
         let firstGroup = visibleGroups.first(where: { !$0.sounds.isEmpty })
         guard let firstGroup else { return }
-        let seedId = firstGroup.id == "__loose__" ? "__loose__" : "importedSounds"
+        // Default to opening Single files if it exists, otherwise first folder
+        let seedId = firstGroup.id
         soundsUIState.seedIfEmpty(ids: [seedId])
     }
     
