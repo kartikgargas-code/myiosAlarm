@@ -276,7 +276,7 @@ struct SoundPickerView: View {
             isExpanded: isSectionExpanded("defaultSounds"),
             onToggle: { toggleSection("defaultSounds", parent: nil) }
         ) {
-            Group {
+            VStack(alignment: .leading, spacing: 0) {
                 // Default sound row
                 soundRow(
                     sound: .systemDefault,
