@@ -292,26 +292,26 @@ final class SmartWakeService {
                             }
                         }
                     }
-                } catch {
-                    // Ignore errors
-                }
-                
-                // BACKUP RING GUARD: If a backup alarm starts alerting while our
-                // in-app playlist is playing, stop it at once and resume the playlist.
-                // This is a safety net in case cancelScheduledAlarms didn't catch it.
-                if AlarmPlaybackService.shared.isPlaying {
-                    for kitAlarm in alerting {
-                        // Check if this is a backup alarm (occurrenceKey ends with -BACKUP)
-                        if let metadata = kitAlarm.metadata,
-                           let occKey = metadata["occurrenceKey"] as? String,
-                           occKey.hasSuffix("-BACKUP") {
-                            SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString) occurrenceKey=\(occKey)")
-                            try? AlarmManager.shared.cancel(id: kitAlarm.id)
-                            // Resume playlist if it was interrupted
-                            AlarmPlaybackService.shared.resumePlaybackForBackupGuard()
-                            SmartWakeDebugLog.log("BACKUP RING GUARD: resumed playlist playback")
+                    
+                    // BACKUP RING GUARD: If a backup alarm starts alerting while our
+                    // in-app playlist is playing, stop it at once and resume the playlist.
+                    // This is a safety net in case cancelScheduledAlarms didn't catch it.
+                    if AlarmPlaybackService.shared.isPlaying {
+                        for kitAlarm in alerting {
+                            // Check if this is a backup alarm (occurrenceKey ends with -BACKUP)
+                            if let metadata = kitAlarm.metadata,
+                               let occKey = metadata["occurrenceKey"] as? String,
+                               occKey.hasSuffix("-BACKUP") {
+                                SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString) occurrenceKey=\(occKey)")
+                                try? AlarmManager.shared.cancel(id: kitAlarm.id)
+                                // Resume playlist if it was interrupted
+                                AlarmPlaybackService.shared.resumePlaybackForBackupGuard()
+                                SmartWakeDebugLog.log("BACKUP RING GUARD: resumed playlist playback")
+                            }
                         }
                     }
+                } catch {
+                    // Ignore errors
                 }
                 
                 // Check if silent loop died
@@ -1064,7 +1064,7 @@ final class SmartWakeService {
     /// Cancel the coordinator-scheduled -BACKUP alarm for this occurrence (computed the
     /// same way AlarmCoordinator builds its SystemScheduleID) plus any AlarmKit alarm
     /// still alerting. Retries the backup cancel with verification.
-    func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String?) {
+    func cancelScheduledAlarms(forAlarmID alarmID: UUID, backupOccurrence: AlarmOccurrence, label: String, sound: AlarmSound, loudness: AlarmLoudness, selectionHash: String?) async {
         let backupSystemID = SystemScheduleID.make(
             for: backupOccurrence,
             label: label,
@@ -1208,7 +1208,7 @@ final class SmartWakeService {
                         // TAKEOVER SHARED: another same-minute alarm already owns playback.
                         // Keep its playlist running; drop ONLY our own backup alarms.
                         SmartWakeDebugLog.log("TAKEOVER SHARED: playback owner active; cancelling backups for \(occurrenceKey)")
-                        cancelScheduledAlarms(
+                        await cancelScheduledAlarms(
                             forAlarmID: alarm.id,
                             backupOccurrence: backupOccurrenceForCancel,
                             label: alarm.label.isEmpty ? "Alarm" : alarm.label,
@@ -1251,7 +1251,7 @@ final class SmartWakeService {
                             effectiveDate: occurrence.effectiveDate.addingTimeInterval(30),
                             isAdjusted: false
                         )
-                        cancelScheduledAlarms(
+                        await cancelScheduledAlarms(
                             forAlarmID: alarm.id,
                             backupOccurrence: backupOccurrenceForCancel,
                             label: alarm.label.isEmpty ? "Alarm" : alarm.label,
