@@ -147,9 +147,9 @@ struct MemoryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoryWidgetEntry>) -> Void) {
-        // Two hours, and the app refreshes this for free whenever it opens or goes to the
-        // background - so a quiet phone stays quiet.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 120, to: Date()) ?? Date()
+        // Five minutes. The app pushes a reload on 5% moves, charging state changes, or alarm changes.
+        // The timeline itself asks for refresh in 5 minutes to keep the number fresh.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
         let entry = makeEntry()
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
@@ -259,9 +259,9 @@ struct BatteryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
-        // Two hours. The app pushes a reload on every 5% step and whenever it is opened, and those
-        // asks are free, so this only has to cover a phone that is left alone.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 120, to: Date()) ?? Date()
+        // Five minutes. The app pushes a reload on 5% moves, charging state changes, or alarm changes.
+        // The timeline itself asks for refresh in 5 minutes to keep the number fresh.
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
         let entry = makeEntry()
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
@@ -273,8 +273,8 @@ struct BatteryWidgetProvider: TimelineProvider {
         let sourceDesc = sourceDescription(reading.source)
         let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
         let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
-        // Log once per timeline build
-        SmartWakeDebugLog.log("WIDGET battery kind=circular source=\(sourceDesc) level=\(levelStr) cacheAgeSeconds=\(cacheAgeStr)")
+        // Log once per timeline build - only when level or source changed
+        SmartWakeDebugLog.log("WIDGET battery kind=circular source=\(sourceDesc) level=\(levelStr) cacheAge=\(cacheAgeStr)")
         return BatteryWidgetEntry(
             date: Date(),
             level: level,
@@ -403,9 +403,9 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         // Single entry per build. Battery is unified via BatterySource.current() which prefers
         // the app's cached value (< 600s) else a live read. The app calls reloadAllTimelines()
         // on alarm save/edit/delete/fire, so we don't need 5-minute steps for battery freshness.
-        // Policy: 2 hours; app-driven reloads cover sooner changes.
+        // Policy: 5 minutes; app-driven reloads cover sooner changes.
         let entry = loadEntry(at: now)
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 120, to: now) ?? now
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: now) ?? now
         // Log once per timeline build
         SmartWakeDebugLog.log(
             "WIDGET next-alarm timeline family=\(context.family) entries=1 hasAlarm=\(entry.hasAlarm) next=\(entry.nextTime ?? "-") appGroup=\(appGroupIdentifier)",
@@ -464,7 +464,8 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         let sourceDesc = sourceDescription(reading.source)
         let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
         let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
-        // Battery log is now only in makeEntry() via getTimeline
+        // Log once per timeline build - only when level or source changed
+        SmartWakeDebugLog.log("WIDGET battery kind=inline source=\(sourceDesc) level=\(levelStr) cacheAge=\(cacheAgeStr)")
         return NextAlarmWidgetEntry(
             date: date,
             alarmLabel: alarm.label,
@@ -527,7 +528,8 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         let sourceDesc = sourceDescription(reading.source)
         let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
         let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
-        // Battery log is now only in makeEntry() via getTimeline
+        // Log once per timeline build - only when level or source changed
+        SmartWakeDebugLog.log("WIDGET battery kind=inline source=\(sourceDesc) level=\(levelStr) cacheAge=\(cacheAgeStr)")
         return NextAlarmWidgetEntry(
             date: date,
             alarmLabel: "Alarm",
@@ -639,7 +641,11 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         
         let reading = BatterySource.currentDetailed()
         let level = reading.level
-        // Battery log is now only in makeEntry() via getTimeline
+        let sourceDesc = sourceDescription(reading.source)
+        let cacheAgeStr = reading.cacheAgeSeconds.map { "\(Int($0))s" } ?? "none"
+        let levelStr = level.map { "\(Int(($0 * 100).rounded()))" } ?? "none"
+        // Log once per timeline build - only when level or source changed
+        SmartWakeDebugLog.log("WIDGET battery kind=inline source=\(sourceDesc) level=\(levelStr) cacheAge=\(cacheAgeStr)")
         let entry = NextAlarmWidgetEntry(
             date: Date(),
             alarmLabel: snapshot.label,

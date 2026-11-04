@@ -214,11 +214,13 @@ enum BatteryReporter {
     /// count against the budget gets a reload now.
     private static var lastReloadPercent: Int? = nil
     private static var lastReloadAt: Date = .distantPast
+    private static var lastChargingState: Bool? = nil
     /// Count of widget reloads since app launch (for heartbeat)
     static var widgetReloadsSinceLaunch: Int = 0
     
     static func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
+        lastChargingState = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
         write(forceReload: true)
         NotificationCenter.default.addObserver(
             forName: UIDevice.batteryLevelDidChangeNotification,
@@ -227,15 +229,19 @@ enum BatteryReporter {
         ) { _ in
             write(forceReload: false)
         }
-        // A reload asked for while the app is awake, or on the way to the background, is not
-        // charged to the widget budget - so those are the moments worth spending.
         NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
+            forName: UIDevice.batteryStateDidChangeNotification,
             object: nil,
             queue: .main
         ) { _ in
-            write(forceReload: true)
+            let newChargingState = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+            if lastChargingState != newChargingState {
+                lastChargingState = newChargingState
+                write(forceReload: true)
+            }
         }
+        // A reload asked for while the app is on the way to the background, is not
+        // charged to the widget budget - so those are the moments worth spending.
         NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
@@ -248,6 +254,12 @@ enum BatteryReporter {
             write(forceReload: false)
         }
     }
+    
+    /// Called when an alarm is added, removed, or changed to trigger a widget reload
+    static func notifyAlarmChanged() {
+        write(forceReload: true)
+    }
+    
     static func write(forceReload: Bool) {
         let level = UIDevice.current.batteryLevel
         guard level >= 0 else { return }

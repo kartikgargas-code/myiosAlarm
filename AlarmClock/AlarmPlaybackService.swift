@@ -1084,6 +1084,11 @@ final class AlarmPlaybackService: NSObject {
         
         os_log(.info, log: log, "Playback resumed (silent loop stopped)")
     }
+    
+    /// Public resume for external callers (e.g., SmartWakeService backup ring guard)
+    func resumePlaybackForBackupGuard() {
+        resumePlayback()
+    }
 
     /// Seek to position
     private func seek(to time: TimeInterval) {

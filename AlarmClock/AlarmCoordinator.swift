@@ -159,6 +159,7 @@ final class AlarmCoordinator {
         cancelStitchRetries()
         
         await commit({ _ in }, reason: "synchronize")
+        BatteryReporter.notifyAlarmChanged()
     }
 
     func save(_ alarm: AlarmRecord) async {
@@ -170,6 +171,7 @@ final class AlarmCoordinator {
         let afterCount = idsAfter.count
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         SmartWakeDebugLog.log("ALARM SAVE: before=\(beforeCount) ids=[\(beforeIds)] after=\(afterCount) ids=[\(afterIds)]")
+        BatteryReporter.notifyAlarmChanged()
     }
 
     func delete(id: UUID) async {
@@ -184,6 +186,7 @@ final class AlarmCoordinator {
         
         // Automatic cleanup after alarm deletion
         pruneStitchCacheNow()
+        BatteryReporter.notifyAlarmChanged()
     }
     
     /// Reset alarms that use sounds we just deleted

@@ -3,7 +3,7 @@ import UIKit
 import AlarmClockShared
 
 /// Shared battery source for both app and widget targets.
-/// Priority: app-written cached value if under 600s old, otherwise a live read.
+/// Priority: LIVE read first, then cache if live is invalid or cache is older than 10 minutes.
 public enum BatterySource {
     private static let appLevelKey = "appBatteryLevel"
     private static let appLevelAtKey = "appBatteryLevelAt"
@@ -26,7 +26,9 @@ public enum BatterySource {
     }
 
     /// Returns the current battery level (0.0-1.0) or nil if unavailable.
-    /// Reads the app's cached value if fresh (< 600s), otherwise performs a live read.
+    /// Performs a LIVE read first. Falls back to cache only if live read is invalid
+    /// (returns -1/0) OR the cache is fresh (< 10 min). If cache is > 10 min but < 30 min,
+    /// use it but mark as stale. If cache > 30 min, return nil.
     public static func current() -> Double? {
         currentDetailed().level
     }
@@ -43,18 +45,20 @@ public enum BatterySource {
         
         let ownRead = readBatteryLevel()
         
+        if let level = ownRead {
+            // Live read succeeded - use it
+            return Reading(level: level, source: .live, cacheAgeSeconds: cacheAge)
+        }
+        
+        // Live read failed (-1 or 0) - check if we have a fresh cache (< 10 min)
         if appLevelIsFresh, let level = appLevel {
             return Reading(level: level, source: .cache(ageSeconds: cacheAge ?? 0), cacheAgeSeconds: cacheAge)
         }
         
-        if let level = ownRead {
-            return Reading(level: level, source: .live, cacheAgeSeconds: cacheAge)
-        }
-        
-        // Live read failed (-1 or 0) - check if we have a cache, even if stale
+        // Live read failed and cache not fresh - check if we have a stale cache (10-30 min)
         if let level = appLevel, let age = cacheAge {
             if age <= maxStaleCacheAge {
-                // Cache is stale but not ancient - use it but mark as stale
+                // Cache is stale (10-30 min) but not ancient - use it but mark as stale
                 return Reading(level: level, source: .staleCache(ageSeconds: age), cacheAgeSeconds: age)
             } else {
                 // Cache is older than 30 minutes - don't use it

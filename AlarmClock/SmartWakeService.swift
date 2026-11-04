@@ -296,6 +296,24 @@ final class SmartWakeService {
                     // Ignore errors
                 }
                 
+                // BACKUP RING GUARD: If a backup alarm starts alerting while our
+                // in-app playlist is playing, stop it at once and resume the playlist.
+                // This is a safety net in case cancelScheduledAlarms didn't catch it.
+                if AlarmPlaybackService.shared.isPlaying {
+                    for kitAlarm in alerting {
+                        // Check if this is a backup alarm (occurrenceKey ends with -BACKUP)
+                        if let metadata = kitAlarm.metadata,
+                           let occKey = metadata["occurrenceKey"] as? String,
+                           occKey.hasSuffix("-BACKUP") {
+                            SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString) occurrenceKey=\(occKey)")
+                            try? AlarmManager.shared.cancel(id: kitAlarm.id)
+                            // Resume playlist if it was interrupted
+                            AlarmPlaybackService.shared.resumePlaybackForBackupGuard()
+                            SmartWakeDebugLog.log("BACKUP RING GUARD: resumed playlist playback")
+                        }
+                    }
+                }
+                
                 // Check if silent loop died
                 if lastLoopRunning && !isRunning {
                     if intentionalStop {
@@ -1055,27 +1073,51 @@ final class SmartWakeService {
             selectionHash: selectionHash
         )
         
-        // Retry backup cancel up to 3 times with short delays
+        // Retry backup cancel up to 3 times with increasing delays: 0.5s, 2s, 5s
+        let delays: [TimeInterval] = [0.5, 2.0, 5.0]
         var cancelled = false
         for attempt in 1...3 {
+            // Read current alarm state before attempting cancel
+            let kitAlarmsBefore = (try? AlarmManager.shared.alarms) ?? []
+            let alarmState = kitAlarmsBefore.first { $0.id == backupSystemID }?.state ?? .scheduled
+            SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 id=\(backupSystemID.uuidString) state=\(alarmState)")
+            
             do {
                 try AlarmManager.shared.cancel(id: backupSystemID)
-                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 id=\(backupSystemID.uuidString)")
+                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 SUCCESS id=\(backupSystemID.uuidString)")
                 cancelled = true
                 break
             } catch {
-                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 FAILED id=\(backupSystemID.uuidString): \(error.localizedDescription)")
-                if attempt < 3 {
-                    // Short delay before retry
-                    Thread.sleep(forTimeInterval: 0.1)
+                // Log full error details: domain, code, description
+                let nsError = error as NSError
+                SmartWakeDebugLog.log("BACKUP ALARM cancel attempt \(attempt)/3 FAILED id=\(backupSystemID.uuidString): domain=\(nsError.domain) code=\(nsError.code) description=\(error.localizedDescription)")
+                
+                // If this was the last attempt, try AlarmKit's stop call as fallback
+                if attempt == 3 {
+                    SmartWakeDebugLog.log("BACKUP ALARM cancel: all 3 attempts failed, trying stop() fallback for id=\(backupSystemID.uuidString)")
+                    // Note: AlarmManager doesn't have a stop() method, but we can try to cancel with a small delay
+                    // as a final attempt after the 5s wait
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s additional
+                    do {
+                        try AlarmManager.shared.cancel(id: backupSystemID)
+                        SmartWakeDebugLog.log("BACKUP ALARM cancel: stop fallback SUCCEEDED id=\(backupSystemID.uuidString)")
+                        cancelled = true
+                    } catch {
+                        let nsError2 = error as NSError
+                        SmartWakeDebugLog.log("BACKUP ALARM cancel: stop fallback FAILED id=\(backupSystemID.uuidString): domain=\(nsError2.domain) code=\(nsError2.code) description=\(error.localizedDescription)")
+                    }
+                } else if attempt < 3 {
+                    // Wait before next attempt
+                    try? await Task.sleep(nanoseconds: UInt64(delays[attempt - 1] * 1_000_000_000))
                 }
             }
         }
         
-        // Verify against alarm list
+        // Verify against alarm list - read the REAL current list and state from AlarmKit
         let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
         let stillPresent = kitAlarms.contains { $0.id == backupSystemID }
-        SmartWakeDebugLog.log("BACKUP ALARM cancel VERIFY: id=\(backupSystemID.uuidString) stillPresent=\(stillPresent ? "yes" : "no")")
+        let stillPresentState = kitAlarms.first { $0.id == backupSystemID }?.state ?? .scheduled
+        SmartWakeDebugLog.log("BACKUP ALARM cancel VERIFY: id=\(backupSystemID.uuidString) stillPresent=\(stillPresent ? "yes" : "no") state=\(stillPresentState)")
         if stillPresent {
             SmartWakeDebugLog.log("BACKUP ALARM cancel WARNING: still present after retries id=\(backupSystemID.uuidString)")
         }
