@@ -298,12 +298,12 @@ final class SmartWakeService {
                     // This is a safety net in case cancelScheduledAlarms didn't catch it.
                     if AlarmPlaybackService.shared.isPlaying {
                         for kitAlarm in alerting {
-                            // Check if this is a backup alarm (occurrenceKey ends with -BACKUP)
-                            // AlarmKit alarm metadata is ScheduledOccurrenceMetadata
-                            if let metadata = kitAlarm.metadata as? ScheduledOccurrenceMetadata,
-                               let occKey = metadata["occurrenceKey"] as? String,
-                               occKey.hasSuffix("-BACKUP") {
-                                SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString) occurrenceKey=\(occKey)")
+                            // Check if this is a backup alarm by matching the SystemScheduleID pattern
+                            // Backup alarms have occurrenceKey ending with "-BACKUP" which is encoded in the stable ID
+                            let alarmIDString = kitAlarm.id.uuidString
+                            // The SystemScheduleID for backup alarms includes "|backup" in the key
+                            if alarmIDString.contains("-BACKUP") || alarmIDString.contains("|backup") {
+                                SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString)")
                                 try? AlarmManager.shared.cancel(id: kitAlarm.id)
                                 // Resume playlist if it was interrupted
                                 AlarmPlaybackService.shared.resumePlaybackForBackupGuard()
