@@ -299,7 +299,8 @@ final class SmartWakeService {
                     if AlarmPlaybackService.shared.isPlaying {
                         for kitAlarm in alerting {
                             // Check if this is a backup alarm (occurrenceKey ends with -BACKUP)
-                            if let metadata = kitAlarm.metadata,
+                            // AlarmKit alarm metadata is ScheduledOccurrenceMetadata
+                            if let metadata = kitAlarm.metadata as? ScheduledOccurrenceMetadata,
                                let occKey = metadata["occurrenceKey"] as? String,
                                occKey.hasSuffix("-BACKUP") {
                                 SmartWakeDebugLog.log("BACKUP RING GUARD stopped id=\(kitAlarm.id.uuidString) occurrenceKey=\(occKey)")
