@@ -691,10 +691,12 @@ struct PlaylistEditorView: View {
                             }
                             // Add to selectedSoundIDs by default
                             var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
-                            updatedSelected.insert(sound.id)
+                            if !updatedSelected.contains(sound.id) {
+                                updatedSelected.append(sound.id)
+                            }
                             SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
                             // Update local state
-                            selectedSoundIDs = updatedSelected
+                            selectedSoundIDs = Set(updatedSelected)
                             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
                             SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=1 source=files")
                             await coordinator.synchronize()
@@ -717,10 +719,12 @@ struct PlaylistEditorView: View {
                             if !updatedSoundIDs.contains(soundID) {
                                 updatedSoundIDs.append(soundID)
                             }
-                            updatedSelected.insert(soundID)
+                            if !updatedSelected.contains(soundID) {
+                                updatedSelected.append(soundID)
+                            }
                         }
                         SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
-                        selectedSoundIDs = updatedSelected
+                        selectedSoundIDs = Set(updatedSelected)
                         let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
                         SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(importedPlaylist.soundIDs.count) source=folder")
                         await coordinator.synchronize()
@@ -752,12 +756,14 @@ struct PlaylistEditorView: View {
                         if !updatedSoundIDs.contains(sound.id) {
                             updatedSoundIDs.append(sound.id)
                         }
-                        updatedSelected.insert(sound.id)
+                        if !updatedSelected.contains(sound.id) {
+                            updatedSelected.append(sound.id)
+                        }
                         addedCount += 1
                     }
                 }
                 SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
-                selectedSoundIDs = updatedSelected
+                selectedSoundIDs = Set(updatedSelected)
                 SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(addedCount) source=library")
                 await coordinator.synchronize()
             }
