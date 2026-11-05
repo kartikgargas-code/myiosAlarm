@@ -147,9 +147,10 @@ struct MemoryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<MemoryWidgetEntry>) -> Void) {
-        // Five minutes. The app pushes a reload on 5% moves, charging state changes, or alarm changes.
-        // The timeline itself asks for refresh in 5 minutes to keep the number fresh.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
+        // 5 minutes while charging, 30 minutes otherwise.
+        let isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+        let minutes = isCharging ? 5 : 30
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: minutes, to: Date()) ?? Date()
         let entry = makeEntry()
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
@@ -259,9 +260,10 @@ struct BatteryWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BatteryWidgetEntry>) -> Void) {
-        // Five minutes. The app pushes a reload on 5% moves, charging state changes, or alarm changes.
-        // The timeline itself asks for refresh in 5 minutes to keep the number fresh.
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
+        // 5 minutes while charging, 30 minutes otherwise.
+        let isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+        let minutes = isCharging ? 5 : 30
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: minutes, to: Date()) ?? Date()
         let entry = makeEntry()
         completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
     }
@@ -403,9 +405,11 @@ final class NextAlarmWidgetProvider: TimelineProvider {
         // Single entry per build. Battery is unified via BatterySource.current() which prefers
         // the app's cached value (< 600s) else a live read. The app calls reloadAllTimelines()
         // on alarm save/edit/delete/fire, so we don't need 5-minute steps for battery freshness.
-        // Policy: 5 minutes; app-driven reloads cover sooner changes.
+        // Policy: 5 minutes while charging, 30 minutes otherwise; app-driven reloads cover sooner changes.
+        let isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+        let minutes = isCharging ? 5 : 30
         let entry = loadEntry(at: now)
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: now) ?? now
+        let nextUpdate = Calendar.current.date(byAdding: .minute, value: minutes, to: now) ?? now
         // Log once per timeline build
         SmartWakeDebugLog.log(
             "WIDGET next-alarm timeline family=\(context.family) entries=1 hasAlarm=\(entry.hasAlarm) next=\(entry.nextTime ?? "-") appGroup=\(appGroupIdentifier)",
