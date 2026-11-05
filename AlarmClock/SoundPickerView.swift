@@ -638,6 +638,14 @@ struct PlaylistEditorView: View {
     @State private var playOrder: PlaylistPlayOrder
     @State private var playlistName: String = ""
     @State private var isEditingName = false
+    
+    // For adding songs
+    @State private var showingAddOptions = false
+    @State private var showingDocumentPicker = false
+    @State private var showingLibraryPicker = false
+    @State private var pickerMode: PickerMode = .files
+    private enum PickerMode { case files, folder }
+    @State private var importError: String?
     private let previewService = SoundPreviewService.shared
 
     init(playlist: Playlist, alarms: [AlarmRecord]) {
@@ -662,6 +670,95 @@ struct PlaylistEditorView: View {
         playlistName = trimmed
         SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
         isEditingName = false
+    }
+    
+    private func handlePickedFiles(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard !urls.isEmpty else { return }
+            if pickerMode == .files {
+                for url in urls {
+                    Task {
+                        do {
+                            let sound = try await SoundLibrary.shared.importMP3(from: url)
+                            // Add to playlist's soundIDs
+                            var updatedSoundIDs = playlist.soundIDs
+                            if !updatedSoundIDs.contains(sound.id) {
+                                updatedSoundIDs.append(sound.id)
+                            }
+                            // Add to selectedSoundIDs by default
+                            var updatedSelected = playlist.selectedSoundIDs
+                            updatedSelected.insert(sound.id)
+                            SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
+                            // Update local state
+                            selectedSoundIDs = updatedSelected
+                            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+                            SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=1 source=files")
+                            await coordinator.synchronize()
+                        } catch {
+                            importError = error.localizedDescription
+                        }
+                    }
+                }
+            } else {
+                // Folder mode
+                guard let url = urls.first else { return }
+                Task {
+                    do {
+                        let importedPlaylist = try await SoundLibrary.shared.importFolder(from: url)
+                        // Merge imported songs into this playlist
+                        var updatedSoundIDs = playlist.soundIDs
+                        var updatedSelected = playlist.selectedSoundIDs
+                        for soundID in importedPlaylist.soundIDs {
+                            if !updatedSoundIDs.contains(soundID) {
+                                updatedSoundIDs.append(soundID)
+                            }
+                            updatedSelected.insert(soundID)
+                        }
+                        SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
+                        selectedSoundIDs = updatedSelected
+                        let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
+                        SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(importedPlaylist.soundIDs.count) source=folder")
+                        await coordinator.synchronize()
+                    } catch {
+                        importError = error.localizedDescription
+                    }
+                }
+            }
+        case .failure(let error):
+            importError = error.localizedDescription
+        }
+    }
+    
+    private func handlePickedFromLibrary(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard !urls.isEmpty else { return }
+            // URLs from library picker are bookmark URLs, need to resolve them
+            Task {
+                var updatedSoundIDs = playlist.soundIDs
+                var updatedSelected = playlist.selectedSoundIDs
+                var addedCount = 0
+                for url in urls {
+                    // Try to find the sound by resolving the bookmark
+                    if let sound = SoundLibrary.shared.importedSounds.first(where: { 
+                        SoundLibrary.shared.resolvedURL(for: $0) == url 
+                    }) {
+                        if !updatedSoundIDs.contains(sound.id) {
+                            updatedSoundIDs.append(sound.id)
+                        }
+                        updatedSelected.insert(sound.id)
+                        addedCount += 1
+                    }
+                }
+                SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
+                selectedSoundIDs = updatedSelected
+                SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(addedCount) source=library")
+                await coordinator.synchronize()
+            }
+        case .failure(let error):
+            importError = error.localizedDescription
+        }
     }
 
     private var sortedSounds: [ImportedSound] {
@@ -726,7 +823,35 @@ struct PlaylistEditorView: View {
                     }
                     .pickerStyle(.menu)
                 }
-
+                
+                // Add Songs section
+                Section("Add Songs") {
+                    Button {
+                        showingAddOptions = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                            Text("Add songs to playlist")
+                                .foregroundStyle(ThemeManager.shared.colors.accent)
+                        }
+                    }
+                    .confirmationDialog("Add Songs", isPresented: $showingAddOptions, titleVisibility: .visible) {
+                        Button("Add Files") {
+                            pickerMode = .files
+                            showingDocumentPicker = true
+                        }
+                        Button("Add Folder") {
+                            pickerMode = .folder
+                            showingDocumentPicker = true
+                        }
+                        Button("Add from My Sounds") {
+                            showingLibraryPicker = true
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                }
+                
                 Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
                     ForEach(sortedSounds, id: \.id) { sound in
                         HStack {
@@ -812,6 +937,20 @@ struct PlaylistEditorView: View {
             }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
+            .fileImporter(
+                isPresented: \,
+                allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
+                allowsMultipleSelection: pickerMode == .files
+            ) { result in
+                handlePickedFiles(result)
+            }
+            .fileImporter(
+                isPresented: \,
+                allowedContentTypes: [.audio, .mp3, .movie],
+                allowsMultipleSelection: true
+            ) { result in
+                handlePickedFromLibrary(result)
+            }
     }
 }
 
