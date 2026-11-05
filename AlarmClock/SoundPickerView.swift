@@ -641,7 +641,6 @@ struct PlaylistEditorView: View {
     @State private var isEditingName = false
     
     // For adding songs
-    @State private var showingAddOptions = false
     @State private var showingDocumentPicker = false
     @State private var showingMySoundsPicker = false
     @State private var pickerMode: PickerMode = .files
@@ -677,65 +676,73 @@ struct PlaylistEditorView: View {
     private func handlePickedFiles(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
+            SmartWakeDebugLog.log("ADD SONGS importer returned count=\(urls.count)")
             guard !urls.isEmpty else { return }
             if pickerMode == .files {
-                for url in urls {
-                    Task {
-                        do {
-                            let sound = try await SoundLibrary.shared.importMP3(from: url)
-                            // Add to playlist's soundIDs - get fresh playlist from SoundLibrary
-                            let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
-                            var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
-                            if !updatedSoundIDs.contains(sound.id) {
-                                updatedSoundIDs.append(sound.id)
-                            }
-                            // Add to selectedSoundIDs by default
-                            var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
-                            if !updatedSelected.contains(sound.id) {
-                                updatedSelected.append(sound.id)
-                            }
-                            SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
-                            // Update local state
-                            selectedSoundIDs = Set(updatedSelected)
-                            let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-                            SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=1 source=files")
-                            await coordinator.synchronize()
-                        } catch {
-                            importError = error.localizedDescription
-                        }
-                    }
+                Task {
+                    await addImportedFiles(urls)
                 }
             } else {
                 // Folder mode
                 guard let url = urls.first else { return }
                 Task {
-                    do {
-                        let importedPlaylist = try await SoundLibrary.shared.importFolder(from: url)
-                        // Merge imported songs into this playlist - get fresh playlist from SoundLibrary
-                        let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
-                        var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
-                        var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
-                        for soundID in importedPlaylist.soundIDs {
-                            if !updatedSoundIDs.contains(soundID) {
-                                updatedSoundIDs.append(soundID)
-                            }
-                            if !updatedSelected.contains(soundID) {
-                                updatedSelected.append(soundID)
-                            }
-                        }
-                        SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
-                        selectedSoundIDs = Set(updatedSelected)
-                        let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-                        SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(importedPlaylist.soundIDs.count) source=folder")
-                        await coordinator.synchronize()
-                    } catch {
-                        importError = error.localizedDescription
-                    }
+                    await addImportedFolder(url)
                 }
             }
         case .failure(let error):
             importError = error.localizedDescription
         }
+    }
+
+    /// Import picked audio files as LINKED sounds (bookmarks to the original
+    /// files, not copies) and add them to THIS playlist. Reuses the Sounds
+    /// screen's per-file import (importMP3).
+    private func addImportedFiles(_ urls: [URL]) async {
+        var added: [UUID] = []
+        for url in urls {
+            do {
+                let sound = try await SoundLibrary.shared.importMP3(from: url)
+                added.append(sound.id)
+            } catch {
+                importError = error.localizedDescription
+            }
+        }
+        guard !added.isEmpty else { return }
+        let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
+        var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
+        var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
+        for id in added {
+            if !updatedSoundIDs.contains(id) {
+                updatedSoundIDs.append(id)
+            }
+            if !updatedSelected.contains(id) {
+                updatedSelected.append(id)
+            }
+        }
+        SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
+        selectedSoundIDs = Set(updatedSelected)
+        SoundLibrary.shared.reconnectMissingPlaylistEntries()
+        SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(added.count) source=\(pickerMode == .files ? "files" : "folder")")
+        await coordinator.synchronize()
+    }
+
+    /// Import every audio file in the picked folder as LINKED sounds and add
+    /// them to THIS playlist. Unlike the Sounds screen's "Import folder as
+    /// playlist", NO new playlist is created - the songs join this one.
+    private func addImportedFolder(_ folderURL: URL) async {
+        let didStartAccess = folderURL.startAccessingSecurityScopedResource()
+        defer { if didStartAccess { folderURL.stopAccessingSecurityScopedResource() } }
+
+        let audioURLs = (try? FileManager.default.contentsOfDirectory(
+            at: folderURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ))?.filter {
+            SoundLibrary.supportedAudioExtensions.contains($0.pathExtension.lowercased())
+                && !$0.lastPathComponent.hasPrefix("playlist_")
+        } ?? []
+
+        await addImportedFiles(audioURLs)
     }
     
     private func handlePickedFromLibrary(_ result: Result<[URL], Error>) {
@@ -839,61 +846,38 @@ struct PlaylistEditorView: View {
     private var addSongsSection: some View {
         Section("Add Songs") {
             Button {
-                showingAddOptions = true
+                SmartWakeDebugLog.log("ADD SONGS tapped mode=files")
+                pickerMode = .files
+                showingDocumentPicker = true
             } label: {
                 HStack {
-                    Image(systemName: "plus.circle.fill")
+                    Image(systemName: "doc.badge.plus")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
-                    Text("Add songs to playlist")
+                    Text("Add files")
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
-            .popover(isPresented: $showingAddOptions) {
-                VStack(spacing: 0) {
-                    Button {
-                        pickerMode = .files
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "doc.badge.plus")
-                            Text("Add Files")
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                    }
-                    Divider()
-                    Button {
-                        pickerMode = .folder
-                        showingDocumentPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "folder.badge.plus")
-                            Text("Add Folder")
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                    }
-                    Divider()
-                    Button {
-                        showingMySoundsPicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "music.note.list")
-                            Text("Add from My Sounds")
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                    }
-                    Button(role: .cancel) {
-                        showingAddOptions = false
-                    } label: {
-                        Text("Cancel")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .foregroundStyle(.red)
-                    }
+            Button {
+                SmartWakeDebugLog.log("ADD SONGS tapped mode=folder")
+                pickerMode = .folder
+                showingDocumentPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "folder.badge.plus")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Add folder")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
-                .presentationCompactAdaptation(.popover)
+            }
+            Button {
+                showingMySoundsPicker = true
+            } label: {
+                HStack {
+                    Image(systemName: "music.note.list")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Add from my sounds")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
             }
         }
     }
@@ -974,6 +958,11 @@ struct PlaylistEditorView: View {
             .background(ThemeManager.shared.colors.background)
             .navigationTitle("Edit Playlist")
             .onDisappear { previewService.stop() }
+            // "My sounds" gets its own sheet attached to the List (a different
+            // view from the fileImporter) so the two never fight to present.
+            .sheet(isPresented: $showingMySoundsPicker) {
+                MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
+            }
             .safeAreaInset(edge: .bottom) {
                 BottomActionsBar(
                     leadingActions: [
@@ -984,8 +973,9 @@ struct PlaylistEditorView: View {
                     ],
                     trailingActions: [
                         .icon("Save", systemImage: "checkmark") {
-                            var updatedPlaylist = playlist
-                            updatedPlaylist.selectedSoundIDs = playlist.soundIDs.filter(selectedSoundIDs.contains)
+                            let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id }) ?? playlist
+                            var updatedPlaylist = currentPlaylist
+                            updatedPlaylist.selectedSoundIDs = currentPlaylist.soundIDs.filter(selectedSoundIDs.contains)
                             updatedPlaylist.sortOption = sortOption
                             updatedPlaylist.playOrder = playOrder
                             SoundLibrary.shared.updatePlaylist(updatedPlaylist)
@@ -996,16 +986,15 @@ struct PlaylistEditorView: View {
             }
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
-            .fileImporter(
-                isPresented: $showingDocumentPicker,
-                allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
-                allowsMultipleSelection: pickerMode == .files
-            ) { result in
-                handlePickedFiles(result)
-            }
-            .sheet(isPresented: $showingMySoundsPicker) {
-                MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
-            }
+        // Exactly ONE fileImporter in this view, on the OUTERMOST view. It is
+        // driven by pickerMode (files or folder) plus one isPresented bool.
+        .fileImporter(
+            isPresented: $showingDocumentPicker,
+            allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
+            allowsMultipleSelection: pickerMode == .files
+        ) { result in
+            handlePickedFiles(result)
+        }
     }
 }
 
