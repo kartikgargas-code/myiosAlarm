@@ -507,6 +507,35 @@ final class SoundLibrary {
                     }
                 }
                 
+                // Also process soundIDs from backup - try to reconnect them
+                // This handles playlists that have songs in soundIDs but no missingSongs (e.g., single-track playlists)
+                for soundID in candidate.soundIDs {
+                    // Skip if already added from missingSongs reconnection
+                    if newSoundIDs.contains(soundID) { continue }
+                    // Try to find this sound in importedSounds
+                    if let match = importedSounds.first(where: { $0.id == soundID }) {
+                        newSoundIDs.append(match.id)
+                        if !newSelectedIDs.contains(match.id) {
+                            newSelectedIDs.append(match.id)
+                        }
+                        reconnectedCount += 1
+                    } else {
+                        // Sound not found - we need to create a MissingSong entry for it
+                        // But we don't have the fileName here, only the UUID.
+                        // This case should be rare since soundIDs are derived from fileNames.
+                        // The missingSongs array should have the fileName info for backup/restore.
+                    }
+                }
+                
+                // Also process selectedSoundIDs from backup
+                for soundID in candidate.selectedSoundIDs {
+                    if !newSelectedIDs.contains(soundID) {
+                        if let match = importedSounds.first(where: { $0.id == soundID }) {
+                            newSelectedIDs.append(match.id)
+                        }
+                    }
+                }
+                
                 let newPlaylist = Playlist(
                     name: candidate.name,
                     soundIDs: newSoundIDs,
