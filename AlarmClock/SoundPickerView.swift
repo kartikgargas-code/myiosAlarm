@@ -644,6 +644,7 @@ struct PlaylistEditorView: View {
     @State private var showingAddOptions = false
     @State private var showingDocumentPicker = false
     @State private var showingLibraryPicker = false
+    @State private var showingMySoundsPicker = false
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
     @State private var importError: String?
@@ -857,7 +858,7 @@ struct PlaylistEditorView: View {
                             showingDocumentPicker = true
                         }
                         Button("Add from My Sounds") {
-                            showingLibraryPicker = true
+                            showingMySoundsPicker = true
                         }
                         Button("Cancel", role: .cancel) {}
                     }
@@ -955,13 +956,100 @@ struct PlaylistEditorView: View {
             ) { result in
                 handlePickedFiles(result)
             }
-            .fileImporter(
-                isPresented: $showingLibraryPicker,
-                allowedContentTypes: [.audio, .mp3, .movie],
-                allowsMultipleSelection: true
-            ) { result in
-                handlePickedFromLibrary(result)
+            .sheet(isPresented: $showingMySoundsPicker) {
+                MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
+                    .environmentObject(soundsUIState)
             }
+    }
+}
+
+struct MySoundsPickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var soundsUIState: SoundsUIState
+    let playlist: Playlist
+    @Binding var selectedSoundIDs: Set<UUID>
+    private let preview = SoundPreviewService.shared
+    
+    private var availableSounds: [ImportedSound] {
+        // Get all imported sounds not already in this playlist
+        let existingIDs = playlist.soundIDs
+        return SoundLibrary.shared.importedSounds.filter { !existingIDs.contains($0.id) }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                if availableSounds.isEmpty {
+                    Section {
+                        Text("No additional sounds available to add.")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
+                } else {
+                    Section("Available Sounds") {
+                        ForEach(availableSounds) { sound in
+                            HStack {
+                                // Preview
+                                if let url = SoundLibrary.shared.resolvedURL(for: sound) {
+                                    Button {
+                                        if preview.playingSoundID == sound.fileName {
+                                            preview.stop()
+                                        } else {
+                                            preview.play(url: url, id: sound.fileName)
+                                        }
+                                    } label: {
+                                        Image(systemName: preview.playingSoundID == sound.fileName
+                                              ? "pause.circle.fill" : "play.circle")
+                                            .font(.title3)
+                                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(sound.name)
+                                        .font(.body)
+                                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                                    Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
+                                        .font(.caption)
+                                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                                }
+                                Spacer()
+                                if selectedSoundIDs.contains(sound.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                                        .font(.title2)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selectedSoundIDs.contains(sound.id) {
+                                    selectedSoundIDs.remove(sound.id)
+                                } else {
+                                    selectedSoundIDs.insert(sound.id)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ThemeManager.shared.colors.background)
+            .navigationTitle("Add from My Sounds")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                BottomActionsBar(
+                    leadingActions: [
+                        .icon("Cancel", systemImage: "xmark") { dismiss() }
+                    ],
+                    trailingActions: [
+                        .icon("Done", systemImage: "checkmark") { dismiss() }
+                    ]
+                )
+            }
+            .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
+            .onDisappear { preview.stop() }
+        }
     }
 }
 
