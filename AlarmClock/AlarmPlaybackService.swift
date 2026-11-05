@@ -153,9 +153,8 @@ final class AlarmPlaybackService: NSObject {
             }
             selectedSoundIDs = soundIDs
             
-            guard !selectedSoundIDs.isEmpty else {
-                throw SoundLibraryError.emptyPlaylist(playlistID)
-            }
+            // Check for empty playlist - will be handled by fallback logic
+            let isEmptyPlaylist = selectedSoundIDs.isEmpty
             
             currentPlaylistID = playlistID
             currentLoudness = loudness
@@ -199,6 +198,16 @@ final class AlarmPlaybackService: NSObject {
             
             SmartWakeDebugLog.log("PLAYBACK start attempt playlist=\(playlistID.uuidString.prefix(8)) tracks=\(selectedSoundIDs.count)")
             SmartWakeDebugLog.log("PLAYBACK queued track 1: \(self.selectedSoundIDs.first.map { id in SoundLibrary.shared.importedSounds.first(where: { $0.id == id })?.name ?? "unknown" } ?? "unknown")")
+            
+            // Handle empty playlist - don't start playback, let AlarmKit backup ring
+            if isEmptyPlaylist {
+                SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=emptyPlaylist action=backupLeftRinging")
+                let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
+                isArmedForOccurrence.remove(armingKey)
+                // Don't start playback - leave the backup alarm ringing
+                // The stop will be handled by SmartWakeService when it detects the empty playlist
+                return
+            }
             
             // Start playing the first track
             playTrack(at: 0, skippedCount: 0)

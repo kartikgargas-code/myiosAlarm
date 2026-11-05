@@ -1266,129 +1266,45 @@ final class SmartWakeService {
                         stopSilentPlayerOnly(reason: "playlist-first takeover completed for \(occurrenceKey)")
                         SmartWakeDebugLog.log("PLAYLIST-FIRST complete for \(occurrenceKey); silent player stopped")
                     } else {
-                        // ATTEMPT A FAILED - log and remove occurrence key to allow retry
-                        os_log(.error, log: log, "TAKEOVER ATTEMPT-A FAILED: playback failed to start, leaving AlarmKit alarms ringing")
-                        SmartWakeDebugLog.log("TAKEOVER ATTEMPT-A FALLBACK: playback failed, AlarmKit alarms left ringing")
+                        // ATTEMPT A FAILED - check if it's an empty playlist or playback failure
+                        // In either case, do NOT cancel any AlarmKit alarm that is alerting.
+                        // Leave the backup alarm ringing. If no backup is alerting or scheduled, play default sound.
+                        let isEmptyPlaylist = soundToUse == .precomposedPlaylist ? 
+                            (try? SoundLibrary.shared.playlist(for: (soundToUse as? AlarmSound)?.playlistID ?? UUID())).map { $0.selectedSoundIDs.isEmpty } ?? false : false
+                        
+                        if isEmptyPlaylist {
+                            SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=emptyPlaylist action=backupLeftRinging")
+                        } else {
+                            SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=playFailed action=backupLeftRinging")
+                        }
+                        
+                        // Check if there's a backup alarm alerting or scheduled
+                        let kitAlarms = (try? AlarmManager.shared.alarms) ?? []
+                        let backupAlarmAlerting = kitAlarms.contains { $0.state == .alerting && 
+                            ($0.id.uuidString.contains("-BACKUP") || $0.id.uuidString.contains("|backup")) }
+                        let backupAlarmScheduled = kitAlarms.contains { $0.state == .scheduled && 
+                            ($0.id.uuidString.contains("-BACKUP") || $0.id.uuidString.contains("|backup")) }
+                        
+                        if backupAlarmAlerting || backupAlarmScheduled {
+                            SmartWakeDebugLog.log("TAKEOVER FALLBACK: backup alarm present (alerting=\(backupAlarmAlerting) scheduled=\(backupAlarmScheduled)), leaving it ringing")
+                        } else {
+                            SmartWakeDebugLog.log("TAKEOVER FALLBACK: no backup alarm, playing default sound in-app")
+                            // Play default alarm sound in-app
+                            AlarmPlaybackService.shared.start(
+                                playlistID: UUID(), // dummy ID, will play default
+                                loudness: alarm.loudness,
+                                alarm: alarm,
+                                occurrence: occurrence
+                            )
+                        }
+                        
                         // Remove from isArmedForOccurrence so we can retry
                         let armingKey = makeArmingKey(alarmID: alarm.id, occurrenceKey: occurrenceKey, effectiveDate: occurrence.effectiveDate)
                         armedOccurrences.remove(armingKey)
                         
-                        // ATTEMPT B: Cancel ALL alerting alarms first, then reclaim session and retry
-                        SmartWakeDebugLog.log("TAKEOVER RETRY-B: cancelling alerting alarms then reclaiming session")
-                        
-                        // Cancel ALL alerting AlarmKit alarms
-                        let alerting = (try? AlarmManager.shared.alarms.filter { $0.state == .alerting }) ?? []
-                        var allCancelled = true
-                        for kitAlarm in alerting {
-                            do {
-                                try AlarmManager.shared.cancel(id: kitAlarm.id)
-                                SmartWakeDebugLog.log("SILENCE: cancelled alerting alarm \(kitAlarm.id.uuidString)")
-                            } catch {
-                                allCancelled = false
-                                SmartWakeDebugLog.log("SILENCE: cancel FAILED for \(kitAlarm.id.uuidString): \(error.localizedDescription)")
-                            }
-                        }
-                        os_log(.info, log: log, "Cancelled %d alerting alarm(s), allCancelled=%{public}d", alerting.count, allCancelled ? 1 : 0)
-                        
-                        // Stop silent player to reclaim session
-                        stopSilentPlayerOnly(reason: "retry-B reclaim session")
-                        
-                        // Up to 3 retry attempts
-                        var retryBSuccess = false
-                        for retryAttempt in 1...3 {
-                            SmartWakeDebugLog.log("TAKEOVER RETRY-B ATTEMPT \(retryAttempt)/3")
-                            
-                            // Ensure audio session is active (reclaim)
-                            do {
-                                try AlarmPlaybackService.shared.ensureAudioSessionActive()
-                                AlarmPlaybackService.shared.logSessionDump("RETRY-B attempt \(retryAttempt) pre-start")
-                            } catch {
-                                SmartWakeDebugLog.log("RETRY-B attempt \(retryAttempt): session activation FAILED: \(error.localizedDescription)")
-                                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
-                                continue
-                            }
-                            
-                            // Start playback
-                            if case .precomposedPlaylist(let resolvedPlaylistID, _) = soundToUse {
-                                AlarmPlaybackService.shared.start(
-                                    playlistID: resolvedPlaylistID,
-                                    loudness: alarm.loudness,
-                                    alarm: alarm,
-                                    occurrence: occurrence
-                                )
-                            }
-                            
-                            // Wait 500ms for isPlaying
-                            var playbackStarted = false
-                            for attempt in 0..<10 {
-                                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                                if AlarmPlaybackService.shared.isPlaying {
-                                    playbackStarted = true
-                                    break
-                                }
-                            }
-                            
-                            if playbackStarted {
-                                retryBSuccess = true
-                                break
-                            } else {
-                                AlarmPlaybackService.shared.logSessionDump("RETRY-B attempt \(retryAttempt) play() FALSE")
-                                try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
-                            }
-                        }
-                        
-                        if retryBSuccess {
-                            SmartWakeDebugLog.log("TAKEOVER RETRY-B SUCCESS: playback confirmed after retry")
-                            // Promote to primary session for lock screen controls (if not foreground)
-                            AlarmPlaybackService.shared.promoteToPrimarySessionIfNeeded()
-                            // Setup local notification with Stop action
-                            AlarmPlaybackService.shared.setupStopNotification(alarm: alarm, occurrence: occurrence)
-                            stopSilentPlayerOnly(reason: "retry-B takeover completed for \(occurrenceKey)")
-                            SmartWakeDebugLog.log("TAKEOVER RETRY-B complete for \(occurrenceKey); silent player stopped")
-                        } else {
-                            // RETRY B FAILED - NEVER leave silence, schedule emergency re-ring
-                            os_log(.error, log: log, "TAKEOVER RETRY-B FAILED: all 3 retries exhausted, scheduling emergency re-ring")
-                            SmartWakeDebugLog.log("TAKEOVER RETRY-B FAILED: all 3 retries exhausted, scheduling emergency re-ring")
-                            
-                            // Schedule emergency AlarmKit alarm ~3s in future using existing scheduling path
-                            let emergencyFireDate = Date().addingTimeInterval(3.0)
-                            do {
-                                // Reuse existing scheduling code path - create a one-off alarm
-                                let emergencyID = UUID()
-                                let emergencyConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
-                                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
-                                    schedule: .fixed(emergencyFireDate),
-                                    attributes: AlarmAttributes(
-                                        presentation: AlarmPresentation(
-                                            alert: AlarmPresentation.Alert(
-                                                title: LocalizedStringResource(stringLiteral: "Emergency Re-ring"),
-                                                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
-                                                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
-                                                secondaryButtonBehavior: .countdown
-                                            ),
-                                            countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min")),
-                                            paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed 10 min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
-                                        ),
-                                        metadata: ScheduledOccurrenceMetadata(
-                                            alarmID: alarm.id,
-                                            occurrenceKey: "EMERGENCY-\(occurrenceKey)",
-                                            baseDate: emergencyFireDate
-                                        ),
-                                        tintColor: .red
-                                    ),
-                                    stopIntent: nil,
-                                    secondaryIntent: nil,
-                                    sound: (try? await AlarmCoordinator.sharedInstance?.alarmKitSound(for: alarm.sound, loudness: alarm.loudness)) ?? .default
-                                )
-                                _ = try await AlarmManager.shared.schedule(id: emergencyID, configuration: emergencyConfig)
-                                SmartWakeDebugLog.log("EMERGENCY RE-RING scheduled id=\(emergencyID.uuidString) at \(emergencyFireDate)")
-                                // Register emergency ID with coordinator so it's not cancelled as orphan
-                                AlarmCoordinator.sharedInstance?.addEmergencyReRingID(emergencyID)
-                            } catch {
-                                SmartWakeDebugLog.log("EMERGENCY RE-RING scheduling FAILED: \(error.localizedDescription)")
-                                os_log(.error, log: log, "EMERGENCY RE-RING scheduling FAILED: %{public}s", error.localizedDescription)
-                            }
-                        }
+                        // DO NOT go to RETRY-B which cancels alerting alarms
+                        // The backup alarm will ring, or default sound plays
+                        return
                     }
                     
                     // Re-arm check: if there's another alarm coming up, restart the silent loop

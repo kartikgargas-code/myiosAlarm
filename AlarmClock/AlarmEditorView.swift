@@ -159,6 +159,21 @@ struct AlarmEditorView: View {
             }
             .buttonStyle(.plain)
             RandomModeNextSongView(selectedSound: selectedSound)
+            
+            // Show warning if playlist is empty
+            if case .random(let playlistID) = selectedSound,
+               let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+               playlist.selectedSoundIDs.isEmpty {
+                Text("Warning: This playlist has no songs selected. The alarm will not play any sound.")
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+            } else if case .precomposedPlaylist(let playlistID, _) = selectedSound,
+                       let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+                       playlist.selectedSoundIDs.isEmpty {
+                Text("Warning: This playlist has no songs selected. The alarm will not play any sound.")
+                    .font(.caption)
+                    .foregroundStyle(ThemeManager.shared.colors.destructive)
+            }
         }
     }
     private var loudnessSection: some View {
@@ -415,6 +430,21 @@ struct AlarmEditorView: View {
     }
     private func saveAlarm() {
         guard !isSaving else { return }
+        
+        // Check if selected sound is an empty playlist and block saving
+        if case .random(let playlistID) = selectedSound,
+           let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+           playlist.selectedSoundIDs.isEmpty {
+            // Show error toast or alert - for now just don't save
+            SmartWakeDebugLog.log("EDITOR SAVE BLOCKED: empty playlist selected")
+            return
+        } else if case .precomposedPlaylist(let playlistID, _) = selectedSound,
+                   let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
+                   playlist.selectedSoundIDs.isEmpty {
+            SmartWakeDebugLog.log("EDITOR SAVE BLOCKED: empty precomposed playlist selected")
+            return
+        }
+        
         isSaving = true
         // Stable draft ID: a stray second tap updates the same draft
         // instead of inserting a second alarm.
