@@ -643,7 +643,6 @@ struct PlaylistEditorView: View {
     // For adding songs
     @State private var showingAddOptions = false
     @State private var showingDocumentPicker = false
-    @State private var showingLibraryPicker = false
     @State private var showingMySoundsPicker = false
     @State private var pickerMode: PickerMode = .files
     private enum PickerMode { case files, folder }
@@ -864,19 +863,52 @@ struct PlaylistEditorView: View {
                         .foregroundStyle(ThemeManager.shared.colors.accent)
                 }
             }
-            .confirmationDialog("Add Songs", isPresented: $showingAddOptions, titleVisibility: .visible) {
-                Button("Add Files") {
-                    pickerMode = .files
-                    showingDocumentPicker = true
+            .popover(isPresented: $showingAddOptions) {
+                VStack(spacing: 0) {
+                    Button {
+                        pickerMode = .files
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "doc.badge.plus")
+                            Text("Add Files")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                    }
+                    Divider()
+                    Button {
+                        pickerMode = .folder
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "folder.badge.plus")
+                            Text("Add Folder")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                    }
+                    Divider()
+                    Button {
+                        showingMySoundsPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "music.note.list")
+                            Text("Add from My Sounds")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                    }
+                    Button(role: .cancel) {
+                        showingAddOptions = false
+                    } label: {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .foregroundStyle(.red)
+                    }
                 }
-                Button("Add Folder") {
-                    pickerMode = .folder
-                    showingDocumentPicker = true
-                }
-                Button("Add from My Sounds") {
-                    showingMySoundsPicker = true
-                }
-                Button("Cancel", role: .cancel) {}
+                .presentationCompactAdaptation(.popover)
             }
         }
     }
