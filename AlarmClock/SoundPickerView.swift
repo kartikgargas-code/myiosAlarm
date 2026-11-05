@@ -787,141 +787,171 @@ struct PlaylistEditorView: View {
         case .dateModified:
             return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
         }
+    
+    private var sortedSounds: [ImportedSound] {
+        let sounds = playlist.soundIDs.compactMap { soundID in
+            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })
+        }
+        switch sortOption {
+        case .name:
+            return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .fileSize:
+            return sounds.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
+        case .dateAdded:
+            return sounds.sorted { $0.dateAdded > $1.dateAdded }
+        case .dateModified:
+            return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
+        }
     }
-
+    
+    private var playlistNameSection: some View {
+        Section("Playlist Name") {
+            if isEditingName {
+                HStack {
+                    TextField("Name", text: $playlistName)
+                    Spacer()
+                    Button {
+                        commitPlaylistName()
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(trimmedPlaylistName.isEmpty)
+                }
+            } else {
+                HStack {
+                    Text(playlistName)
+                        .font(.headline)
+                    Spacer()
+                    Image(systemName: "pencil")
+                        .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { isEditingName = true }
+            }
+        }
+    }
+    
+    private var playOrderSection: some View {
+        Section {
+            Picker("Play Order", selection: $playOrder) {
+                ForEach(PlaylistPlayOrder.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            Picker("Sort By", selection: $sortOption) {
+                ForEach(PlaylistSortOption.allCases) { option in
+                    Text(option.displayName).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+    }
+    
+    private var addSongsSection: some View {
+        Section("Add Songs") {
+            Button {
+                showingAddOptions = true
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                    Text("Add songs to playlist")
+                        .foregroundStyle(ThemeManager.shared.colors.accent)
+                }
+            }
+            .confirmationDialog("Add Songs", isPresented: $showingAddOptions, titleVisibility: .visible) {
+                Button("Add Files") {
+                    pickerMode = .files
+                    showingDocumentPicker = true
+                }
+                Button("Add Folder") {
+                    pickerMode = .folder
+                    showingDocumentPicker = true
+                }
+                Button("Add from My Sounds") {
+                    showingMySoundsPicker = true
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+        }
+    }
+    
+    private var songsSection: some View {
+        Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
+            ForEach(sortedSounds, id: \.id) { sound in
+                HStack {
+                    // Preview: plays this song; only one at a time
+                    Button {
+                        if previewService.playingSoundID == sound.fileName {
+                            previewService.stop()
+                        } else if let url = SoundLibrary.shared.resolvedURL(for: sound) {
+                            previewService.play(url: url, id: sound.fileName)
+                        }
+                    } label: {
+                        Image(systemName: previewService.playingSoundID == sound.fileName
+                              ? "pause.circle.fill" : "play.circle")
+                            .font(.title3)
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                    }
+                    .buttonStyle(.plain)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sound.name)
+                            .font(.body)
+                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
+                        Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
+                            .font(.caption)
+                            .foregroundStyle(ThemeManager.shared.colors.secondaryText)
+                    }
+                    Spacer()
+                    if selectedSoundIDs.contains(sound.id) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(ThemeManager.shared.colors.accent)
+                            .font(.title2)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if selectedSoundIDs.contains(sound.id) {
+                        selectedSoundIDs.remove(sound.id)
+                    } else {
+                        selectedSoundIDs.insert(sound.id)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var selectAllSection: some View {
+        Section {
+            HStack {
+                Button("Select All") {
+                    selectedSoundIDs = Set(playlist.soundIDs)
+                }
+                .disabled(selectedSoundIDs.count == playlist.soundIDs.count)
+                
+                Spacer()
+                
+                Button("Deselect All") {
+                    selectedSoundIDs.removeAll()
+                }
+                .disabled(selectedSoundIDs.isEmpty)
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             List {
-                Section("Playlist Name") {
-                    if isEditingName {
-                        HStack {
-                            TextField("Name", text: $playlistName)
-                            Spacer()
-                            Button {
-                                commitPlaylistName()
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(trimmedPlaylistName.isEmpty)
-                        }
-                    } else {
-                        HStack {
-                            Text(playlistName)
-                                .font(.headline)
-                            Spacer()
-                            Image(systemName: "pencil")
-                                .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { isEditingName = true }
-                    }
-                }
-
-                Section {
-                    Picker("Play Order", selection: $playOrder) {
-                        ForEach(PlaylistPlayOrder.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Picker("Sort By", selection: $sortOption) {
-                        ForEach(PlaylistSortOption.allCases) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-                
-                // Add Songs section
-                Section("Add Songs") {
-                    Button {
-                        showingAddOptions = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                            Text("Add songs to playlist")
-                                .foregroundStyle(ThemeManager.shared.colors.accent)
-                        }
-                    }
-                    .confirmationDialog("Add Songs", isPresented: $showingAddOptions, titleVisibility: .visible) {
-                        Button("Add Files") {
-                            pickerMode = .files
-                            showingDocumentPicker = true
-                        }
-                        Button("Add Folder") {
-                            pickerMode = .folder
-                            showingDocumentPicker = true
-                        }
-                        Button("Add from My Sounds") {
-                            showingMySoundsPicker = true
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    }
-                }
-                
-                Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
-                    ForEach(sortedSounds, id: \.id) { sound in
-                        HStack {
-                            // Preview: plays this song; only one at a time
-                            Button {
-                                if previewService.playingSoundID == sound.fileName {
-                                    previewService.stop()
-                                } else if let url = SoundLibrary.shared.resolvedURL(for: sound) {
-                                    previewService.play(url: url, id: sound.fileName)
-                                }
-                            } label: {
-                                Image(systemName: previewService.playingSoundID == sound.fileName
-                                      ? "pause.circle.fill" : "play.circle")
-                                    .font(.title3)
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                            }
-                            .buttonStyle(.plain)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(sound.name)
-                                    .font(.body)
-                                    .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                                Text(sound.duration.map { String(format: "%.1f seconds", $0) } ?? "Unknown duration")
-                                    .font(.caption)
-                                    .foregroundStyle(ThemeManager.shared.colors.secondaryText)
-                            }
-                            Spacer()
-                            if selectedSoundIDs.contains(sound.id) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(ThemeManager.shared.colors.accent)
-                                    .font(.title2)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if selectedSoundIDs.contains(sound.id) {
-                                selectedSoundIDs.remove(sound.id)
-                            } else {
-                                selectedSoundIDs.insert(sound.id)
-                            }
-                        }
-                    }
-                }
-
-                Section {
-                    HStack {
-                        Button("Select All") {
-                            selectedSoundIDs = Set(playlist.soundIDs)
-                        }
-                        .disabled(selectedSoundIDs.count == playlist.soundIDs.count)
-
-                        Spacer()
-
-                        Button("Deselect All") {
-                            selectedSoundIDs.removeAll()
-                        }
-                        .disabled(selectedSoundIDs.isEmpty)
-                    }
-                }
+                playlistNameSection
+                playOrderSection
+                addSongsSection
+                songsSection
+                selectAllSection
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
@@ -958,14 +988,12 @@ struct PlaylistEditorView: View {
             }
             .sheet(isPresented: $showingMySoundsPicker) {
                 MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
-                    .environmentObject(soundsUIState)
             }
     }
 }
 
 struct MySoundsPickerView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var soundsUIState: SoundsUIState
     let playlist: Playlist
     @Binding var selectedSoundIDs: Set<UUID>
     private let preview = SoundPreviewService.shared
