@@ -1170,7 +1170,7 @@ struct SoundsView: View {
     }
 
 private func makeEditorSheet(_ playlist: Playlist) -> some View {
-    PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms)
+    PlaylistEditorView(playlist: playlist, alarms: coordinator.alarms, coordinator: coordinator)
 }
 
 private func makeCreatorSheet() -> some View {

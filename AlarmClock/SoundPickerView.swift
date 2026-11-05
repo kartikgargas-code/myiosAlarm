@@ -371,7 +371,7 @@ struct SoundPickerView: View {
             })
         }
         .sheet(item: $showingPlaylistEditor) { playlist in
-            PlaylistEditorView(playlist: playlist, alarms: alarms)
+            PlaylistEditorView(playlist: playlist, alarms: alarms, coordinator: coordinator)
         }
         .onDisappear {
             preview.stop()
@@ -632,6 +632,7 @@ struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
     let playlist: Playlist
     let alarms: [AlarmRecord]
+    let coordinator: AlarmCoordinator
     @State private var selectedSoundIDs: Set<UUID>
     @State private var initialSelectedSoundIDs: Set<UUID>
     @State private var sortOption: PlaylistSortOption
@@ -648,9 +649,10 @@ struct PlaylistEditorView: View {
     @State private var importError: String?
     private let previewService = SoundPreviewService.shared
 
-    init(playlist: Playlist, alarms: [AlarmRecord]) {
+    init(playlist: Playlist, alarms: [AlarmRecord], coordinator: AlarmCoordinator) {
         self.playlist = playlist
         self.alarms = alarms
+        self.coordinator = coordinator
         let initial = Set(playlist.selectedSoundIDs)
         self._selectedSoundIDs = State(initialValue: initial)
         self._initialSelectedSoundIDs = State(initialValue: initial)
@@ -681,13 +683,14 @@ struct PlaylistEditorView: View {
                     Task {
                         do {
                             let sound = try await SoundLibrary.shared.importMP3(from: url)
-                            // Add to playlist's soundIDs
-                            var updatedSoundIDs = playlist.soundIDs
+                            // Add to playlist's soundIDs - get fresh playlist from SoundLibrary
+                            let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
+                            var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
                             if !updatedSoundIDs.contains(sound.id) {
                                 updatedSoundIDs.append(sound.id)
                             }
                             // Add to selectedSoundIDs by default
-                            var updatedSelected = playlist.selectedSoundIDs
+                            var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
                             updatedSelected.insert(sound.id)
                             SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
                             // Update local state
@@ -706,9 +709,10 @@ struct PlaylistEditorView: View {
                 Task {
                     do {
                         let importedPlaylist = try await SoundLibrary.shared.importFolder(from: url)
-                        // Merge imported songs into this playlist
-                        var updatedSoundIDs = playlist.soundIDs
-                        var updatedSelected = playlist.selectedSoundIDs
+                        // Merge imported songs into this playlist - get fresh playlist from SoundLibrary
+                        let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
+                        var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
+                        var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
                         for soundID in importedPlaylist.soundIDs {
                             if !updatedSoundIDs.contains(soundID) {
                                 updatedSoundIDs.append(soundID)
@@ -736,8 +740,9 @@ struct PlaylistEditorView: View {
             guard !urls.isEmpty else { return }
             // URLs from library picker are bookmark URLs, need to resolve them
             Task {
-                var updatedSoundIDs = playlist.soundIDs
-                var updatedSelected = playlist.selectedSoundIDs
+                let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })
+                var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
+                var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
                 var addedCount = 0
                 for url in urls {
                     // Try to find the sound by resolving the bookmark
