@@ -938,14 +938,14 @@ struct PlaylistEditorView: View {
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
             .fileImporter(
-                isPresented: \,
+                isPresented: $showingDocumentPicker,
                 allowedContentTypes: pickerMode == .files ? [.mp3, .audio, .movie] : [.folder],
                 allowsMultipleSelection: pickerMode == .files
             ) { result in
                 handlePickedFiles(result)
             }
             .fileImporter(
-                isPresented: \,
+                isPresented: $showingLibraryPicker,
                 allowedContentTypes: [.audio, .mp3, .movie],
                 allowsMultipleSelection: true
             ) { result in
