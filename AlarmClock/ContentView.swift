@@ -984,25 +984,28 @@ struct SoundsView: View {
 
     @ViewBuilder
     private var playlistsSection: some View {
-        if !SoundLibrary.shared.playlists.isEmpty {
-            Section("Playlists") {
-                ForEach(SoundLibrary.shared.playlists) { playlist in
-                    playlistRow(playlist: playlist)
-                }
-                Button {
-                    showingPlaylistCreator = true
-                } label: {
-                    HStack(spacing: 12) {
-                        // Icon tile: 28pt, 7pt corner radius, white SF Symbol
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
-                            .background(.green)
-                            .clipShape(RoundedRectangle(cornerRadius: 7))
-                        Text("Create New Playlist")
-                            .foregroundStyle(ThemeManager.shared.colors.primaryText)
-                    }
+        // Always shown - the Create New Playlist button must be reachable even
+        // with zero imported songs and zero folders.
+        Section("Playlists") {
+            ForEach(SoundLibrary.shared.playlists) { playlist in
+                playlistRow(playlist: playlist)
+            }
+            Button {
+                // Create an empty playlist immediately and open the editor so
+                // songs can be added to it.
+                let newPlaylist = SoundLibrary.shared.createPlaylist(name: "New Playlist", soundIDs: [])
+                playlistToEdit = newPlaylist
+            } label: {
+                HStack(spacing: 12) {
+                    // Icon tile: 28pt, 7pt corner radius, white SF Symbol
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                    Text("Create New Playlist")
+                        .foregroundStyle(ThemeManager.shared.colors.primaryText)
                 }
             }
         }
