@@ -1269,8 +1269,14 @@ final class SmartWakeService {
                         // ATTEMPT A FAILED - check if it's an empty playlist or playback failure
                         // In either case, do NOT cancel any AlarmKit alarm that is alerting.
                         // Leave the backup alarm ringing. If no backup is alerting or scheduled, play default sound.
-                        let isEmptyPlaylist = soundToUse == .precomposedPlaylist ? 
-                            (try? SoundLibrary.shared.playlist(for: (soundToUse as? AlarmSound)?.playlistID ?? UUID())).map { $0.selectedSoundIDs.isEmpty } ?? false : false
+                        let isEmptyPlaylist: Bool
+                        if case .precomposedPlaylist(let playlistID, _) = soundToUse {
+                            isEmptyPlaylist = (try? SoundLibrary.shared.playlist(for: playlistID)).map { $0.selectedSoundIDs.isEmpty } ?? false
+                        } else if case .random(let playlistID) = soundToUse {
+                            isEmptyPlaylist = (try? SoundLibrary.shared.playlist(for: playlistID)).map { $0.selectedSoundIDs.isEmpty } ?? false
+                        } else {
+                            isEmptyPlaylist = false
+                        }
                         
                         if isEmptyPlaylist {
                             SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=emptyPlaylist action=backupLeftRinging")
