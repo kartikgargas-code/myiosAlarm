@@ -787,22 +787,6 @@ struct PlaylistEditorView: View {
             return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
         }
     
-    private var sortedSounds: [ImportedSound] {
-        let sounds = playlist.soundIDs.compactMap { soundID in
-            SoundLibrary.shared.importedSounds.first(where: { $0.id == soundID })
-        }
-        switch sortOption {
-        case .name:
-            return sounds.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .fileSize:
-            return sounds.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
-        case .dateAdded:
-            return sounds.sorted { $0.dateAdded > $1.dateAdded }
-        case .dateModified:
-            return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
-        }
-    }
-    
     private var playlistNameSection: some View {
         Section("Playlist Name") {
             if isEditingName {
@@ -1022,6 +1006,7 @@ struct PlaylistEditorView: View {
                 MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
             }
     }
+}
 }
 
 struct MySoundsPickerView: View {
