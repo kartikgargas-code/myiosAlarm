@@ -594,7 +594,6 @@ struct ThemedToggleStyle: ToggleStyle {
         HStack {
             configuration.label
                 .foregroundStyle(colors.primaryText)
-            Spacer()
             RoundedRectangle(cornerRadius: 16)
                 .fill(configuration.isOn ? colors.toggleOn : colors.toggleOff)
                 .frame(width: 51, height: 31)
@@ -609,10 +608,6 @@ struct ThemedToggleStyle: ToggleStyle {
                 .onTapGesture {
                     configuration.isOn.toggle()
                 }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            configuration.isOn.toggle()
         }
     }
 }
