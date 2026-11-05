@@ -222,6 +222,18 @@ final class AlarmPlaybackService: NSObject {
             SmartWakeDebugLog.log("PLAYBACK FAILED: \(nsError.domain) code=\(nsError.code) \(error.localizedDescription)")
             let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
             isArmedForOccurrence.remove(armingKey)
+            // A missing or empty playlist must never silence the alarm:
+            // do not touch any AlarmKit alarm, leave the backup ringing.
+            switch error {
+            case SoundLibraryError.emptyPlaylist:
+                SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=emptyPlaylist action=backupLeftRinging")
+                return
+            case SoundLibraryError.playlistNotFound:
+                SmartWakeDebugLog.log("TAKEOVER FALLBACK reason=playlistMissing action=backupLeftRinging")
+                return
+            default:
+                break
+            }
         }
     }
     
@@ -587,11 +599,12 @@ final class AlarmPlaybackService: NSObject {
             // Skip failed track, advance to next
             consecutiveFailures += 1
             if consecutiveFailures >= self.selectedSoundIDs.count {
-                // All tracks failed - abort playback
-                os_log(.error, log: log, "PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start")
-                SmartWakeDebugLog.log("PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start")
+                // All tracks failed - fall back to the default alarm sound so the
+                // alarm keeps making noise (the backup may already be cancelled).
+                os_log(.error, log: log, "PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start, falling back to default alarm sound")
+                SmartWakeDebugLog.log("PLAYBACK ABORT: all \(self.selectedSoundIDs.count) tracks failed to start, falling back to default alarm sound")
                 isPlaying = false
-                stop()
+                playDefaultAlarmSound()
                 return
             }
             // Skip failed track, advance to next
@@ -600,6 +613,33 @@ final class AlarmPlaybackService: NSObject {
         }
     }
     
+    /// Play the default alarm sound as fallback for an alarm whose playlist is
+    /// missing or has no playable songs. Used when no AlarmKit backup alarm is
+    /// present - if a backup alarm exists it must be left ringing instead.
+    func startDefaultSound(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
+        let armingKey = "\(alarm.id.uuidString.prefix(8))|\(occurrence.occurrenceKey)"
+        guard !isArmedForOccurrence.contains(armingKey) else { return }
+        isArmedForOccurrence.insert(armingKey)
+
+        currentAlarmID = alarm.id
+        currentAlarm = alarm
+        currentOccurrence = occurrence
+        currentPlaylistID = nil
+        currentLoudness = alarm.loudness
+        currentTrackIndex = -1
+        recordedTrackIndices.removeAll()
+        coordinator = AlarmCoordinator.sharedInstance
+
+        currentVibrate = alarm.vibrate
+        currentFadeInEnabled = alarm.fadeInEnabled
+        currentFadeInSeconds = alarm.fadeInSeconds
+        currentSilenceAfterMinutes = alarm.silenceAfterMinutes
+        currentLoopSound = alarm.loopSound
+
+        SmartWakeDebugLog.log("PLAYBACK: default-sound fallback for \(occurrence.occurrenceKey)")
+        playDefaultAlarmSound()
+    }
+
     /// Play the default alarm sound as fallback
     private func playDefaultAlarmSound() {
         guard let defaultURL = SoundPreviewService.bundledSoundURL(for: "bright.wav") else {

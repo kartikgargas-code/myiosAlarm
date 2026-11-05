@@ -1295,10 +1295,8 @@ final class SmartWakeService {
                             SmartWakeDebugLog.log("TAKEOVER FALLBACK: backup alarm present (alerting=\(backupAlarmAlerting) scheduled=\(backupAlarmScheduled)), leaving it ringing")
                         } else {
                             SmartWakeDebugLog.log("TAKEOVER FALLBACK: no backup alarm, playing default sound in-app")
-                            // Play default alarm sound in-app
-                            AlarmPlaybackService.shared.start(
-                                playlistID: UUID(), // dummy ID, will play default
-                                loudness: alarm.loudness,
+                            // Play default alarm sound in-app (no playlist involved)
+                            AlarmPlaybackService.shared.startDefaultSound(
                                 alarm: alarm,
                                 occurrence: occurrence
                             )

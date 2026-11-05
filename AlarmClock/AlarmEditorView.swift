@@ -27,6 +27,7 @@ struct AlarmEditorView: View {
     @State private var loopSound: Bool = true
     @State private var showingSoundPicker = false
     @State private var isSaving = false
+    @State private var showingEmptyPlaylistAlert = false
     @State private var draftID = UUID()
     // Capture the alarm ID at init so a nil existingAlarm at save time
     // can never silently create a second alarm.
@@ -108,6 +109,11 @@ struct AlarmEditorView: View {
         .sheet(isPresented: $showingSoundPicker) {
             SoundPickerView(selectedSound: $selectedSound, alarms: alarms, coordinator: coordinator)
         }
+        .alert("This playlist has no songs", isPresented: $showingEmptyPlaylistAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Pick at least one song, or choose a different sound, before saving.")
+        }
         .onChange(of: selectedLoudness) { _, newValue in
             // Start preview when loudness changes via wheel picker
             startLoudnessPreview()
@@ -161,21 +167,29 @@ struct AlarmEditorView: View {
             RandomModeNextSongView(selectedSound: selectedSound)
             
             // Show warning if playlist is empty
-            if case .random(let playlistID) = selectedSound,
-               let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
-               playlist.selectedSoundIDs.isEmpty {
-                Text("Warning: This playlist has no songs selected. The alarm will not play any sound.")
-                    .font(.caption)
-                    .foregroundStyle(ThemeManager.shared.colors.destructive)
-            } else if case .precomposedPlaylist(let playlistID, _) = selectedSound,
-                       let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
-                       playlist.selectedSoundIDs.isEmpty {
-                Text("Warning: This playlist has no songs selected. The alarm will not play any sound.")
+            if selectedPlaylistIsEmpty {
+                Text("Warning: This playlist has no songs. The alarm will not play any sound.")
                     .font(.caption)
                     .foregroundStyle(ThemeManager.shared.colors.destructive)
             }
         }
     }
+    /// True when the selected sound is a playlist with no playable songs.
+    /// Looks the playlist up directly (playlist(for:) throws for empty playlists)
+    /// so an existing alarm pointing at an emptied playlist is still detected.
+    private var selectedPlaylistIsEmpty: Bool {
+        switch selectedSound {
+        case .random(let playlistID):
+            return SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })?
+                .selectedSoundIDs.isEmpty ?? false
+        case .precomposedPlaylist(let playlistID, _):
+            return SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })?
+                .selectedSoundIDs.isEmpty ?? false
+        default:
+            return false
+        }
+    }
+
     private var loudnessSection: some View {
         Section("Alarm Sound Loudness") {
             HStack {
@@ -430,21 +444,14 @@ struct AlarmEditorView: View {
     }
     private func saveAlarm() {
         guard !isSaving else { return }
-        
+
         // Check if selected sound is an empty playlist and block saving
-        if case .random(let playlistID) = selectedSound,
-           let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
-           playlist.selectedSoundIDs.isEmpty {
-            // Show error toast or alert - for now just don't save
+        if selectedPlaylistIsEmpty {
             SmartWakeDebugLog.log("EDITOR SAVE BLOCKED: empty playlist selected")
-            return
-        } else if case .precomposedPlaylist(let playlistID, _) = selectedSound,
-                   let playlist = try? SoundLibrary.shared.playlist(for: playlistID),
-                   playlist.selectedSoundIDs.isEmpty {
-            SmartWakeDebugLog.log("EDITOR SAVE BLOCKED: empty precomposed playlist selected")
+            showingEmptyPlaylistAlert = true
             return
         }
-        
+
         isSaving = true
         // Stable draft ID: a stray second tap updates the same draft
         // instead of inserting a second alarm.

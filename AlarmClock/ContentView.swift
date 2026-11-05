@@ -464,6 +464,14 @@ struct ContentView: View {
                 Text(alarm.repeatRule.displayName)
                     .font(.caption)
                     .foregroundStyle(colors.accent)
+
+                // Warn when the alarm points to a playlist with no songs -
+                // it would have nothing to play at fire time.
+                if alarmPointsToEmptyPlaylist(alarm) {
+                    Label("This playlist has no songs", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(ThemeManager.shared.colors.destructive)
+                }
                 
                 // Skipped or adjusted message
                 if let skipped = skippedOccurrence {
@@ -580,6 +588,22 @@ struct ContentView: View {
             let hours = totalSeconds / 3600
             let minutes = (totalSeconds % 3600) / 60
             return "\(hours)h \(minutes)m"
+        }
+    }
+
+    /// True when the alarm's sound is a playlist that currently has no songs -
+    /// either emptied or fully deselected. Looks the playlist up directly
+    /// (playlist(for:) throws for empty playlists) so the warning still shows.
+    private func alarmPointsToEmptyPlaylist(_ alarm: AlarmRecord) -> Bool {
+        switch alarm.sound {
+        case .random(let playlistID):
+            return SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })?
+                .selectedSoundIDs.isEmpty ?? false
+        case .precomposedPlaylist(let playlistID, _):
+            return SoundLibrary.shared.playlists.first(where: { $0.id == playlistID })?
+                .selectedSoundIDs.isEmpty ?? false
+        default:
+            return false
         }
     }
 

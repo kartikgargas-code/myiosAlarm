@@ -786,7 +786,8 @@ struct PlaylistEditorView: View {
         case .dateModified:
             return sounds.sorted { $0.fileName > $1.fileName } // fallback to filename for modified
         }
-    
+    }
+
     private var playlistNameSection: some View {
         Section("Playlist Name") {
             if isEditingName {
@@ -1006,7 +1007,6 @@ struct PlaylistEditorView: View {
                 MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
             }
     }
-}
 }
 
 struct MySoundsPickerView: View {
