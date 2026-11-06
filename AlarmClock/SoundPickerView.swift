@@ -643,6 +643,7 @@ struct PlaylistEditorView: View {
     @State private var playlistName: String = ""
     @State private var isEditingName = false
     @FocusState private var isPlaylistNameFocused: Bool
+    @State private var showingDeleteConfirmation = false
     
     // For adding songs
     @State private var showingDocumentPicker = false
@@ -998,27 +999,46 @@ struct PlaylistEditorView: View {
                 MySoundsPickerView(playlist: playlist, selectedSoundIDs: $selectedSoundIDs)
             }
             .safeAreaInset(edge: .bottom) {
-                BottomActionsBar(
-                    leadingActions: [
-                        .icon("Cancel", systemImage: "xmark") {
-                            selectedSoundIDs = initialSelectedSoundIDs
-                            dismiss()
-                        }
-                    ],
-                    trailingActions: [
-                        .icon("Save", systemImage: "checkmark") {
-                            commitPlaylistName()
-                            let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id }) ?? playlist
-                            var updatedPlaylist = currentPlaylist
-                            updatedPlaylist.selectedSoundIDs = currentPlaylist.soundIDs.filter(selectedSoundIDs.contains)
-                            updatedPlaylist.sortOption = sortOption
-                            updatedPlaylist.playOrder = playOrder
-                            SoundLibrary.shared.updatePlaylist(updatedPlaylist)
-                            dismiss()
-                        }
-                    ]
-                )
+                VStack(spacing: 0) {
+                    Button("Delete playlist", role: .destructive) {
+                        SmartWakeDebugLog.log("PLAYLIST DELETE tapped source=editor")
+                        showingDeleteConfirmation = true
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+
+                    BottomActionsBar(
+                        leadingActions: [
+                            .icon("Cancel", systemImage: "xmark") {
+                                selectedSoundIDs = initialSelectedSoundIDs
+                                dismiss()
+                            }
+                        ],
+                        trailingActions: [
+                            .icon("Save", systemImage: "checkmark") {
+                                commitPlaylistName()
+                                let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id }) ?? playlist
+                                var updatedPlaylist = currentPlaylist
+                                updatedPlaylist.selectedSoundIDs = currentPlaylist.soundIDs.filter(selectedSoundIDs.contains)
+                                updatedPlaylist.sortOption = sortOption
+                                updatedPlaylist.playOrder = playOrder
+                                SoundLibrary.shared.updatePlaylist(updatedPlaylist)
+                                dismiss()
+                            }
+                        ]
+                    )
+                }
             }
+        }
+        .confirmationDialog("Delete playlist \"\(playlist.name)\"?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Delete Playlist", role: .destructive) {
+                _ = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: alarms)
+                SmartWakeDebugLog.log("PLAYLIST DELETE done")
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Removes this playlist. Its songs and any alarms that use it stay unchanged.")
         }
         .dynamicTypeSize(ThemeManager.shared.interfaceTextSize)
         // Exactly ONE fileImporter in this view, on the OUTERMOST view. It is

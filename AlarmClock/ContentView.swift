@@ -913,15 +913,18 @@ struct SoundsView: View {
                 isPresented: Binding(get: { playlistToDelete != nil }, set: { if !$0 { playlistToDelete = nil } }),
                 titleVisibility: .visible) {
                 Button("Delete Playlist", role: .destructive) {
-                    if let playlist = playlistToDelete,
-                       let error = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: coordinator.alarms) {
-                        playlistDeleteError = error.localizedDescription
+                    if let playlist = playlistToDelete {
+                        if let error = SoundLibrary.shared.deletePlaylist(playlist, referencedBy: coordinator.alarms) {
+                            playlistDeleteError = error.localizedDescription
+                        } else {
+                            SmartWakeDebugLog.log("PLAYLIST DELETE done")
+                        }
                     }
                     playlistToDelete = nil
                 }
                 Button("Cancel", role: .cancel) { playlistToDelete = nil }
             } message: {
-                Text("Removes this playlist. An alarm that uses it has to be changed first.")
+                Text("Removes this playlist. Alarms that use it stay unchanged and show the empty-playlist warning.")
             }
             .alert("Unable to Delete Playlist", isPresented: Binding(
                 get: { playlistDeleteError != nil },
@@ -1292,7 +1295,10 @@ private func makeCreatorSheet() -> some View {
         let selectedCount = playlist.selectedSoundIDs.count
         let missingCount = playlist.missingSongs.count
         
-        return HStack(spacing: 12) {
+        return Button {
+            playlistToEdit = playlist
+        } label: {
+            HStack(spacing: 12) {
             // Icon tile: 28pt, 7pt corner radius, white SF Symbol
             Image(systemName: "music.note.list")
                 .font(.system(size: 16, weight: .semibold))
@@ -1319,13 +1325,19 @@ private func makeCreatorSheet() -> some View {
             }
             
             Spacer()
+            }
+            .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            playlistToEdit = playlist
-        }
+        .buttonStyle(.plain)
         .contextMenu {
             Button("Delete Playlist", role: .destructive) {
+                SmartWakeDebugLog.log("PLAYLIST DELETE tapped source=menu")
+                playlistToDelete = playlist
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Delete", role: .destructive) {
+                SmartWakeDebugLog.log("PLAYLIST DELETE tapped source=swipe")
                 playlistToDelete = playlist
             }
         }

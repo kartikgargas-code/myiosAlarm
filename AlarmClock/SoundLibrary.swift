@@ -863,19 +863,7 @@ final class SoundLibrary {
     }
 
     func deletePlaylist(_ playlist: Playlist, referencedBy alarms: [AlarmRecord]) -> SoundLibraryError? {
-        let referencingAlarms = alarms.filter { alarm in
-            switch alarm.sound {
-            case .random(let playlistID), .precomposedPlaylist(let playlistID, _):
-                return playlistID == playlist.id
-            default:
-                return false
-            }
-        }
-
-        if !referencingAlarms.isEmpty {
-            return SoundLibraryError.importFailed("Playlist is used by \(referencingAlarms.count) alarm(s). Remove or change those alarms first.")
-        }
-
+        _ = alarms
         AudioProcessingService.shared.removePrecomposedPlaylist(for: playlist.id)
         playlists.removeAll { $0.id == playlist.id }
         savePlaylists()
