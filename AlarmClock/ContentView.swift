@@ -1319,15 +1319,6 @@ private func makeCreatorSheet() -> some View {
             }
             
             Spacer()
-            
-            Button {
-                playlistToEdit = playlist
-            } label: {
-                Image(systemName: "pencil")
-                    .foregroundStyle(colors.accent)
-                    .font(.title3)
-            }
-            .buttonStyle(.plain)
         }
         .contentShape(Rectangle())
         .onTapGesture {
