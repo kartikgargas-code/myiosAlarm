@@ -630,7 +630,10 @@ struct PlaylistCreatorView: View {
 
 struct PlaylistEditorView: View {
     @Environment(\.dismiss) private var dismiss
-    let playlist: Playlist
+    private let initialPlaylist: Playlist
+    private var playlist: Playlist {
+        SoundLibrary.shared.playlists.first(where: { $0.id == initialPlaylist.id }) ?? initialPlaylist
+    }
     let alarms: [AlarmRecord]
     let coordinator: AlarmCoordinator
     @State private var selectedSoundIDs: Set<UUID>
@@ -649,7 +652,7 @@ struct PlaylistEditorView: View {
     private let previewService = SoundPreviewService.shared
 
     init(playlist: Playlist, alarms: [AlarmRecord], coordinator: AlarmCoordinator) {
-        self.playlist = playlist
+        self.initialPlaylist = playlist
         self.alarms = alarms
         self.coordinator = coordinator
         let initial = Set(playlist.selectedSoundIDs)
@@ -670,6 +673,7 @@ struct PlaylistEditorView: View {
         guard !trimmed.isEmpty else { return }
         playlistName = trimmed
         SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
+        SmartWakeDebugLog.log("PLAYLIST EDIT renamed")
         isEditingName = false
     }
     
@@ -722,7 +726,7 @@ struct PlaylistEditorView: View {
         SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
         selectedSoundIDs = Set(updatedSelected)
         SoundLibrary.shared.reconnectMissingPlaylistEntries()
-        SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(added.count) source=\(pickerMode == .files ? "files" : "folder")")
+        SmartWakeDebugLog.log("PLAYLIST EDIT tracks added count=\(added.count) total=\(updatedSoundIDs.count)")
         await coordinator.synchronize()
     }
 
@@ -956,7 +960,7 @@ struct PlaylistEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(ThemeManager.shared.colors.background)
-            .navigationTitle("Edit Playlist")
+            .navigationTitle(playlist.name)
             .onDisappear { previewService.stop() }
             // "My sounds" gets its own sheet attached to the List (a different
             // view from the fileImporter) so the two never fight to present.
