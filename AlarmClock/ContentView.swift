@@ -738,6 +738,7 @@ struct SoundsView: View {
 
     private var visibleSounds: [ImportedSound] {
         sortedSounds.filter { sound in
+            sound.folder != "__playlist_only__" &&
             (folderFilter == nil || sound.folder == folderFilter) &&
             (searchText.isEmpty || sound.name.localizedCaseInsensitiveContains(searchText))
         }

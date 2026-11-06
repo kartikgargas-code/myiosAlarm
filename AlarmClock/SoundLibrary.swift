@@ -593,7 +593,7 @@ final class SoundLibrary {
         }
     }
 
-    func importMP3(from sourceURL: URL) async throws -> ImportedSound {
+    func importMP3(from sourceURL: URL, playlistOnly: Bool = false) async throws -> ImportedSound {
         // Start accessing the security-scoped resource
         let didStartAccess = sourceURL.startAccessingSecurityScopedResource()
         defer { if didStartAccess { sourceURL.stopAccessingSecurityScopedResource() } }
@@ -638,7 +638,7 @@ final class SoundLibrary {
             fileName: fileName,
             duration: duration,
             dateAdded: Date(),
-            folder: nil,
+            folder: playlistOnly ? "__playlist_only__" : nil,
             bookmark: bookmark
         )
         linkedRecords.insert(record, at: 0)
@@ -651,7 +651,7 @@ final class SoundLibrary {
             fileName: fileName,
             duration: duration,
             dateAdded: record.dateAdded,
-            folder: nil,
+            folder: playlistOnly ? "__playlist_only__" : nil,
             isLinked: true
         )
         importedSounds.insert(sound, at: 0)

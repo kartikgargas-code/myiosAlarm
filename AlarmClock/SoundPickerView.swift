@@ -699,13 +699,31 @@ struct PlaylistEditorView: View {
     }
 
     /// Import picked audio files as LINKED sounds (bookmarks to the original
-    /// files, not copies) and add them to THIS playlist. Reuses the Sounds
-    /// screen's per-file import (importMP3).
+    /// files, not copies) and add them only to THIS playlist.
+    private func existingSound(for url: URL) -> ImportedSound? {
+        SoundLibrary.shared.importedSounds.first { sound in
+            guard let existingURL = SoundLibrary.shared.resolvedURL(for: sound) else {
+                return sound.fileName.caseInsensitiveCompare(url.lastPathComponent) == .orderedSame
+            }
+            return existingURL.standardizedFileURL == url.standardizedFileURL
+                || sound.fileName.caseInsensitiveCompare(url.lastPathComponent) == .orderedSame
+        }
+    }
+
     private func addImportedFiles(_ urls: [URL]) async {
         var added: [UUID] = []
+        var reusedCount = 0
+        var newImportedCount = 0
         for url in urls {
             do {
-                let sound = try await SoundLibrary.shared.importMP3(from: url)
+                let sound: ImportedSound
+                if let existing = existingSound(for: url) {
+                    sound = existing
+                    reusedCount += 1
+                } else {
+                    sound = try await SoundLibrary.shared.importMP3(from: url, playlistOnly: true)
+                    newImportedCount += 1
+                }
                 added.append(sound.id)
             } catch {
                 importError = error.localizedDescription
@@ -726,6 +744,7 @@ struct PlaylistEditorView: View {
         SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
         selectedSoundIDs = Set(updatedSelected)
         SoundLibrary.shared.reconnectMissingPlaylistEntries()
+        SmartWakeDebugLog.log("ADD SONGS reused=\(reusedCount) newImported=\(newImportedCount)")
         SmartWakeDebugLog.log("PLAYLIST EDIT tracks added count=\(added.count) total=\(updatedSoundIDs.count)")
         await coordinator.synchronize()
     }
@@ -759,11 +778,10 @@ struct PlaylistEditorView: View {
                 var updatedSoundIDs = currentPlaylist?.soundIDs ?? []
                 var updatedSelected = currentPlaylist?.selectedSoundIDs ?? []
                 var addedCount = 0
+                var reusedCount = 0
                 for url in urls {
                     // Try to find the sound by resolving the bookmark
-                    if let sound = SoundLibrary.shared.importedSounds.first(where: { 
-                        SoundLibrary.shared.resolvedURL(for: $0) == url 
-                    }) {
+                    if let sound = existingSound(for: url) {
                         if !updatedSoundIDs.contains(sound.id) {
                             updatedSoundIDs.append(sound.id)
                         }
@@ -771,10 +789,12 @@ struct PlaylistEditorView: View {
                             updatedSelected.append(sound.id)
                         }
                         addedCount += 1
+                        reusedCount += 1
                     }
                 }
                 SoundLibrary.shared.updatePlaylist(playlist, newSoundIDs: updatedSoundIDs)
                 selectedSoundIDs = Set(updatedSelected)
+                SmartWakeDebugLog.log("ADD SONGS reused=\(reusedCount) newImported=0")
                 SmartWakeDebugLog.log("PLAYLIST add playlist=\(playlist.name) added=\(addedCount) source=library")
                 await coordinator.synchronize()
             }
