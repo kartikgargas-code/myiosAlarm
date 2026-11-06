@@ -11,6 +11,7 @@ final class AudioProcessingService {
 
     private let fileManager = FileManager.default
     private let processingQueue = DispatchQueue(label: "audio.processing", qos: .userInitiated)
+    private let invalidatedStitchFileNamesKey = "invalidatedStitchFileNames"
 
     /// Directory for storing processed audio files (gain-adjusted versions)
     var processedSoundsDirectory: URL? {
@@ -372,11 +373,34 @@ final class AudioProcessingService {
     /// passes those names in `keeping`. Per-sound processed variants
     /// (no "playlist_" or "cache_" prefix) are left alone (but are now unused
     /// for single-song alarms and will be cleaned up by removeProcessedSounds).
-    func pruneUnusedStitchFiles(keeping keepFileNames: Set<String>) -> (deleted: Int, freedBytes: Int64, kept: Int) {
+    func pruneUnusedStitchFiles(
+        keeping keepFileNames: Set<String>,
+        for alarms: [AlarmRecord]
+    ) -> (deleted: Int, freedBytes: Int64, kept: Int) {
         let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
         var deleted = 0
         var freedBytes: Int64 = 0
         var kept = 0
+        var requiredPlaylistKeys: [String: Set<String>] = [:]
+        var requiredImportedSoundPrefixes = Set<String>()
+        var invalidatedFileNames = Set(UserDefaults.standard.stringArray(forKey: invalidatedStitchFileNamesKey) ?? [])
+
+        for alarm in alarms {
+            switch alarm.sound {
+            case .imported(let soundID):
+                requiredImportedSoundPrefixes.insert("cache_\(soundID.uuidString.prefix(8))_")
+            case .random(let playlistID):
+                addRequiredPlaylistKeys(playlistID: playlistID, loudnessPercentages: [alarm.loudness.percentage], to: &requiredPlaylistKeys)
+            case .precomposedPlaylist(let playlistID, let soundLoudness):
+                addRequiredPlaylistKeys(
+                    playlistID: playlistID,
+                    loudnessPercentages: [alarm.loudness.percentage, soundLoudness.percentage],
+                    to: &requiredPlaylistKeys
+                )
+            case .systemDefault, .builtIn:
+                break
+            }
+        }
 
         for directory in directories {
             let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
@@ -389,7 +413,22 @@ final class AudioProcessingService {
                     && (file.pathExtension == "wav" || file.pathExtension == "caf")
                 let isCache = name.hasPrefix("cache_")
                 guard isStitch || isCache else { continue }
+                let requiredByExistingAlarm: Bool
+                if isStitch {
+                    requiredByExistingAlarm = requiredPlaylistKeys.contains { entry in
+                        name.hasPrefix(entry.key) && entry.value.contains { suffix in name.hasSuffix(suffix) }
+                    }
+                } else {
+                    requiredByExistingAlarm = requiredImportedSoundPrefixes.contains { name.hasPrefix($0) }
+                }
                 if keepFileNames.contains(name) {
+                    kept += 1
+                    continue
+                }
+                if invalidatedFileNames.contains(name) {
+                    // A playlist edit changed the key while an armed alarm still
+                    // needed its old file. Retire it once no current alarm uses it.
+                } else if requiredByExistingAlarm {
                     kept += 1
                     continue
                 }
@@ -404,6 +443,12 @@ final class AudioProcessingService {
             }
         }
 
+        let remainingFileNames = Set(directories.flatMap { directory in
+            (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))?.map(\.lastPathComponent) ?? []
+        })
+        invalidatedFileNames.formIntersection(remainingFileNames)
+        UserDefaults.standard.set(Array(invalidatedFileNames), forKey: invalidatedStitchFileNamesKey)
+
         let freedMB = Double(freedBytes) / (1_048_576.0)
         // Count playlist_* files remaining
         let playlistFiles: Int
@@ -414,10 +459,25 @@ final class AudioProcessingService {
         } else {
             playlistFiles = 0
         }
-        if deleted > 0 {
-            SmartWakeDebugLog.log(String(format: "CLEANUP removed %d files, freed %.1f MB", deleted, freedMB))
-        }
+        SmartWakeDebugLog.log(String(format: "CLEANUP removed %d files, freed %.1f MB", deleted, freedMB))
         return (deleted, freedBytes, kept)
+    }
+
+    private func addRequiredPlaylistKeys(
+        playlistID: UUID,
+        loudnessPercentages: [Int],
+        to requiredKeys: inout [String: Set<String>]
+    ) {
+        guard let playlist = try? SoundLibrary.shared.playlist(for: playlistID) else { return }
+        let playlistName = playlist.name.replacingOccurrences(of: " ", with: "_")
+        let prefix = "playlist_\(playlistName)_\(playlistID.uuidString.prefix(8))_"
+        let fileExtension = Self.useCAFFormat ? "caf" : "wav"
+        var suffixes = requiredKeys[prefix] ?? []
+        for loudness in Set(loudnessPercentages) {
+            suffixes.insert("_\(loudness)pct.\(fileExtension)")
+            suffixes.insert("_\(loudness)pct_cap\(Int(AlarmCoordinator.backupSoundCapSeconds)).\(fileExtension)")
+        }
+        requiredKeys[prefix] = suffixes
     }
 
     /// A cached stitch with ~zero duration (or size) is a header-only artifact,
@@ -523,10 +583,31 @@ final class AudioProcessingService {
         loudness: AlarmLoudness,
         songCount: Int = 5,
         alarmID: UUID? = nil,
+        maxDuration: TimeInterval? = nil,
+        forcedSelection: [UUID]? = nil,
+        protectedFileNames: Set<String> = []
+    ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {
+        let result = try await precomposePlaylistWithOutcome(
+            playlistID: playlistID,
+            loudness: loudness,
+            songCount: songCount,
+            alarmID: alarmID,
+            maxDuration: maxDuration,
+            forcedSelection: forcedSelection,
+            protectedFileNames: protectedFileNames
+        )
+        return (result.0, result.1, result.2)
+    }
+
+    func precomposePlaylistWithOutcome(
+        playlistID: UUID,
+        loudness: AlarmLoudness,
+        songCount: Int = 5,
+        alarmID: UUID? = nil,
         maxDuration: TimeInterval? = nil,  // Cap total duration (e.g., 120s for backup alarms)
         forcedSelection: [UUID]? = nil,  // Arming path passes a freshly rolled selection so each ring differs
         protectedFileNames: Set<String> = []  // Files the armed set still references - never deleted here
-    ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry) {
+    ) async throws -> (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry, Bool) {
         // Capture MainActor-isolated values before detaching
         let soundsDir = SoundLibrary.shared.soundsDirectory
         let processedDir = processedSoundsDirectory
@@ -615,7 +696,7 @@ final class AudioProcessingService {
                 appearsComplete: metadata != nil
             )
             SmartWakeDebugLog.log("PRECOMPOSE: sticky reuse for save path \(sticky.lastPathComponent) (no re-render)")
-            return (sticky, preparationEntry, generatedFileEntry)
+            return (sticky, preparationEntry, generatedFileEntry, false)
         }
         
         // If we get here, either forcedSelection was provided (arming path) or no sticky file found
@@ -705,7 +786,7 @@ final class AudioProcessingService {
                 appearsComplete: metadata.map { abs($0.duration - expectedTotalDuration) < 1.0 } ?? false
             )
             
-            return (precomposedURL, preparationEntry, generatedFileEntry)
+            return (precomposedURL, preparationEntry, generatedFileEntry, false)
         }
         
         // Concatenate songs into a single CAF/IMA4 by streaming each song's frames
@@ -970,7 +1051,7 @@ final class AudioProcessingService {
             }
         }
         
-        return (outputURL, preparationEntry, generatedFileEntry)
+        return (outputURL, preparationEntry, generatedFileEntry, true)
     }
     
     /// Find an existing precomposed file for this (playlist, loudness, cap)
@@ -1021,16 +1102,32 @@ final class AudioProcessingService {
     }
     
     func removePrecomposedPlaylist(for playlistID: UUID) {
-        guard let dir = processedSoundsDirectory else { return }
         let identifier = "_\(playlistID.uuidString.prefix(8))_"
-        let outputExtension = Self.useCAFFormat ? "caf" : "wav"
 
-        let files = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.lastPathComponent.hasPrefix("playlist_")
-            && file.lastPathComponent.contains(identifier)
-            && file.lastPathComponent.hasSuffix("pct.\(outputExtension)") {
-            try? fileManager.removeItem(at: file)
+        var invalidated = Set(UserDefaults.standard.stringArray(forKey: invalidatedStitchFileNamesKey) ?? [])
+        let protectedFileNames = AlarmCoordinator.sharedInstance?.lastArmedSoundFileNames ?? []
+        let directories = [processedSoundsDirectory, SoundLibrary.shared.soundsDirectory].compactMap { $0 }
+        for directory in directories {
+            let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            for file in files where file.lastPathComponent.hasPrefix("playlist_")
+                && file.lastPathComponent.contains(identifier)
+                && ["caf", "wav"].contains(file.pathExtension.lowercased())
+                && file.lastPathComponent.contains("pct") {
+                let name = file.lastPathComponent
+                if protectedFileNames.contains(name) {
+                    invalidated.insert(name)
+                    if let processedDirectory = processedSoundsDirectory,
+                       directory.standardizedFileURL == processedDirectory.standardizedFileURL {
+                        // AlarmKit reads the copy in Library/Sounds. Remove the
+                        // stale processed copy so the next lookup must rebuild it.
+                        try? fileManager.removeItem(at: file)
+                    }
+                } else {
+                    try? fileManager.removeItem(at: file)
+                }
+            }
         }
+        UserDefaults.standard.set(Array(invalidated), forKey: invalidatedStitchFileNamesKey)
     }
 }
 

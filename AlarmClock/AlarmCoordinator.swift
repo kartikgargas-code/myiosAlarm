@@ -523,11 +523,14 @@ final class AlarmCoordinator {
             // re-arm via synchronize) - one render per arming. Editor saves stay
             // sticky-cached and fast.
             let freshReasons: Set<String> = ["toggle", "skipNext", "undoSkip", "resetNext", "setNextTime", "adjust", "synchronize"]
-            let (desired, soundWarnings, armedSoundNames) = await desiredSystemAlarms(
+            let (desired, soundWarnings, armedSoundNames, stitchCacheCounts) = await desiredSystemAlarms(
                 from: candidate,
                 freshStitch: freshReasons.contains(reason),
                 protectedFileNames: lastArmedSoundFileNames
             )
+            if reason == "save" {
+                SmartWakeDebugLog.log("STITCH cache reused=\(stitchCacheCounts.reused) built=\(stitchCacheCounts.built)")
+            }
             if !soundWarnings.isEmpty {
                 lastWarnings = soundWarnings
                 os_log(.info, log: warningLog, "Sound resolution issues (alarm still saved, affected system alarms skipped): %{public}s", soundWarnings.joined(separator: " | "))
@@ -555,7 +558,10 @@ final class AlarmCoordinator {
             
             // After every reconcile, delete every cache sound file that no currently
             // scheduled alarm references, except a file being played right now.
-            let _ = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+            let _ = AudioProcessingService.shared.pruneUnusedStitchFiles(
+                keeping: lastArmedSoundFileNames,
+                for: candidate.snapshot.alarms
+            )
             // Clean up legacy loudness-adjusted single-song files (e.g., "song_85pct.wav")
             AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
             // Include play history in the snapshot
@@ -702,7 +708,7 @@ final class AlarmCoordinator {
         from engine: AlarmEngine,
         freshStitch: Bool = false,
         protectedFileNames: Set<String> = []
-    ) async -> ([DesiredSystemAlarm], [String], Set<String>) {
+    ) async -> ([DesiredSystemAlarm], [String], Set<String>, (reused: Int, built: Int)) {
         var mutableEngine = engine
         let now = now()
         // ARM ONLY THE NEXT OCCURRENCE per alarm (plus its -BACKUP if playlist + Smart Wake)
@@ -710,6 +716,8 @@ final class AlarmCoordinator {
         var results: [DesiredSystemAlarm] = []
         var warnings: [String] = []
         var armedSoundFileNames: Set<String> = []
+        var stitchCacheReused = 0
+        var stitchCacheBuilt = 0
         
         let smartWakeEnabled = SmartWakeService.shared.isSmartWakeEnabled
         let backupDelay = AlarmCoordinator.backupDelaySeconds
@@ -763,7 +771,7 @@ final class AlarmCoordinator {
                     // Only resolve (and for playlists, fully render) the primary
                     // stitch when the primary is actually armed. With Smart Wake on
                     // the primary is never armed, so skip the uncapped render.
-                    let resolvedAlarmKitSound: (sound: AlertConfiguration.AlertSound, fileName: String?)
+                    let resolvedAlarmKitSound: (sound: AlertConfiguration.AlertSound, fileName: String?, cacheBuilt: Bool?)
                     do {
                         resolvedAlarmKitSound = try await alarmKitSoundWithFileName(
                             for: soundToUse,
@@ -771,17 +779,20 @@ final class AlarmCoordinator {
                             forcedSelection: forcedSelection,
                             protectedFileNames: protectedFileNames
                         )
+                        if let cacheBuilt = resolvedAlarmKitSound.cacheBuilt {
+                            if cacheBuilt { stitchCacheBuilt += 1 } else { stitchCacheReused += 1 }
+                        }
                     } catch let err as AudioProcessingError {
                         // Playlist empty → fall back to classic-bell so the alarm still rings
                         SmartWakeDebugLog.log("DESIRED ALARMS: primary sound failed (\(err)), falling back to classic-bell")
-                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav")
+                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav", nil)
                         warnings.append("\(label): primary sound unavailable, using default")
                     } catch is SoundLibraryError {
                         // A restored alarm may keep an imported song that is not on the
                         // phone yet - ring the default tone for THIS occurrence only;
                         // the stored alarm keeps its .imported pick.
                         SmartWakeDebugLog.log("DESIRED ALARMS: imported song missing, falling back to classic-bell")
-                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav")
+                        resolvedAlarmKitSound = (.named("classic-bell.wav"), "classic-bell.wav", nil)
                         warnings.append("\(label): song not imported yet, using default")
                     }
                     let alarmKitSound = resolvedAlarmKitSound.sound
@@ -904,8 +915,9 @@ final class AlarmCoordinator {
                     
                     // Create short floor sound for backup (cap at backupSoundCapSeconds total duration)
                     let backupPrecomposedURL: URL
+                    var backupWasBuilt = false
                     do {
-                        let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylist(
+                        let backupPrecomposedTuple = try await AudioProcessingService.shared.precomposePlaylistWithOutcome(
                             playlistID: playlistID,
                             loudness: alarm.loudness,
                             songCount: 5,
@@ -914,6 +926,8 @@ final class AlarmCoordinator {
                             protectedFileNames: protectedFileNames
                         )
                         backupPrecomposedURL = backupPrecomposedTuple.0
+                        backupWasBuilt = backupPrecomposedTuple.3
+                        if backupWasBuilt { stitchCacheBuilt += 1 } else { stitchCacheReused += 1 }
                         
                         // Record diagnostics
                         playlistDiagnostics.addPreparation(backupPrecomposedTuple.1)
@@ -927,7 +941,8 @@ final class AlarmCoordinator {
                     }
                     
                     // Log the actual stitched file duration
-                    if !backupPrecomposedURL.path.isEmpty,
+                    if backupWasBuilt,
+                       !backupPrecomposedURL.path.isEmpty,
                        let backupMeta = AudioProcessingService.shared.audioMetadata(for: backupPrecomposedURL) {
                         SmartWakeDebugLog.log("ALARM KIT SOUND: stitched backup duration=\(String(format: "%.1f", backupMeta.duration))s")
                     }
@@ -1005,7 +1020,7 @@ final class AlarmCoordinator {
         let backupCount = results.filter { $0.occurrence.occurrenceKey.hasSuffix("-BACKUP") }.count
         SmartWakeDebugLog.log("DESIRED ALARMS SUMMARY: total=\(results.count) primary=\(primaryCount) backup=\(backupCount) userAlarms=\(nextOccurrences.count)")
         
-        return (results, warnings, armedSoundFileNames)
+        return (results, warnings, armedSoundFileNames, (stitchCacheReused, stitchCacheBuilt))
     }
     
     /// Add an emergency re-ring ID so it's excluded from reconciliation cancellation
@@ -1139,10 +1154,10 @@ final class AlarmCoordinator {
         loudness: AlarmLoudness = .hundred,
         forcedSelection: [UUID]? = nil,
         protectedFileNames: Set<String> = []
-    ) async throws -> (sound: AlertConfiguration.AlertSound, fileName: String?) {
+    ) async throws -> (sound: AlertConfiguration.AlertSound, fileName: String?, cacheBuilt: Bool?) {
         switch sound {
         case .systemDefault:
-            return (.default, nil)
+            return (.default, nil, nil)
         case .builtIn(let name):
             guard let fileName = AlarmSound.builtIn(name).systemFileName else {
                 throw SoundLibraryError.builtInSoundMissing(name)
@@ -1150,12 +1165,12 @@ final class AlarmCoordinator {
             guard SoundPreviewService.bundledSoundURL(for: fileName) != nil else {
                 throw SoundLibraryError.builtInSoundMissing(fileName)
             }
-            return (.named(fileName), fileName)
+            return (.named(fileName), fileName, nil)
         case .imported(let id):
             let fileName = try SoundLibrary.shared.alarmKitFileName(for: id)
             // Single-song alarm: use the capped cache file directly (raw, no gain).
             // Per-alarm loudness is NOT baked into system-played single songs.
-            return (.named(fileName), fileName)
+            return (.named(fileName), fileName, nil)
         case .random:
             // Random sound should have been resolved to precomposedPlaylist by the caller,
             // but if we get here, fall back to first song in playlist or built-in
@@ -1166,15 +1181,15 @@ final class AlarmCoordinator {
                let firstSoundID = playlist.selectedSoundIDs.first,
                let sound = SoundLibrary.shared.importedSounds.first(where: { $0.id == firstSoundID }),
                let fileName = try? SoundLibrary.shared.alarmKitFileName(for: firstSoundID) {
-                return (.named(fileName), fileName)
+                return (.named(fileName), fileName, nil)
             }
             // Ultimate fallback: built-in sound
-            return (.named("classic-bell.wav"), "classic-bell.wav")
+            return (.named("classic-bell.wav"), "classic-bell.wav", nil)
         case .precomposedPlaylist(let playlistID, let loudness):
             // Generate or get the precomposed playlist file
-            let precomposedResult: (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry)
+            let precomposedResult: (URL, PlaylistDiagnostics.PreparationEntry, PlaylistDiagnostics.GeneratedFileEntry, Bool)
             do {
-                precomposedResult = try await AudioProcessingService.shared.precomposePlaylist(
+                precomposedResult = try await AudioProcessingService.shared.precomposePlaylistWithOutcome(
                     playlistID: playlistID,
                     loudness: loudness,
                     songCount: 5,
@@ -1185,7 +1200,7 @@ final class AlarmCoordinator {
                 // Stitch failed - schedule retry and fall back to classic-bell
                 SmartWakeDebugLog.log("DESIRED ALARMS: primary sound failed (\(err)), falling back to classic-bell")
                 scheduleStitchRetry(for: playlistID)
-                return (.named("classic-bell.wav"), "classic-bell.wav")
+                return (.named("classic-bell.wav"), "classic-bell.wav", nil)
             }
             
             let (precomposedURL, preparationEntry, generatedFileEntry) = precomposedResult
@@ -1202,7 +1217,8 @@ final class AlarmCoordinator {
             let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
             
             // Log the actual precomposed file duration for comparison with iOS ~30s cap
-            if let precomposedMeta = AudioProcessingService.shared.audioMetadata(for: precomposedURL) {
+            let cacheBuilt = precomposedResult.3
+            if cacheBuilt, let precomposedMeta = AudioProcessingService.shared.audioMetadata(for: precomposedURL) {
                 SmartWakeDebugLog.log("ALARM KIT SOUND: primary precomposed duration=\(String(format: "%.1f", precomposedMeta.duration))s (iOS cap ~30s)")
             }
             
@@ -1228,7 +1244,7 @@ final class AlarmCoordinator {
             
             // Store for later update after scheduling
             // For now, we'll just return the sound
-            return (.named(processedFileName), processedFileName)
+            return (.named(processedFileName), processedFileName, cacheBuilt)
         }
     }
 
@@ -1640,7 +1656,10 @@ final class AlarmCoordinator {
     /// On-demand (Diagnostics button) / daily prune; keeps files referenced by
     /// armed alarms. Synchronous - the Diagnostics screen calls it directly.
     func pruneStitchCacheNow() {
-        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(
+            keeping: lastArmedSoundFileNames,
+            for: engine.snapshot.alarms
+        )
         // Clean up legacy loudness-adjusted single-song files
         AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
         let defaults = UserDefaults.standard
@@ -1653,7 +1672,10 @@ final class AlarmCoordinator {
     
     /// Returns the cleanup result (freed bytes, etc.) for UI feedback
     func pruneStitchCacheNowWithResult() -> (deleted: Int, freedBytes: Int64, kept: Int) {
-        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(keeping: lastArmedSoundFileNames)
+        let result = AudioProcessingService.shared.pruneUnusedStitchFiles(
+            keeping: lastArmedSoundFileNames,
+            for: engine.snapshot.alarms
+        )
         AudioProcessingService.shared.cleanupLegacyProcessedSingleSounds(referencedBy: lastArmedSoundFileNames)
         let defaults = UserDefaults.standard
         let pruneTime = now()
