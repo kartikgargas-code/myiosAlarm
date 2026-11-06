@@ -7,6 +7,8 @@ import os.log
 struct DiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
     let coordinator: AlarmCoordinator
+    @AppStorage(SmartWakeDebugLog.verboseLoggingDefaultsKey, store: SmartWakeDebugLog.verboseLoggingDefaults)
+    private var verboseLoggingEnabled = false
     
     @State private var logLines: [String] = []
     @State private var isLoading = false
@@ -45,6 +47,10 @@ struct DiagnosticsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                verboseLoggingSection
+
+                Divider()
+
                 // 0. Build Fingerprint (always at top)
                 buildFingerprintSection
                 
@@ -468,6 +474,10 @@ struct DiagnosticsView: View {
     }
     
     // MARK: - Helpers
+    private var verboseLoggingSection: some View {
+        Toggle("Verbose logging", isOn: $verboseLoggingEnabled)
+    }
+
     private func loadLog() {
         isLoading = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -551,7 +561,8 @@ struct DiagnosticsView: View {
             }
         }
         
-        let result = lines.suffix(SmartWakeDebugLog.copyMaxLines).joined(separator: "\n")
+        let verboseState = SmartWakeDebugLog.isVerboseLoggingEnabled ? "on" : "off"
+        let result = "verbose=\(verboseState)\n" + lines.suffix(SmartWakeDebugLog.copyMaxLines).joined(separator: "\n")
         UIPasteboard.general.string = result
     }
     

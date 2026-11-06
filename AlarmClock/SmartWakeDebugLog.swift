@@ -9,11 +9,34 @@ public enum SmartWakeDebugLog {
     static let fileName = "smart_wake_debug.log"
     static let maxLines = 5000
     static let copyMaxLines = 5000
+    public static let verboseLoggingDefaultsKey = "verboseLoggingEnabled"
+    private static let sharedDefaults: UserDefaults = {
+        if let groupID = AppGroupResolver.resolve(), let defaults = UserDefaults(suiteName: groupID) {
+            return defaults
+        }
+        return .standard
+    }()
+    public static var verboseLoggingDefaults: UserDefaults { sharedDefaults }
+    public static var isVerboseLoggingEnabled: Bool {
+        verboseLoggingDefaults.bool(forKey: verboseLoggingDefaultsKey)
+    }
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
     private static var hasLoggedInterruption = false
+    private static var lastWidgetMessage: String?
+    private static var lastWidgetMessageDate = Date.distantPast
 
     public static func log(_ message: String, force: Bool = false) {
+        let upperMessage = message.uppercased()
+        let isFailure = upperMessage.contains("FAILED") || upperMessage.contains("FAILURE")
+            || upperMessage.contains("ERROR") || upperMessage.contains("FATAL")
+            || upperMessage.contains("INVALID") || upperMessage.contains("MISSING")
+            || upperMessage.contains("UNAVAILABLE")
+
+        if !isVerboseLoggingEnabled && isVerboseOnlyMessage(message) && !isFailure {
+            return
+        }
+
         // Log diet: suppress verbose messages unless forced
         let suppressedPrefixes = [
             "FOREGROUND START attempt: declined",
@@ -30,17 +53,23 @@ public enum SmartWakeDebugLog {
             "PERF",
             "CACHE CLEANUP removed 0 files"
         ]
-        if !force && suppressedPrefixes.contains(where: message.hasPrefix) {
+        if !force && !isFailure && suppressedPrefixes.contains(where: message.hasPrefix) {
             return
         }
         
         // Suppress per-id RECONCILE CANCEL lines
-        if !force && message.contains("RECONCILE(") && message.contains("CANCEL:") && !message.contains("FAILED") {
+        if !force && !isFailure && message.contains("RECONCILE(") && message.contains("CANCEL:") && !message.contains("FAILED") {
             return
         }
         
         // Suppress RECONCILE CANCEL SUCCESS lines
-        if !force && message.contains("RECONCILE CANCEL SUCCESS") {
+        if !force && !isFailure && message.contains("RECONCILE CANCEL SUCCESS") {
+            return
+        }
+
+        // A restore is represented by its single completion record; keep any
+        // failure details, but omit intermediate success chatter.
+        if !isFailure && message.contains("RESTORE") && !message.hasPrefix("IMPORT DONE kind=restore") {
             return
         }
         
@@ -59,6 +88,14 @@ public enum SmartWakeDebugLog {
         let timestamp = formatter.string(from: Date())
         let line = "[\(timestamp)] \(message)"
         queue.async {
+            if message.hasPrefix("WIDGET ") {
+                let now = Date()
+                if message == lastWidgetMessage && now.timeIntervalSince(lastWidgetMessageDate) < 0.5 {
+                    return
+                }
+                lastWidgetMessage = message
+                lastWidgetMessageDate = now
+            }
             var lines: [String] = []
             var wrote = false
             for url in logURLs() {
@@ -89,6 +126,30 @@ public enum SmartWakeDebugLog {
             // Update in-memory buffer
             inMemoryBuffer = lines
         }
+    }
+
+    private static func isVerboseOnlyMessage(_ message: String) -> Bool {
+        let upper = message.uppercased()
+        if upper.hasPrefix("ALARM KIT SOUND")
+            || upper.hasPrefix("BATTERY RELOAD ASKED")
+            || upper.hasPrefix("ALARM LIST ORDER")
+            || upper.hasPrefix("TICK DELAY")
+            || upper.hasPrefix("ARMING DELAY")
+            || upper.hasPrefix("PREVIEW OK")
+            || upper.hasPrefix("EDITOR OPEN")
+            || upper.hasPrefix("SOUNDS SCREEN APPEARED") {
+            return true
+        }
+        if upper.hasPrefix("DESIRED ALARMS") {
+            return true
+        }
+        if upper.hasPrefix("RECONCILE(") && upper.contains("SCHEDULE=0") && upper.contains("CANCELLING=0") {
+            return true
+        }
+        return upper.hasPrefix("WIDGET ")
+            && (upper.contains("TIMELINE") || upper.contains("BATTERY"))
+            && !upper.contains("AUTH")
+            && !upper.contains("ACTION")
     }
     
     static func logSessionDump(_ message: String) {

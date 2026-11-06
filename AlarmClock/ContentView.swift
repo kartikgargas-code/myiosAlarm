@@ -971,8 +971,16 @@ struct SoundsView: View {
         case .success(let urls):
             if pickerMode == .files {
                 guard !urls.isEmpty else { return }
+                let importGroup = DispatchGroup()
                 for url in urls {
-                    Task { await importSound(from: url) }
+                    importGroup.enter()
+                    Task {
+                        await importSound(from: url, logCompletion: false)
+                        importGroup.leave()
+                    }
+                }
+                importGroup.notify(queue: .main) {
+                    SmartWakeDebugLog.log("IMPORT DONE kind=files songs=\(urls.count), rescheduling")
                 }
             } else {
                 // Folder mode
@@ -1408,14 +1416,17 @@ private func makeCreatorSheet() -> some View {
         return false
     }
     
-    func importSound(from url: URL) async {
+    func importSound(from url: URL, logCompletion: Bool = true) async {
         do {
             let _ = try await SoundLibrary.shared.importMP3(from: url)
             importError = nil
             let (reconnected, stillMissing) = SoundLibrary.shared.reconnectMissingPlaylistEntries()
-            SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1 reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
+            if logCompletion {
+                SmartWakeDebugLog.log("IMPORT DONE kind=files songs=1 reconnected=\(reconnected) stillMissing=\(stillMissing), rescheduling")
+            }
             await coordinator.synchronize()
         } catch {
+            SmartWakeDebugLog.log("IMPORT FAILED kind=files: \(error.localizedDescription)")
             importError = "Import failed: \(error.localizedDescription)"
         }
     }
