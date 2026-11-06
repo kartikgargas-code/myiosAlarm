@@ -642,6 +642,7 @@ struct PlaylistEditorView: View {
     @State private var playOrder: PlaylistPlayOrder
     @State private var playlistName: String = ""
     @State private var isEditingName = false
+    @FocusState private var isPlaylistNameFocused: Bool
     
     // For adding songs
     @State private var showingDocumentPicker = false
@@ -660,7 +661,8 @@ struct PlaylistEditorView: View {
         self._initialSelectedSoundIDs = State(initialValue: initial)
         self._sortOption = State(initialValue: playlist.sortOption)
         self._playOrder = State(initialValue: playlist.playOrder)
-        self._playlistName = State(initialValue: playlist.name)
+        let liveName = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id })?.name ?? playlist.name
+        self._playlistName = State(initialValue: liveName)
     }
 
     private var trimmedPlaylistName: String {
@@ -673,8 +675,9 @@ struct PlaylistEditorView: View {
         guard !trimmed.isEmpty else { return }
         playlistName = trimmed
         SoundLibrary.shared.updatePlaylist(playlist, newName: trimmed)
-        SmartWakeDebugLog.log("PLAYLIST EDIT renamed")
+        SmartWakeDebugLog.log("PLAYLIST EDIT renamed saved")
         isEditingName = false
+        isPlaylistNameFocused = false
     }
     
     private func handlePickedFiles(_ result: Result<[URL], Error>) {
@@ -824,6 +827,10 @@ struct PlaylistEditorView: View {
             if isEditingName {
                 HStack {
                     TextField("Name", text: $playlistName)
+                        .focused($isPlaylistNameFocused)
+                        .onChange(of: playlistName) { _, _ in
+                            SmartWakeDebugLog.log("PLAYLIST EDIT rename typed")
+                        }
                     Spacer()
                     Button {
                         commitPlaylistName()
@@ -844,7 +851,10 @@ struct PlaylistEditorView: View {
                         .foregroundStyle(ThemeManager.shared.colors.secondaryText)
                 }
                 .contentShape(Rectangle())
-                .onTapGesture { isEditingName = true }
+                .onTapGesture {
+                    isEditingName = true
+                    isPlaylistNameFocused = true
+                }
             }
         }
     }
@@ -997,6 +1007,7 @@ struct PlaylistEditorView: View {
                     ],
                     trailingActions: [
                         .icon("Save", systemImage: "checkmark") {
+                            commitPlaylistName()
                             let currentPlaylist = SoundLibrary.shared.playlists.first(where: { $0.id == playlist.id }) ?? playlist
                             var updatedPlaylist = currentPlaylist
                             updatedPlaylist.selectedSoundIDs = currentPlaylist.soundIDs.filter(selectedSoundIDs.contains)
