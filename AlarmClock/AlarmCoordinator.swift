@@ -1203,7 +1203,7 @@ final class AlarmCoordinator {
                 return (.named("classic-bell.wav"), "classic-bell.wav", nil)
             }
             
-            let (precomposedURL, preparationEntry, generatedFileEntry) = precomposedResult
+            let (precomposedURL, preparationEntry, generatedFileEntry, cacheBuilt) = precomposedResult
             
             // Record diagnostics
             playlistDiagnostics.addPreparation(preparationEntry)
@@ -1217,7 +1217,6 @@ final class AlarmCoordinator {
             let fileExistedAtScheduling = FileManager.default.fileExists(atPath: alarmKitURL.path)
             
             // Log the actual precomposed file duration for comparison with iOS ~30s cap
-            let cacheBuilt = precomposedResult.3
             if cacheBuilt, let precomposedMeta = AudioProcessingService.shared.audioMetadata(for: precomposedURL) {
                 SmartWakeDebugLog.log("ALARM KIT SOUND: primary precomposed duration=\(String(format: "%.1f", precomposedMeta.duration))s (iOS cap ~30s)")
             }
