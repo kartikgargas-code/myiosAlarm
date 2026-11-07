@@ -23,10 +23,16 @@ public enum SmartWakeDebugLog {
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
     private static var hasLoggedInterruption = false
+    private static var hasLoggedForegroundStartDeclined = false
     private static var lastWidgetMessage: String?
     private static var lastWidgetMessageDate = Date.distantPast
 
     public static func log(_ message: String, force: Bool = false) {
+        if message.hasPrefix("FOREGROUND START attempt: declined") {
+            guard !hasLoggedForegroundStartDeclined else { return }
+            hasLoggedForegroundStartDeclined = true
+        }
+
         let upperMessage = message.uppercased()
         let isFailure = upperMessage.contains("FAILED") || upperMessage.contains("FAILURE")
             || upperMessage.contains("ERROR") || upperMessage.contains("FATAL")
@@ -69,7 +75,8 @@ public enum SmartWakeDebugLog {
 
         // A restore is represented by its single completion record; keep any
         // failure details, but omit intermediate success chatter.
-        if !isFailure && message.contains("RESTORE") && !message.hasPrefix("IMPORT DONE kind=restore") {
+        if !isFailure && !isVerboseLoggingEnabled && message.contains("RESTORE")
+            && !message.hasPrefix("IMPORT DONE kind=restore") {
             return
         }
         
@@ -137,7 +144,19 @@ public enum SmartWakeDebugLog {
             || upper.hasPrefix("ARMING DELAY")
             || upper.hasPrefix("PREVIEW OK")
             || upper.hasPrefix("EDITOR OPEN")
-            || upper.hasPrefix("SOUNDS SCREEN APPEARED") {
+            || upper.hasPrefix("SOUNDS SCREEN APPEARED")
+            || upper.hasPrefix("WIDGET EXTENSION LAUNCHED")
+            || upper.hasPrefix("CONTROL CONFIG")
+            || (upper.hasPrefix("APPGROUP ") && upper.contains("CONFIGURED="))
+            || upper.hasPrefix("SMART WAKE DEFAULT APPLIED")
+            || upper.hasPrefix("SECONDS MORPH STYLE SET")
+            || upper.hasPrefix("AUDIO SESSION ACTIVE")
+            || upper.hasPrefix("START: KEEPING APP ALIVE")
+            || upper.hasPrefix("CACHE: CREATED CAPPED ALARM SOUND")
+            || upper.hasPrefix("PLAYLIST RESTORE") {
+            return true
+        }
+        if upper.hasPrefix("STITCH CACHE") && upper.contains("BUILT=0") {
             return true
         }
         if upper.hasPrefix("DESIRED ALARMS") {
