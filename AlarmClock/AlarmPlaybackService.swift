@@ -115,10 +115,9 @@ final class AlarmPlaybackService: NSObject {
         case .ended:
             let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt
             let optionsRawValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
-            logLockScreenAudioEvent(
-                "audio-interruption=ended reason=\(reasonValue.map { String($0) } ?? \"not-provided\") " +
-                "options=\(optionsRawValue.map { String($0) } ?? \"not-provided\")"
-            )
+            let reason = reasonValue.map { String($0) } ?? "not-provided"
+            let optionsText = optionsRawValue.map { String($0) } ?? "not-provided"
+            logLockScreenAudioEvent("audio-interruption=ended reason=\(reason) options=\(optionsText)")
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
