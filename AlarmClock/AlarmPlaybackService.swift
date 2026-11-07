@@ -41,6 +41,10 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
+    private var remoteCommandTargetNames = Set<String>()
+    private var lockScreenDiagnosticTask: Task<Void, Never>?
+    private var lockScreenDiagnosticStartedAt: Date?
+    private var lockScreenDiagnosticOccurrenceKey: String?
     // Track which track indices have been recorded for history in the current ring
     private var recordedTrackIndices: Set<Int> = []
     // Snapshot for snooze takeover: lets SmartWakeService restart the playlist
@@ -89,6 +93,12 @@ final class AlarmPlaybackService: NSObject {
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance()
+        )
     }
     
     @objc private func handleInterruption(_ notification: Notification) {
@@ -100,8 +110,15 @@ final class AlarmPlaybackService: NSObject {
         case .began:
             let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt ?? 0
             SmartWakeDebugLog.log("AVAUDIOSESSION INTERRUPTION began reason=\(reasonValue)")
+            logLockScreenAudioEvent("audio-interruption=began reason=\(reasonValue)")
             SmartWakeDebugLog.log("PLAYBACK INTERRUPTED")
         case .ended:
+            let reasonValue = userInfo[AVAudioSessionInterruptionReasonKey] as? UInt
+            let optionsRawValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
+            logLockScreenAudioEvent(
+                "audio-interruption=ended reason=\(reasonValue.map { String($0) } ?? \"not-provided\") " +
+                "options=\(optionsRawValue.map { String($0) } ?? \"not-provided\")"
+            )
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
@@ -113,6 +130,14 @@ final class AlarmPlaybackService: NSObject {
         @unknown default:
             break
         }
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+        let reason = rawReason
+            .flatMap { AVAudioSession.RouteChangeReason(rawValue: $0) }
+            .map { String(describing: $0) } ?? "not-provided"
+        logLockScreenAudioEvent("audio-route-change reason=\(reason)")
     }
 
     /// Start playback for the given alarm occurrence
@@ -591,6 +616,7 @@ final class AlarmPlaybackService: NSObject {
             
             // Setup remote command center
             setupRemoteCommands()
+            scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
             lastError = error.localizedDescription
@@ -693,6 +719,7 @@ final class AlarmPlaybackService: NSObject {
             publishNowPlayingInfo(for: ImportedSound(id: UUID(), name: "Default Alarm", fileName: "bright.wav", duration: nil, dateAdded: Date()), player: newPlayer, displayName: "Default Alarm")
             
             setupRemoteCommands()
+            scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
             lastError = error.localizedDescription
@@ -742,6 +769,7 @@ final class AlarmPlaybackService: NSObject {
         }
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        MPNowPlayingInfoCenter.default().playbackState = .playing
         os_log(.info, log: log, "Published Now Playing info for: %{public}s", displayName)
     }
 
@@ -774,6 +802,123 @@ final class AlarmPlaybackService: NSObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
+    private func scheduleLockScreenDiagnosticsIfNeeded() {
+        guard let occurrence = currentOccurrence else { return }
+        let occurrenceKey = "\(currentAlarmID?.uuidString ?? "unknown")|\(occurrence.occurrenceKey)"
+        guard lockScreenDiagnosticOccurrenceKey != occurrenceKey else { return }
+
+        lockScreenDiagnosticTask?.cancel()
+        lockScreenDiagnosticOccurrenceKey = occurrenceKey
+        lockScreenDiagnosticStartedAt = Date()
+
+        lockScreenDiagnosticTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let checkpoints: [(offset: UInt64, wait: UInt64)] = [(0, 0), (3, 3), (15, 12), (60, 45)]
+            for checkpoint in checkpoints {
+                if checkpoint.wait > 0 {
+                    do {
+                        try await Task.sleep(nanoseconds: checkpoint.wait * 1_000_000_000)
+                    } catch {
+                        return
+                    }
+                }
+                guard !Task.isCancelled else { return }
+                if checkpoint.offset == 3,
+                   let reason = self.lockScreenRepublishReason() {
+                    self.republishLockScreenControls(reason: reason)
+                }
+                self.logLockScreenCheck(checkpoint: checkpoint.offset)
+            }
+        }
+    }
+
+    private func lockScreenRepublishReason() -> String? {
+        let center = MPNowPlayingInfoCenter.default()
+        let commandCenter = MPRemoteCommandCenter.shared()
+        var reasons: [String] = []
+        if center.nowPlayingInfo == nil { reasons.append("nowPlayingInfo-nil") }
+        if !commandCenter.stopCommand.isEnabled { reasons.append("stop-command-disabled") }
+        return reasons.isEmpty ? nil : reasons.joined(separator: ",")
+    }
+
+    private func republishLockScreenControls(reason: String) {
+        SmartWakeDebugLog.log("LOCKSCREEN REPUBLISH reason=\(reason)")
+        guard let currentPlayer = player,
+              let trackName = currentTrackName else {
+            SmartWakeDebugLog.log("LOCKSCREEN REPUBLISH FAILED reason=current-track-unavailable")
+            return
+        }
+        let sound = SoundLibrary.shared.importedSounds.first(where: { $0.name == trackName })
+            ?? (trackName == "Default Alarm"
+                ? ImportedSound(id: currentAlarmID ?? UUID(), name: trackName, fileName: "bright.wav", duration: nil, dateAdded: Date())
+                : nil)
+        guard let sound else {
+            SmartWakeDebugLog.log("LOCKSCREEN REPUBLISH FAILED reason=current-track-unavailable")
+            return
+        }
+        publishNowPlayingInfo(for: sound, player: currentPlayer, displayName: displayName(for: trackName))
+        setupRemoteCommands()
+    }
+
+    private func logLockScreenCheck(checkpoint: UInt64) {
+        let center = MPNowPlayingInfoCenter.default()
+        let info = center.nowPlayingInfo
+        let title = info?[MPMediaItemPropertyTitle] as? String ?? "nil"
+        let commandCenter = MPRemoteCommandCenter.shared()
+        let commands = [
+            lockScreenCommandStatus("stop", command: commandCenter.stopCommand),
+            lockScreenCommandStatus("togglePlayPause", command: commandCenter.togglePlayPauseCommand),
+            lockScreenCommandStatus("play", command: commandCenter.playCommand),
+            lockScreenCommandStatus("pause", command: commandCenter.pauseCommand),
+            lockScreenCommandStatus("previousTrack", command: commandCenter.previousTrackCommand),
+            lockScreenCommandStatus("nextTrack", command: commandCenter.nextTrackCommand),
+            lockScreenCommandStatus("changePlaybackPosition", command: commandCenter.changePlaybackPositionCommand),
+            lockScreenCommandStatus("skipForward", command: commandCenter.skipForwardCommand),
+            lockScreenCommandStatus("skipBackward", command: commandCenter.skipBackwardCommand),
+            lockScreenCommandStatus("changePlaybackRate", command: commandCenter.changePlaybackRateCommand)
+        ].joined(separator: ";")
+        let session = AVAudioSession.sharedInstance()
+        let mixWithOthers = session.categoryOptions.contains(.mixWithOthers) ? "yes" : "no"
+        let protectedData = UIApplication.shared.isProtectedDataAvailable
+        let locked = protectedData ? "no" : "yes"
+        let loopAge = SmartWakeDebugLog.silentLoopElapsedSeconds.map { String(format: "%.1f", $0) } ?? "unknown"
+        let wake = currentOccurrence?.occurrenceKey.hasSuffix("-BACKUP") == true ? "backup" : "playlist-first"
+        let elapsed = lockScreenDiagnosticStartedAt.map { String(format: "%.1f", Date().timeIntervalSince($0)) } ?? "unknown"
+        let playing = player.map { $0.isPlaying ? "yes" : "no" } ?? "nil"
+        let rate = player.map { String(format: "%.2f", $0.rate) } ?? "nil"
+        let scene: String
+        switch UIApplication.shared.applicationState {
+        case .active: scene = "active"
+        case .inactive: scene = "inactive"
+        case .background: scene = "background"
+        @unknown default: scene = "unknown"
+        }
+
+        SmartWakeDebugLog.log(
+            "LOCKSCREEN CHECK checkpoint=+\(checkpoint)s elapsed=+\(elapsed)s " +
+            "nowPlayingInfo=\(info == nil ? "nil" : "present") playbackState=\(String(describing: center.playbackState)) title=\"\(title)\" " +
+            "commands=[\(commands)] sessionCategory=\(session.category.rawValue) sessionMode=\(session.mode.rawValue) " +
+            "sessionOptions=\(session.categoryOptions.rawValue) mixWithOthers=\(mixWithOthers) " +
+            "isOtherAudioPlaying=\(session.isOtherAudioPlaying ? "yes" : "no") " +
+            "secondaryAudioShouldBeSilenced=\(session.secondaryAudioShouldBeSilencedHint ? "yes" : "no") " +
+            "playerIsPlaying=\(playing) playerRate=\(rate) scene=\(scene) protectedDataAvailable=\(protectedData ? "yes" : "no") " +
+            "phoneLocked=\(locked) silentLoopSeconds=\(loopAge) wake=\(wake)"
+        )
+    }
+
+    private func lockScreenCommandStatus(_ name: String, command: MPRemoteCommand) -> String {
+        let enabled = command.isEnabled ? "yes" : "no"
+        let hasTarget = remoteCommandTargetNames.contains(name) ? "yes" : "no"
+        return "\(name)(enabled=\(enabled),hasTarget=\(hasTarget))"
+    }
+
+    private func logLockScreenAudioEvent(_ event: String) {
+        guard let startedAt = lockScreenDiagnosticStartedAt else { return }
+        let elapsed = Date().timeIntervalSince(startedAt)
+        guard elapsed <= 60 else { return }
+        SmartWakeDebugLog.log("LOCKSCREEN CHECK event=\(event) elapsed=+\(String(format: "%.1f", elapsed))s")
+    }
+
     /// Setup remote command center for lock screen controls
     /// During alarm ringing: STOP (■) + PAUSE/PLAY (⏯) + SNOOZE (⏭) all enabled
     /// Pause trap code kept for internal use if pause ever re-enabled
@@ -782,46 +927,58 @@ final class AlarmPlaybackService: NSObject {
         
         // Real Stop button (■ = stop alarm) - ENABLED
         commandCenter.stopCommand.isEnabled = true
-        commandCenter.stopCommand.addTarget { [weak self] _ in
-            SmartWakeDebugLog.log("REMOTE COMMAND: stop (STOP) fired")
-            self?.handleStopCommand()
-            return .success
+        if remoteCommandTargetNames.insert("stop").inserted {
+            commandCenter.stopCommand.addTarget { [weak self] _ in
+                SmartWakeDebugLog.log("REMOTE COMMAND: stop (STOP) fired")
+                self?.handleStopCommand()
+                return .success
+            }
         }
         
         // Play/Pause toggle (⏯ = pause/resume) - ENABLED with pause trap
         commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            SmartWakeDebugLog.log("REMOTE COMMAND: togglePlayPause fired")
-            self?.togglePlayPause()
-            return .success
+        if remoteCommandTargetNames.insert("togglePlayPause").inserted {
+            commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+                SmartWakeDebugLog.log("REMOTE COMMAND: togglePlayPause fired")
+                self?.togglePlayPause()
+                return .success
+            }
         }
         
         commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.resumePlayback()
-            return .success
+        if remoteCommandTargetNames.insert("play").inserted {
+            commandCenter.playCommand.addTarget { [weak self] _ in
+                self?.resumePlayback()
+                return .success
+            }
         }
         
         commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.pausePlayback()
-            return .success
+        if remoteCommandTargetNames.insert("pause").inserted {
+            commandCenter.pauseCommand.addTarget { [weak self] _ in
+                self?.pausePlayback()
+                return .success
+            }
         }
         
         // Previous track = STOP alarm (■ = stop alarm) - ENABLED as alternate stop
         commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            SmartWakeDebugLog.log("REMOTE COMMAND: previousTrack (STOP) fired")
-            self?.handleStopCommand()
-            return .success
+        if remoteCommandTargetNames.insert("previousTrack").inserted {
+            commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+                SmartWakeDebugLog.log("REMOTE COMMAND: previousTrack (STOP) fired")
+                self?.handleStopCommand()
+                return .success
+            }
         }
         
         // Next track = SNOOZE (⏭ = snooze) - ENABLED
         commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            SmartWakeDebugLog.log("REMOTE COMMAND: nextTrack (SNOOZE) fired")
-            self?.handleSnoozeCommand()
-            return .success
+        if remoteCommandTargetNames.insert("nextTrack").inserted {
+            commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+                SmartWakeDebugLog.log("REMOTE COMMAND: nextTrack (SNOOZE) fired")
+                self?.handleSnoozeCommand()
+                return .success
+            }
         }
         
         // Disable seek and rate commands
@@ -841,6 +998,7 @@ final class AlarmPlaybackService: NSObject {
         commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.removeTarget(nil)
         commandCenter.stopCommand.removeTarget(nil)
+        remoteCommandTargetNames.removeAll()
         commandCenter.togglePlayPauseCommand.isEnabled = false
         commandCenter.playCommand.isEnabled = false
         commandCenter.pauseCommand.isEnabled = false

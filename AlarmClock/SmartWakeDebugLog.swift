@@ -26,8 +26,22 @@ public enum SmartWakeDebugLog {
     private static var hasLoggedForegroundStartDeclined = false
     private static var lastWidgetMessage: String?
     private static var lastWidgetMessageDate = Date.distantPast
+    private static let diagnosticStateLock = NSLock()
+    private static var silentLoopStartedAt: Date?
+    static var silentLoopElapsedSeconds: TimeInterval? {
+        diagnosticStateLock.lock()
+        defer { diagnosticStateLock.unlock() }
+        guard let silentLoopStartedAt else { return nil }
+        return Date().timeIntervalSince(silentLoopStartedAt)
+    }
 
     public static func log(_ message: String, force: Bool = false) {
+        if message.hasPrefix("SILENT LOOP started") {
+            diagnosticStateLock.lock()
+            silentLoopStartedAt = Date()
+            diagnosticStateLock.unlock()
+        }
+
         if message.hasPrefix("FOREGROUND START attempt: declined") {
             guard !hasLoggedForegroundStartDeclined else { return }
             hasLoggedForegroundStartDeclined = true
@@ -81,7 +95,8 @@ public enum SmartWakeDebugLog {
         }
         
         // Suppress duplicate interruption logs
-        if message.contains("INTERRUPTION") || message.contains("AVAUDIOSESSION INTERRUPTION") {
+        if !message.hasPrefix("LOCKSCREEN CHECK event=")
+            && (message.contains("INTERRUPTION") || message.contains("AVAUDIOSESSION INTERRUPTION")) {
             if hasLoggedInterruption {
                 return
             }
