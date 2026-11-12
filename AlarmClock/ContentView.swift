@@ -226,7 +226,7 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
-                    smartWakeService.noteAppWake(reasonGuess: "sceneActive")
+                    smartWakeService.appDidWake(reason: .sceneChange)
                     isAppInForeground = true
                     ContentView.isAppInForegroundStatic = true
                     // Cancel HEARTBEAT timer when returning to foreground

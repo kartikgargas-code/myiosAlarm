@@ -6,6 +6,24 @@ import AlarmKit
 import AlarmClockShared
 import UIKit
 
+enum SilentLoopWakeReason: String {
+    case interruptionEnded
+    case sceneChange
+    case chargingChange
+    case batteryChange
+    case loopDied
+
+    var logGuess: String {
+        switch self {
+        case .interruptionEnded: return "notification"
+        case .sceneChange: return "sceneActive"
+        case .chargingChange: return "charging"
+        case .batteryChange: return "battery"
+        case .loopDied: return "unknown"
+        }
+    }
+}
+
 /// Background audio session manager for "Smart Wake" feature
 /// Keeps a silent/near-silent loop running overnight so the app stays alive
 /// and can play the real song at alarm time with Now Playing info
@@ -41,6 +59,12 @@ final class SmartWakeService {
     private var lastSuccessfulTickAt = Date()
     private var batteryObserverTokens: [NSObjectProtocol] = []
     private var interruptionObserversRegistered = false
+    private var selfHealRetryTask: Task<Void, Never>?
+    private var selfHealStartInProgress = false
+    private var recoveryBlockedUntil = Date.distantPast
+    private var lastStartFailureCode = "unknown"
+    private var lastTickSawAlertingAlarm = false
+    private var lastTickSawInAppPlayback = false
     private let silentLoopSecondsByDayKey = "silentLoopSecondsByDay"
     
     // Alerting time tracking (for Diagnostics proxy)
@@ -119,13 +143,12 @@ final class SmartWakeService {
     }
     
     private var statusTickTask: Task<Void, Never>?
-    private var lastRestartAttempt = Date.distantPast
-    
     private func startStatusTick() {
         statusTickTask = Task { @MainActor in
             var lastLoopRunning = isRunning
             var lastScenePhase: UIApplication.State = .background
             var lastAlertingCount = 0
+            var lastPlaybackWasPlaying = AlarmPlaybackService.shared.isPlaying
             var lastSnoozeWatchPhase: String? = nil
             var lastSnoozeWatchLogAt = Date.distantPast
             var tickDelay: TimeInterval = 2
@@ -249,6 +272,7 @@ final class SmartWakeService {
                     }
 
                     let alertingCount = alerting.count
+                    lastTickSawAlertingAlarm = alertingCount > 0
                     if alertingCount > 0 && lastAlertingCount == 0 {
                         SmartWakeDebugLog.logWakeAfterGap(reasonGuess: "alerting")
                     }
@@ -261,6 +285,7 @@ final class SmartWakeService {
                             // Alerting started
                             alertingStartTime = Date()
                         } else if alertingCount == 0 && lastAlertingCount > 0 {
+                            recoveryBlockedUntil = Date().addingTimeInterval(10)
                             // Alerting ended - accumulate the duration
                             if let startTime = alertingStartTime {
                                 let duration = Date().timeIntervalSince(startTime)
@@ -324,6 +349,13 @@ final class SmartWakeService {
                 } catch {
                     // Ignore errors
                 }
+
+                let playbackIsPlaying = AlarmPlaybackService.shared.isPlaying
+                lastTickSawInAppPlayback = playbackIsPlaying
+                if lastPlaybackWasPlaying && !playbackIsPlaying {
+                    recoveryBlockedUntil = Date().addingTimeInterval(10)
+                }
+                lastPlaybackWasPlaying = playbackIsPlaying
                 
                 // Check if silent loop died
                 if lastLoopRunning && !isRunning {
@@ -443,12 +475,7 @@ final class SmartWakeService {
     }
     
     private func scheduleSilentLoopRestart() {
-        guard isSmartWakeEnabled else { return }
-        guard !AlarmPlaybackService.shared.isPlaying else { return }
-        guard Date().timeIntervalSince(lastRestartAttempt) > 10 else { return }
-        lastRestartAttempt = Date()
-        SmartWakeDebugLog.log("SILENT LOOP RESTART: attempting to restart the keep-alive loop")
-        Task { await startBackgroundAudio() }
+        scheduleSelfHeal(reason: .loopDied)
     }
     
     private func loadPreference() {
@@ -644,6 +671,7 @@ final class SmartWakeService {
     /// Start the silent background audio loop
     private func startBackgroundAudio() async {
         guard let url = silentLoopURL else {
+            lastStartFailureCode = "missing-url"
             os_log(.error, log: log, "Silent loop URL not set")
             SmartWakeDebugLog.log("START BACKGROUND: silentLoopURL is nil")
             return
@@ -654,9 +682,11 @@ final class SmartWakeService {
         while !fileManager.fileExists(atPath: url.path) && attempts < 10 {
             SmartWakeDebugLog.log("START BACKGROUND: waiting for silent loop file (attempt \(attempts+1)/10)")
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+            attempts += 1
         }
         
         guard fileManager.fileExists(atPath: url.path) else {
+            lastStartFailureCode = "file-not-ready"
             os_log(.error, log: log, "Silent loop file not ready after waiting")
             SmartWakeDebugLog.log("START BACKGROUND: silent loop file not ready after 5s wait â€” giving up")
             return
@@ -668,13 +698,23 @@ final class SmartWakeService {
             return
         }
 
+        if selfHealStartInProgress && !canSelfHeal() {
+            lastStartFailureCode = "blocked-by-alarm-or-playback"
+            return
+        }
+
         do {
             try await configureAudioSession()
+            if selfHealStartInProgress && !canSelfHeal() {
+                lastStartFailureCode = "blocked-by-alarm-or-playback"
+                return
+            }
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.numberOfLoops = -1 // Loop indefinitely
             newPlayer.volume = 0.02 // Near-silent (raised from 0.001 for reliability)
             newPlayer.prepareToPlay()
             guard newPlayer.play() else {
+                lastStartFailureCode = "play-returned-false"
                 os_log(.error, log: log, "Failed to start silent loop playback")
                 SmartWakeDebugLog.log("START BACKGROUND: play() returned false")
                 return
@@ -692,6 +732,7 @@ final class SmartWakeService {
             startTransitionArming()
         } catch {
             let nsError = error as NSError
+            lastStartFailureCode = String(nsError.code)
             let scenePhase = UIApplication.shared.applicationState
             let sceneDesc: String
             switch scenePhase {
@@ -719,6 +760,10 @@ final class SmartWakeService {
         case .background: sceneDesc = "background"
         @unknown default: sceneDesc = "unknown"
         }
+
+        if selfHealStartInProgress && !canSelfHeal() {
+            throw NSError(domain: "SmartWakeSelfHeal", code: -2, userInfo: nil)
+        }
         
         // Set category with .mixWithOthers to allow activation in background
         // This is required for Smart Wake to work when app is backgrounded
@@ -730,12 +775,18 @@ final class SmartWakeService {
         
         while attempt < 3 {
             attempt += 1
+            if selfHealStartInProgress && !canSelfHeal() {
+                throw NSError(domain: "SmartWakeSelfHeal", code: -2, userInfo: nil)
+            }
             do {
                 try session.setActive(true)
                 os_log(.info, log: log, "Audio session activated successfully (attempt %{public}d) scene=%{public}s", attempt, sceneDesc)
                 SmartWakeDebugLog.log("AUDIO SESSION active (attempt \(attempt)) scene=\(sceneDesc)")
                 return // Success
             } catch {
+                if selfHealStartInProgress && !canSelfHeal() {
+                    throw error
+                }
                 lastError = error
                 let nsError = error as NSError
                 SmartWakeDebugLog.log("ACTIVATION attempt \(attempt) failed: \(error.localizedDescription) (domain=\(nsError.domain) code=\(nsError.code)) scene=\(sceneDesc)")
@@ -868,14 +919,14 @@ final class SmartWakeService {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in self?.noteAppWake(reasonGuess: "battery") }
+            Task { @MainActor in self?.appDidWake(reason: .batteryChange) }
         })
         batteryObserverTokens.append(NotificationCenter.default.addObserver(
             forName: UIDevice.batteryStateDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in self?.noteAppWake(reasonGuess: "charging") }
+            Task { @MainActor in self?.appDidWake(reason: .chargingChange) }
         })
         NotificationCenter.default.addObserver(
             self,
@@ -907,8 +958,55 @@ final class SmartWakeService {
         SmartWakeDebugLog.log("AUDIO EVENT silenceSecondaryAudioHint type=\(typeDescription)")
     }
 
-    func noteAppWake(reasonGuess: String) {
-        SmartWakeDebugLog.logWakeAfterGap(reasonGuess: reasonGuess)
+    func appDidWake(reason: SilentLoopWakeReason) {
+        SmartWakeDebugLog.logWakeAfterGap(reasonGuess: reason.logGuess)
+        let alarmIsAlerting = (try? AlarmManager.shared.alarms.contains { $0.state == .alerting }) ?? true
+        if (lastTickSawAlertingAlarm && !alarmIsAlerting)
+            || (lastTickSawInAppPlayback && !AlarmPlaybackService.shared.isPlaying) {
+            recoveryBlockedUntil = Date().addingTimeInterval(10)
+        }
+        scheduleSelfHeal(reason: reason)
+    }
+
+    private func canSelfHeal() -> Bool {
+        guard isSmartWakeEnabled,
+              let coordinator,
+              coordinator.alarms.contains(where: { $0.isEnabled }),
+              !isRunning,
+              !AlarmPlaybackService.shared.isPlaying,
+              Date() >= recoveryBlockedUntil,
+              let kitAlarms = try? AlarmManager.shared.alarms else { return false }
+        return !kitAlarms.contains(where: { $0.state == .alerting })
+    }
+
+    private func scheduleSelfHeal(reason: SilentLoopWakeReason) {
+        guard selfHealRetryTask == nil else { return }
+        selfHealRetryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.selfHealStartInProgress = false
+                self.selfHealRetryTask = nil
+            }
+
+            let startedAt = Date()
+            var attempt = 0
+            while !Task.isCancelled && Date().timeIntervalSince(startedAt) < 60 {
+                guard !self.isRunning, self.canSelfHeal() else { return }
+                attempt += 1
+                self.lastStartFailureCode = "unknown"
+                self.selfHealStartInProgress = true
+                await self.startBackgroundAudio()
+                self.selfHealStartInProgress = false
+                if self.isRunning {
+                    SmartWakeDebugLog.log("LOOP SELF-HEAL attempt=\(attempt) reason=\(reason.rawValue) result=ok")
+                    return
+                }
+                SmartWakeDebugLog.log("LOOP SELF-HEAL attempt=\(attempt) reason=\(reason.rawValue) result=failed code=\(self.lastStartFailureCode)")
+                guard UIApplication.shared.applicationState == .background,
+                      Date().timeIntervalSince(startedAt) + 5 < 60 else { return }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
@@ -933,8 +1031,8 @@ final class SmartWakeService {
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             logInterruptionEnded(options: options)
+            appDidWake(reason: .interruptionEnded)
             SmartWakeDebugLog.log("AUDIO EVENT interruptionEnded shouldResume=\(options.contains(.shouldResume))")
-            noteAppWake(reasonGuess: "notification")
             if options.contains(.shouldResume) {
                 handleInterruptionEnded(shouldResume: true)
             } else {
