@@ -226,6 +226,7 @@ struct ContentView: View {
             }
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
+                    smartWakeService.noteAppWake(reasonGuess: "sceneActive")
                     isAppInForeground = true
                     ContentView.isAppInForegroundStatic = true
                     // Cancel HEARTBEAT timer when returning to foreground
@@ -263,11 +264,13 @@ struct ContentView: View {
                         let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
                         let thermal = ProcessInfo.processInfo.thermalState.rawValue
                         let loopRunning = SmartWakeService.shared.isRunning
+                        let playerIsPlaying = SmartWakeService.shared.silentPlayerIsPlaying
+                        let sessionActive = SmartWakeService.shared.audioSessionIsActive
                         let arming = SmartWakeService.shared.isArming
                         let widgetReloads = BatteryReporter.widgetReloadsSinceLaunch
                         let alarmCount = coordinator.alarms.filter { $0.isEnabled }.count
                         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-                        SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") alarms=\(alarmCount) build=\(build)")
+                        SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") playerIsPlaying=\(playerIsPlaying) sessionActive=\(sessionActive) alarms=\(alarmCount) build=\(build)")
                     }
                     heartbeatTimer = heartbeat
                     heartbeat.resume()

@@ -10,6 +10,7 @@ public enum SmartWakeDebugLog {
     static let maxLines = 5000
     static let copyMaxLines = 5000
     public static let verboseLoggingDefaultsKey = "verboseLoggingEnabled"
+    private static let lastLoggedAtDefaultsKey = "smartWakeLastLoggedAt"
     private static let sharedDefaults: UserDefaults = {
         if let groupID = AppGroupResolver.resolve(), let defaults = UserDefaults(suiteName: groupID) {
             return defaults
@@ -19,6 +20,13 @@ public enum SmartWakeDebugLog {
     public static var verboseLoggingDefaults: UserDefaults { sharedDefaults }
     public static var isVerboseLoggingEnabled: Bool {
         verboseLoggingDefaults.bool(forKey: verboseLoggingDefaultsKey)
+    }
+
+    public static func logWakeAfterGap(reasonGuess: String) {
+        guard let lastLoggedAt = sharedDefaults.object(forKey: lastLoggedAtDefaultsKey) as? TimeInterval else { return }
+        let gapSeconds = Date().timeIntervalSince1970 - lastLoggedAt
+        guard gapSeconds > 600 else { return }
+        log("WAKE REASON guess=\(reasonGuess) gapMin=\(Int(gapSeconds / 60))")
     }
     private static let queue = DispatchQueue(label: "com.example.alarmclock.smartwakelog")
     private static var inMemoryBuffer: [String] = []
@@ -95,7 +103,8 @@ public enum SmartWakeDebugLog {
         }
         
         // Suppress duplicate interruption logs
-        if !message.hasPrefix("LOCKSCREEN CHECK event=")
+        if !message.hasPrefix("AUDIO EVENT ")
+            && !message.hasPrefix("LOCKSCREEN CHECK event=")
             && (message.contains("INTERRUPTION") || message.contains("AVAUDIOSESSION INTERRUPTION")) {
             if hasLoggedInterruption {
                 return
@@ -104,6 +113,7 @@ public enum SmartWakeDebugLog {
         }
         
         // Format timestamp with local timezone offset, e.g., [2026-10-31 08:04:25 +05:30]
+        sharedDefaults.set(Date().timeIntervalSince1970, forKey: lastLoggedAtDefaultsKey)
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
         formatter.timeZone = TimeZone.current

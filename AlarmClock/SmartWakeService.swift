@@ -38,6 +38,9 @@ final class SmartWakeService {
     
     // Silent loop run time tracking
     private var silentLoopStartTime: Date?
+    private var lastSuccessfulTickAt = Date()
+    private var batteryObserverTokens: [NSObjectProtocol] = []
+    private var interruptionObserversRegistered = false
     private let silentLoopSecondsByDayKey = "silentLoopSecondsByDay"
     
     // Alerting time tracking (for Diagnostics proxy)
@@ -88,6 +91,9 @@ final class SmartWakeService {
     var isRunning: Bool {
         isSessionActive && player?.isPlaying == true
     }
+
+    var silentPlayerIsPlaying: Bool { player?.isPlaying == true }
+    var audioSessionIsActive: Bool { isSessionActive }
     
     /// True when the transition arming task is active (an occurrence is within ~10 minutes)
     var isArming: Bool {
@@ -127,6 +133,7 @@ final class SmartWakeService {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(tickDelay * 1_000_000_000))
                 guard !Task.isCancelled else { break }
+                lastSuccessfulTickAt = Date()
                 
                 // Check for any alerting AlarmKit alarm (system ring) - for banner visibility during system rings
                 do {
@@ -242,6 +249,9 @@ final class SmartWakeService {
                     }
 
                     let alertingCount = alerting.count
+                    if alertingCount > 0 && lastAlertingCount == 0 {
+                        SmartWakeDebugLog.logWakeAfterGap(reasonGuess: "alerting")
+                    }
                     if alertingCount != lastAlertingCount {
                         let scenePhase = UIApplication.shared.applicationState
                         SmartWakeDebugLog.log("SCENE -> \(scenePhaseString(scenePhase)) alerting=\(alertingCount)")
@@ -321,7 +331,7 @@ final class SmartWakeService {
                         SmartWakeDebugLog.log("SILENT LOOP STOPPED (intentional: takeover/snooze)")
                         intentionalStop = false
                     } else {
-                        SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false \(silentLoopDiagnostics())")
+                        SmartWakeDebugLog.log("SILENT LOOP DIED: wasRunning=true nowRunning=false lastSuccessfulTick=\(lastSuccessfulTickAt.formatted(date: .abbreviated, time: .standard)) \(silentLoopDiagnostics())")
                         // Log run time for DIED case
                         if let startTime = silentLoopStartTime {
                             logSilentLoopRunTime(reason: "DIED - silent loop died unexpectedly", startTime: startTime)
@@ -801,12 +811,12 @@ final class SmartWakeService {
     
     @MainActor private func logInterruptionEnded(options: AVAudioSession.InterruptionOptions) {
         os_log(.info, log: log, "Audio interruption ended, shouldResume: %{public}d", options.contains(.shouldResume) ? 1 : 0)
-        SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
     }
 
 
     @MainActor private func logRouteChange(reason: AVAudioSession.RouteChangeReason) {
         os_log(.info, log: log, "Audio route changed: %{public}d", reason.rawValue)
+        SmartWakeDebugLog.log("AUDIO EVENT routeChange reason=\(reason)")
     }
 
     @MainActor private func handleInterruptionEnded(shouldResume: Bool) {
@@ -833,12 +843,40 @@ final class SmartWakeService {
     }
 
     private func registerForInterruptions() {
+        guard !interruptionObserversRegistered else { return }
+        interruptionObserversRegistered = true
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleInterruption(_:)),
             name: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance()
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMediaServicesWereReset(_:)),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSilenceSecondaryAudioHint(_:)),
+            name: AVAudioSession.silenceSecondaryAudioHintNotification,
+            object: AVAudioSession.sharedInstance()
+        )
+        batteryObserverTokens.append(NotificationCenter.default.addObserver(
+            forName: UIDevice.batteryLevelDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in self?.noteAppWake(reasonGuess: "battery") }
+        })
+        batteryObserverTokens.append(NotificationCenter.default.addObserver(
+            forName: UIDevice.batteryStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in self?.noteAppWake(reasonGuess: "charging") }
+        })
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleRouteChange(_:)),
@@ -848,8 +886,29 @@ final class SmartWakeService {
     }
 
     private func unregisterForInterruptions() {
+        interruptionObserversRegistered = false
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.silenceSecondaryAudioHintNotification, object: nil)
+        for token in batteryObserverTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        batteryObserverTokens.removeAll()
+    }
+
+    @objc private func handleMediaServicesWereReset(_ notification: Notification) {
+        SmartWakeDebugLog.log("AUDIO EVENT mediaServicesWereReset")
+    }
+
+    @objc private func handleSilenceSecondaryAudioHint(_ notification: Notification) {
+        let type = notification.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt
+        let typeDescription = type.map { String($0) } ?? "unknown"
+        SmartWakeDebugLog.log("AUDIO EVENT silenceSecondaryAudioHint type=\(typeDescription)")
+    }
+
+    func noteAppWake(reasonGuess: String) {
+        SmartWakeDebugLog.logWakeAfterGap(reasonGuess: reasonGuess)
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
@@ -874,7 +933,8 @@ final class SmartWakeService {
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             logInterruptionEnded(options: options)
-            SmartWakeDebugLog.log("INTERRUPTION ended options=\(options.rawValue) shouldResume=\(options.contains(.shouldResume))")
+            SmartWakeDebugLog.log("AUDIO EVENT interruptionEnded shouldResume=\(options.contains(.shouldResume))")
+            noteAppWake(reasonGuess: "notification")
             if options.contains(.shouldResume) {
                 handleInterruptionEnded(shouldResume: true)
             } else {
