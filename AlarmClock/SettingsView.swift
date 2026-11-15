@@ -127,6 +127,7 @@ struct SettingsView: View {
     @State private var showingHistory = false
     @State private var showingSounds = false
     @State private var showingWidgetSettings = false
+    @State private var showingAbout = false
     @State private var exportURL: URL?
     @State private var showingImportPicker = false
     @State private var showingShareSheet = false
@@ -183,6 +184,13 @@ struct SettingsView: View {
                         title: "Widgets",
                         showChevron: true,
                         action: { showingWidgetSettings = true }
+                    )
+                    SettingsRow(
+                        icon: "info.circle",
+                        iconColor: .indigo,
+                        title: "About",
+                        showChevron: true,
+                        action: { showingAbout = true }
                     )
                 }
                 
@@ -326,6 +334,9 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingWidgetSettings) {
                 WidgetSettingsView()
+            }
+            .sheet(isPresented: $showingAbout) {
+                AboutView()
             }
             .fileImporter(isPresented: $showingImportPicker, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
                 switch result {
