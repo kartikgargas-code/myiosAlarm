@@ -11,7 +11,7 @@ struct AboutView: View {
             ]),
             ("Alarms", "clock.fill", .blue, [
                 "Create and edit alarms, turn them on or off, choose repeat days, and add a label.",
-                "Choose a sound or playlist, set loudness and fade-in, choose a snooze time, and skip the next alarm.",
+                "Choose a sound or playlist, set loudness and fade-in, choose a snooze time, change alarm time without changing actual time, and skip the next alarm.",
                 "You can also set vibration, how long sound plays, and whether it loops. The lock-screen Stop control ends the alarm."
             ]),
             ("Sounds", "music.note.list", .pink, [
@@ -30,12 +30,11 @@ struct AboutView: View {
             ]),
             ("Widgets and controls", "square.grid.2x2", .indigo, [
                 "The Lock Screen Next Alarm widget shows the next alarm and its time in inline, round, or rectangular styles. The Battery widget shows battery level on the Lock Screen or Home Screen; the round Memory widget shows memory in use on the Lock Screen.",
-                "Widget settings let you adjust battery and memory circles, text, and background plate, and show battery in the one-line alarm widget.",
                 "A Next Alarm Lock Screen control skips the next occurrence. Control Center buttons skip it or move it 10 minutes earlier or later.",
                 "The Next Alarm Live Activity shows the upcoming alarm and offers Skip or Undo, time adjustments, and Reset."
             ]),
             ("Play History", "clock.arrow.circlepath", .blue, [
-                "Songs that finish playing during alarms appear in Play History. Tap an entry to play it again.",
+                "Songs that finish playing during alarms appear in Play History.",
                 "You can clear history, and choose whether to delete its song files when clearing all entries."
             ]),
             ("Backup", "externaldrive", .green, [
