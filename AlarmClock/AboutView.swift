@@ -10,8 +10,7 @@ struct AboutView: View {
                 "A backup system alarm is scheduled so you are not left in silence if music does not start."
             ]),
             ("Alarms", "clock.fill", .blue, [
-                "Create and edit alarms, turn them on or off, choose repeat days, and add a label.",
-                "Choose a sound or playlist, set loudness and fade-in, choose a snooze time, change alarm time without changing actual time, and skip the next alarm.",
+                "Choose a sound or playlist, set loudness and fade-in, choose a snooze time, change alarm time without changing actual time and skip the next alarm.",
                 "You can also set vibration, how long sound plays, and whether it loops. The lock-screen Stop control ends the alarm."
             ]),
             ("Sounds", "music.note.list", .pink, [
@@ -49,8 +48,7 @@ struct AboutView: View {
                 "Long-press the plus button on the alarm list to switch between Compact and Extended layouts.",
                 "Sounds: long-press a song name to copy it. Swipe a song to delete it. Long-press a playlist for Delete Playlist; swipe it to delete it. The sort menu also has Delete All Tracks and folder delete actions.",
                 "In the alarm sound picker, long-press a playlist to edit its songs. In Appearance, long-press a saved theme to edit, duplicate, or delete it; swipe it to edit or delete it.",
-                "Play History: long-press a song name to copy it; swipe an entry to delete it. Deleting an entry can also delete its song file after confirmation.",
-                "Full-screen clock: long-press the clock to open Diagnostics and its troubleshooting logs. Tap the clock screen to bring back controls after they hide."
+                "Play History: long-press a song name to copy it; swipe an entry to delete it. Deleting an entry can also delete its song file after confirmation."
             ])
         ]
     }
