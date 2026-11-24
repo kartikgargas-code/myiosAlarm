@@ -79,6 +79,11 @@ final class AlarmPlaybackService: NSObject {
     private(set) var lastError: String?
     private var lastSessionDump: String = ""
 
+    // Lock-screen card hint. iOS draws the Previous / Next buttons and they cannot be
+    // relabelled, so the artist line carries the button mapping instead.
+    static let nowPlayingHintText = "Previous = Stop · Next = Snooze"
+    private var nowPlayingHintLoggedKey: String?
+
     private override init() {
         super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
@@ -742,11 +747,8 @@ final class AlarmPlaybackService: NSObject {
         let asset = AVURLAsset(url: player.url!)
         let metadata = asset.commonMetadata
         
-        // Artist
-        if let artistItem = metadata.first(where: { $0.commonKey == .commonKeyArtist }),
-           let artist = artistItem.stringValue {
-            nowPlayingInfo[MPMediaItemPropertyArtist] = artist
-        }
+        // Artist line: carries the button hint (the lock-screen card cannot be relabelled)
+        nowPlayingInfo[MPMediaItemPropertyArtist] = Self.nowPlayingHintText
         
         // Album
         if let albumItem = metadata.first(where: { $0.commonKey == .commonKeyAlbumName }),
@@ -767,6 +769,12 @@ final class AlarmPlaybackService: NSObject {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artwork.size) { _ in artwork }
         }
         
+        let hintKey = "\(currentAlarmID?.uuidString ?? "none")|\(currentOccurrence?.occurrenceKey ?? "none")"
+        if nowPlayingHintLoggedKey != hintKey {
+            nowPlayingHintLoggedKey = hintKey
+            SmartWakeDebugLog.log("NOWPLAYING hint set line=artist")
+        }
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         MPNowPlayingInfoCenter.default().playbackState = .playing
         os_log(.info, log: log, "Published Now Playing info for: %{public}s", displayName)
@@ -1403,6 +1411,7 @@ final class AlarmPlaybackService: NSObject {
         // Reset state
         isPlaying = false
         currentTrackName = nil
+        nowPlayingHintLoggedKey = nil
         currentPlaylistID = nil
         currentLoudness = nil
         currentAlarm = nil
