@@ -84,6 +84,11 @@ final class AlarmPlaybackService: NSObject {
     static let nowPlayingHintText = "Previous = Stop · Next = Snooze"
     private var nowPlayingHintLoggedKey: String?
 
+    // Ringing notification (Stop / Snooze from the notification itself)
+    static let ringingCategoryID = "ALARM_RINGING"
+    private var notifiedOccurrenceKey: String?
+    private var ringingNotificationIdentifier: String?
+
     private override init() {
         super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
@@ -518,10 +523,109 @@ final class AlarmPlaybackService: NSObject {
     }
     
     /// Remove stop notification when playback stops
-    func removeStopNotification(alarmID: UUID, occurrenceKey: String) {
+    func removeStopNotification(alarmID: UUID, occurrenceKey: String, reason: String = "stop") {
         let identifier = "ALARM_RINGING_\(alarmID.uuidString)_\(occurrenceKey)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+        SmartWakeDebugLog.log("NOTIFY ALARM removed reason=\(reason) id=\(identifier)")
+    }
+
+    /// Register the notification category that carries the Stop and Snooze buttons.
+    /// Idempotent: registering again just replaces the same category.
+    private func registerRingingNotificationCategory(snoozeMinutes: Int) {
+        let stopAction = UNNotificationAction(
+            identifier: "STOP_ALARM",
+            title: "Stop",
+            options: []
+        )
+        let snoozeAction = UNNotificationAction(
+            identifier: "SNOOZE_ALARM",
+            title: "Snooze \(snoozeMinutes) min",
+            options: []
+        )
+        let category = UNNotificationCategory(
+            identifier: Self.ringingCategoryID,
+            actions: [stopAction, snoozeAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// Post the ringing notification once per alarm occurrence, at the same point the
+    /// lock-screen controls are published. Silent, default interruption level, and no
+    /// new permission is requested: without authorization it is skipped.
+    private func postAlarmRingingNotificationIfNeeded() {
+        guard let alarm = currentAlarm, let occurrence = currentOccurrence else { return }
+        let key = "\(alarm.id.uuidString)|\(occurrence.occurrenceKey)"
+        guard notifiedOccurrenceKey != key else { return }
+        notifiedOccurrenceKey = key
+
+        registerRingingNotificationCategory(snoozeMinutes: alarm.snoozeDurationMinutes ?? 10)
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                self.addRingingNotification(alarm: alarm, occurrence: occurrence)
+            default:
+                SmartWakeDebugLog.log("NOTIFY ALARM skipped reason=not-authorized status=\(settings.authorizationStatus.rawValue)")
+            }
+        }
+    }
+
+    private func addRingingNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
+        let identifier = "ALARM_RINGING_\(alarm.id.uuidString)_\(occurrence.occurrenceKey)"
+        ringingNotificationIdentifier = identifier
+
+        let content = UNMutableNotificationContent()
+        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
+        content.body = "Hold for Stop or Snooze"
+        content.sound = nil
+        content.categoryIdentifier = Self.ringingCategoryID
+        content.interruptionLevel = .active
+        content.userInfo = [
+            "alarmID": alarm.id.uuidString,
+            "occurrenceKey": occurrence.occurrenceKey
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                SmartWakeDebugLog.log("NOTIFY ALARM post FAILED id=\(identifier) error=\(error.localizedDescription)")
+            } else {
+                SmartWakeDebugLog.log("NOTIFY ALARM posted id=\(identifier)")
+            }
+        }
+    }
+
+    /// True while this alarm is the one ringing.
+    func isRinging(alarmID: UUID) -> Bool {
+        isPlaying && currentAlarmID == alarmID
+    }
+
+    /// Stop from the notification: playback, and its backup alarm if still scheduled.
+    /// Does nothing when another alarm is ringing.
+    func stopRingingAlarmFromNotification(alarmID: UUID, occurrenceKey: String) {
+        guard isRinging(alarmID: alarmID) else {
+            SmartWakeDebugLog.log("NOTIFY ALARM stop ignored reason=not-ringing alarm=\(alarmID.uuidString.prefix(8)) occurrence=\(occurrenceKey)")
+            return
+        }
+
+        let backupID = pendingBackupAlarmID
+        pendingBackupAlarmID = nil
+        if let id = backupID {
+            Task {
+                try? await AlarmManager.shared.cancel(id: id)
+                SmartWakeDebugLog.log("NOTIFY ALARM stop: cancelled pending backup alarm \(id.uuidString)")
+            }
+        }
+
+        stop(reason: "notification-stop")
     }
 
     /// Play a track at the given index in selectedSoundIDs
@@ -620,6 +724,7 @@ final class AlarmPlaybackService: NSObject {
             
             // Setup remote command center
             setupRemoteCommands()
+            postAlarmRingingNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
@@ -723,6 +828,7 @@ final class AlarmPlaybackService: NSObject {
             publishNowPlayingInfo(for: ImportedSound(id: UUID(), name: "Default Alarm", fileName: "bright.wav", duration: nil, dateAdded: Date()), player: newPlayer, displayName: "Default Alarm")
             
             setupRemoteCommands()
+            postAlarmRingingNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
@@ -1390,8 +1496,14 @@ final class AlarmPlaybackService: NSObject {
         
         // Remove stop notification if we have alarm ID and occurrence key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
-            removeStopNotification(alarmID: alarmID, occurrenceKey: occurrenceKey)
+            removeStopNotification(alarmID: alarmID, occurrenceKey: occurrenceKey, reason: reason)
+        } else if let identifier = ringingNotificationIdentifier {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+            SmartWakeDebugLog.log("NOTIFY ALARM removed reason=\(reason) id=\(identifier)")
         }
+        notifiedOccurrenceKey = nil
+        ringingNotificationIdentifier = nil
         
         // Remove from armed occurrences set using composite key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {

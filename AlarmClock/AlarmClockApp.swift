@@ -92,18 +92,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let occurrenceKey = userInfo["occurrenceKey"] as? String ?? ""
         
         if let alarmID = UUID(uuidString: alarmIDString) {
-            if actionId == "STOP_ALARM" || actionId == UNNotificationDismissActionIdentifier {
-                // Stop action or notification dismissed
-                SmartWakeDebugLog.log("NOTIFICATION action: STOP alarmID=\(alarmIDString) occurrenceKey=\(occurrenceKey)")
+            if actionId == "STOP_ALARM" {
+                // Stop action: stops this ringing alarm only (playback + its backup alarm)
+                SmartWakeDebugLog.log("NOTIFY ALARM action=stop alarm=\(alarmIDString)")
                 Task { @MainActor in
-                    AlarmPlaybackService.shared.stop(reason: "notification-stop")
+                    AlarmPlaybackService.shared.stopRingingAlarmFromNotification(
+                        alarmID: alarmID,
+                        occurrenceKey: occurrenceKey
+                    )
                 }
             } else if actionId == "SNOOZE_ALARM" {
                 // Snooze action
-                SmartWakeDebugLog.log("NOTIFICATION action: SNOOZE alarmID=\(alarmIDString) occurrenceKey=\(occurrenceKey)")
+                SmartWakeDebugLog.log("NOTIFY ALARM action=snooze alarm=\(alarmIDString)")
                 Task { @MainActor in
                     await snoozeAlarm(alarmID: alarmID, occurrenceKey: occurrenceKey)
                 }
+            } else if actionId == UNNotificationDismissActionIdentifier {
+                // Swiping the notification away must never silence the alarm
+                SmartWakeDebugLog.log("NOTIFY ALARM action=dismissed alarm=\(alarmIDString)")
             }
         }
         
@@ -112,6 +118,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     @MainActor
     private func snoozeAlarm(alarmID: UUID, occurrenceKey: String) async {
+        // Snooze only the alarm that is actually ringing
+        guard AlarmPlaybackService.shared.isRinging(alarmID: alarmID) else {
+            SmartWakeDebugLog.log("NOTIFY ALARM snooze ignored reason=not-ringing alarm=\(alarmID.uuidString.prefix(8))")
+            return
+        }
+
         // Stop current playback
         AlarmPlaybackService.shared.stop(reason: "snooze")
         
