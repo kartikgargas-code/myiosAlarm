@@ -31,6 +31,22 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
     
+    @AppStorage("notificationIntroductionShown") private var notificationIntroductionShown = false
+    @State private var showNotificationIntroduction = false
+
+    private var alarmIsRinging: Bool {
+        alarmPlaybackService.isPlaying || currentRingSongName != nil || smartWakeService.alertingSongName != nil
+    }
+
+    private var canIntroduceNotifications: Bool {
+        guard scenePhase == .active, !alarmIsRinging else { return false }
+        if AlarmManager.shared.authorizationState == .authorized {
+            guard let alarms = try? AlarmManager.shared.alarms else { return false }
+            return !alarms.contains { $0.state == .alerting }
+        }
+        return true
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -293,6 +309,44 @@ struct ContentView: View {
             }
         }
         .tint(ThemeManager.shared.colors.accent)
+        .task(id: scenePhase) {
+            guard !notificationIntroductionShown, canIntroduceNotifications else { return }
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            guard !Task.isCancelled, !notificationIntroductionShown,
+                  settings.authorizationStatus == .notDetermined, canIntroduceNotifications else { return }
+            showNotificationIntroduction = true
+        }
+        .onChange(of: alarmIsRinging) { _, ringing in
+            if ringing { showNotificationIntroduction = false }
+        }
+        .fullScreenCover(isPresented: $showNotificationIntroduction) {
+            VStack(spacing: 24) {
+                Text("Allow notifications so alarms and reminders can reach you")
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Button {
+                    showNotificationIntroduction = false
+                    Task { @MainActor in
+                        let center = UNUserNotificationCenter.current()
+                        let settings = await center.notificationSettings()
+                        guard settings.authorizationStatus == .notDetermined, canIntroduceNotifications else { return }
+                        do {
+                            _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                        } catch {
+                            SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
+                        }
+                    }
+                } label: {
+                    Text("Allow").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                Button("Not now") { showNotificationIntroduction = false }
+                    .font(.subheadline)
+            }
+            .padding(32)
+            .onAppear { notificationIntroductionShown = true }
+        }
     }
     
     /// Check if an alarm is currently ringing and refresh the banner.

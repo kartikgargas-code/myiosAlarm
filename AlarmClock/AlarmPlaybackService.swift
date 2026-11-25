@@ -469,21 +469,11 @@ final class AlarmPlaybackService: NSObject {
         
         center.setNotificationCategories([category])
         
-        // Request authorization if not already determined
+        // Permission is requested from the first-launch screen only.
         center.getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
-                center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                    if let error = error {
-                        SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
-                    }
-                    SmartWakeDebugLog.log("STOP NOTIFICATION authorization: \(granted ? "granted" : "denied")")
-                    if granted {
-                        self.postStopNotification(alarm: alarm, occurrence: occurrence)
-                    } else {
-                        SmartWakeDebugLog.log("STOP NOTIFICATION denied")
-                    }
-                }
+                SmartWakeDebugLog.log("STOP NOTIFICATION permission not requested")
             case .authorized:
                 self.postStopNotification(alarm: alarm, occurrence: occurrence)
             case .denied, .provisional, .ephemeral:

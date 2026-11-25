@@ -27,14 +27,6 @@ struct AlarmClockApp: App {
         SmartWakeDebugLog.log("APPGROUP " + AppGroupResolver.describe(), force: true)
         SharedStorage.republish()
         
-        // Request notification authorization for Stop/Snooze actions on lock screen
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
-            }
-            SmartWakeDebugLog.log("NOTIFICATION authorization (app launch): \(granted ? "granted" : "denied")")
-        }
-
         let info = Bundle.main.infoDictionary
         let v = info?["CFBundleShortVersionString"] as? String ?? "?"
         let b = info?["CFBundleVersion"] as? String ?? "?"
