@@ -54,7 +54,23 @@ final class AlarmProofOfConceptModel {
         await requestAuthorization()
     }
 
+    private var authorizationRequestInFlight = false
+
+    func requestLaunchAuthorizationIfNeeded() async {
+        guard alarmManager.authorizationState == .notDetermined,
+              !defaults.bool(forKey: "alarmKitLaunchRequestAttempted") else { return }
+        defaults.set(true, forKey: "alarmKitLaunchRequestAttempted")
+        await requestAuthorization()
+    }
+
     func requestAuthorization() async {
+        let before = alarmManager.authorizationState
+        guard before == .notDetermined, !authorizationRequestInFlight else { return }
+        authorizationRequestInFlight = true
+        defer {
+            authorizationRequestInFlight = false
+            SmartWakeDebugLog.log("ALARMKIT AUTH state=\(before) result=\(alarmManager.authorizationState)")
+        }
         status = .requestingAuthorization
         record("Authorization request started")
 

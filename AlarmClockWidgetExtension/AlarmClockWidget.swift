@@ -1088,24 +1088,7 @@ private func queuePendingWidgetAction(_ action: String, reason: String) async th
     }
     SmartWakeDebugLog.log("WIDGET ACTION TARGET: \(reason) action=\(action) picked label=\"\(alarm.label)\" time=\(alarm.time) id=\(alarm.id.uuidString.prefix(8)) at \(occurrence.effectiveDate) (count=\(snapshot.alarms.count)\(orderSummary))")
 
-    // Authorization probe: the extension historically stayed notDetermined.
-    // Log the full state and the request result once per press so we learn
-    // whether an extension can ever obtain AlarmKit authorization. The queued
-    // action applies through the app regardless of this outcome.
-    let authState = AlarmManager.shared.authorizationState
-    if authState == .authorized {
-        SmartWakeDebugLog.log("WIDGET AUTH: authorized (no request needed) for \(reason)")
-    } else if authState == .notDetermined {
-        do {
-            let returned = try await AlarmManager.shared.requestAuthorization()
-            SmartWakeDebugLog.log("WIDGET AUTH REQUEST: returned=\(String(describing: returned)) state-after=\(String(describing: AlarmManager.shared.authorizationState))")
-        } catch {
-            SmartWakeDebugLog.log("WIDGET AUTH REQUEST FAILED: \(error.localizedDescription) (state=\(String(describing: authState)))")
-        }
-    } else {
-        SmartWakeDebugLog.log("WIDGET AUTH: state=\(String(describing: authState)) (not requesting) for \(reason)")
-    }
-
+    // The main app owns authorization. Queue the widget action regardless of its state.
     try service.writePendingAction(
         PendingWidgetAction(action: action, alarmID: alarm.id, requestedAt: Date())
     )

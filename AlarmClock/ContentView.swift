@@ -310,7 +310,9 @@ struct ContentView: View {
         }
         .tint(ThemeManager.shared.colors.accent)
         .task(id: scenePhase) {
-            guard !notificationIntroductionShown, canIntroduceNotifications else { return }
+            guard scenePhase == .active else { return }
+            await authorizationModel.requestLaunchAuthorizationIfNeeded()
+            guard !Task.isCancelled, !notificationIntroductionShown, canIntroduceNotifications else { return }
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             guard !Task.isCancelled, !notificationIntroductionShown,
                   settings.authorizationStatus == .notDetermined, canIntroduceNotifications else { return }
