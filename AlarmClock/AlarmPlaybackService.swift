@@ -724,7 +724,6 @@ final class AlarmPlaybackService: NSObject {
             
             // Setup remote command center
             setupRemoteCommands()
-            postAlarmRingingNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
@@ -828,7 +827,6 @@ final class AlarmPlaybackService: NSObject {
             publishNowPlayingInfo(for: ImportedSound(id: UUID(), name: "Default Alarm", fileName: "bright.wav", duration: nil, dateAdded: Date()), player: newPlayer, displayName: "Default Alarm")
             
             setupRemoteCommands()
-            postAlarmRingingNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
