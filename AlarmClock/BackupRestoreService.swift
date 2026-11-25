@@ -70,6 +70,7 @@ final class BackupRestoreService {
         var fullscreenClockScreenB: Double? = nil
         
         struct BackupSoundFile: Codable {
+            var id: UUID? = nil
             let fileName: String
             var name: String? = nil
             var folder: String? = nil
@@ -203,6 +204,7 @@ final class BackupRestoreService {
         var soundFiles: [BackupArchive.BackupSoundFile] = []
         for sound in soundLibrary.importedSounds {
             soundFiles.append(.init(
+                id: sound.id,
                 fileName: sound.fileName,
                 name: sound.name,
                 folder: sound.folder,
@@ -222,12 +224,14 @@ final class BackupRestoreService {
             durationOverrides: durations,
             sounds: soundFiles
         )
-        archive.playlists = soundLibrary.playlistsForBackup()
+        let playlists = soundLibrary.playlistsForBackup()
+        archive.playlists = playlists
         archive.activeThemeName = themeManager.currentTheme.rawValue
         archive.activeUserThemeID = themeManager.activeUserThemeID
         
-        // v3: also store playlists with missingSongs for reconnect after later import
-        let playlists = soundLibrary.playlistsForBackup()
+        for playlist in playlists {
+            SmartWakeDebugLog.log("BACKUP EXPORT playlist=\(playlist.name) songs=\(playlist.soundIDs.count + playlist.missingSongs.count)")
+        }
         archive.backupPlaylists = playlists
         archive.widgetSettings = exportWidgetSettings()
         archive.buttonSettings = exportButtonSettings()
@@ -376,14 +380,12 @@ final class BackupRestoreService {
         var reconnectedCount = 0
         var stillMissingCount = 0
         
-        if let backupPlaylists = archive.backupPlaylists {
-            // v3+: restore playlists with missingSongs field, keep missing as-is
-            (playlistRemap, reconnectedCount, stillMissingCount) = soundLibrary.restorePlaylistsFromBackupV3(backupPlaylists)
-        } else if let backedUpPlaylists = archive.playlists {
-            // v2: legacy restore (may drop missing entries)
-            playlistRemap = soundLibrary.restorePlaylistsFromBackup(backedUpPlaylists)
+        if let playlists = archive.backupPlaylists ?? archive.playlists {
+            (playlistRemap, reconnectedCount, stillMissingCount) = soundLibrary.restorePlaylists(
+                playlists, soundFiles: archive.sounds
+            )
         }
-        
+
         // Log reconnect stats
         if reconnectedCount > 0 || stillMissingCount > 0 {
             os_log(.info, log: log, "PLAYLIST RESTORE: reconnected=%d stillMissing=%d", reconnectedCount, stillMissingCount)

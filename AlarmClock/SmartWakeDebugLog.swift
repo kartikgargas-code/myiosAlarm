@@ -98,7 +98,7 @@ public enum SmartWakeDebugLog {
         // A restore is represented by its single completion record; keep any
         // failure details, but omit intermediate success chatter.
         if !isFailure && !isVerboseLoggingEnabled && message.contains("RESTORE")
-            && !message.hasPrefix("IMPORT DONE kind=restore") {
+            && !message.hasPrefix("RESTORE playlist=") && !message.hasPrefix("IMPORT DONE kind=restore") {
             return
         }
         

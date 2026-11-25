@@ -68,6 +68,8 @@ public enum PlaylistSortOption: String, Codable, CaseIterable, Identifiable {
     /// Kept so we can reconnect it after a later mp3-folder import.
     public struct MissingSong: Codable, Hashable {
         public let fileName: String
+        public var soundID: UUID? = nil
+        public var wasSelected: Bool? = nil
         public var folder: String? = nil
         public var duration: TimeInterval? = nil
         

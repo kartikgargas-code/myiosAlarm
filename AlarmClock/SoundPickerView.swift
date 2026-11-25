@@ -455,7 +455,7 @@ struct SoundPickerView: View {
         let randomSound = AlarmSound.random(playlist.id)
         let isSelected = selectedSound.id == randomSound.id
         let selectedCount = playlist.selectedSoundIDs.count
-        let totalCount = playlist.soundIDs.count
+        let totalCount = playlist.soundIDs.count + playlist.missingSongs.count
         let isPlayingThis = preview.playingSoundID == randomSound.id
         
         // Get first song preview URL for the play button
@@ -929,7 +929,13 @@ struct PlaylistEditorView: View {
     }
     
     private var songsSection: some View {
-        Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count) selected)") {
+        Section("Songs (\(selectedSoundIDs.count) of \(playlist.soundIDs.count + playlist.missingSongs.count) selected)") {
+            ForEach(playlist.missingSongs, id: \.self) { missing in
+                VStack(alignment: .leading) {
+                    Text(missing.fileName)
+                    Text("Needs re-import").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             ForEach(sortedSounds, id: \.id) { sound in
                 HStack {
                     // Preview: plays this song; only one at a time
