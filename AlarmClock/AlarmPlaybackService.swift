@@ -81,7 +81,7 @@ final class AlarmPlaybackService: NSObject {
 
     // Lock-screen card hint. iOS draws the Previous / Next buttons and they cannot be
     // relabelled, so the artist line carries the button mapping instead.
-    static let nowPlayingHintText = " Stop ⏹  Pause ⏯    Snooze 💤"
+    static let nowPlayingHintText = "Stop⏹Pause⏯Snooze💤"
     private var nowPlayingHintLoggedKey: String?
 
     // Ringing notification (Stop / Snooze from the notification itself)
