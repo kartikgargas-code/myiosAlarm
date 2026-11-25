@@ -15,7 +15,6 @@ struct AlarmEditorView: View {
     @State private var selectedTime: Date
     @State private var repeatRule: AlarmRepeatRule
     @State private var customDays: Set<Int>
-    @State private var oneTimeDate: Date
     @State private var selectedSound: AlarmSound
     @State private var selectedLoudness: AlarmLoudness
     @State private var snoozeDurationMinutes: Int
@@ -57,7 +56,7 @@ struct AlarmEditorView: View {
         let now = Date.now
         let nowComponents = calendar.dateComponents([.hour, .minute], from: now)
         let time = existingAlarm?.time ?? AlarmTime(hour: nowComponents.hour ?? 7, minute: nowComponents.minute ?? 0)
-        let selectedTime = calendar.date(from: DateComponents(hour: time.hour, minute: time.minute, second: time.second)) ?? .now
+        let selectedTime = calendar.date(bySettingHour: time.hour, minute: time.minute, second: time.second, of: now) ?? now
         _label = State(initialValue: existingAlarm?.label ?? "")
         _selectedTime = State(initialValue: selectedTime)
         _repeatRule = State(initialValue: existingAlarm?.repeatRule ?? .daily)
@@ -66,7 +65,6 @@ struct AlarmEditorView: View {
         } else {
             _customDays = State(initialValue: [])
         }
-        _oneTimeDate = State(initialValue: existingAlarm?.oneTimeDate ?? Date.now.addingTimeInterval(3_600))
         _selectedSound = State(initialValue: existingAlarm?.sound ?? .systemDefault)
         _selectedLoudness = State(initialValue: existingAlarm?.loudness ?? .defaultValue)
         _snoozeDurationMinutes = State(initialValue: existingAlarm?.snoozeDurationMinutes ?? 10)
@@ -139,7 +137,10 @@ struct AlarmEditorView: View {
             Text("Custom").tag(RepeatSelection.custom)
         }
         if repeatSelection.wrappedValue == .never {
-            DatePicker("Date", selection: $oneTimeDate, in: Date.now...)
+            DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+            if let next = AlarmScheduleCalculator().nextOneTimeDate(at: draftTime, after: .now) {
+                LabeledContent("Date", value: next.formatted(date: .abbreviated, time: .omitted))
+            }
         }
         if repeatSelection.wrappedValue == .custom {
             Section("Repeat Days") {
@@ -462,11 +463,15 @@ struct AlarmEditorView: View {
             dismiss()
         }
     }
-    private func makeAlarm() -> AlarmRecord {
+    private var draftTime: AlarmTime {
         let components = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute, .second], from: selectedTime)
-        let time = AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0, second: components.second ?? 0)
-        let date = repeatSelection.wrappedValue == .never ? resolvedOneTimeDate(time: time) : nil
-        
+        return AlarmTime(hour: components.hour ?? 0, minute: components.minute ?? 0, second: components.second ?? 0)
+    }
+
+    private func makeAlarm() -> AlarmRecord {
+        let time = draftTime
+        let date = resolvedRepeatRule == .never ? AlarmScheduleCalculator().nextOneTimeDate(at: time, after: .now) : nil
+
         // Diagnostic line to track what's happening
         let existingID = existingAlarm?.id.uuidString ?? "nil"
         SmartWakeDebugLog.log("EDITOR SAVE: existingAlarm=\(existingID) using=\(alarmID.uuidString)")
@@ -479,7 +484,7 @@ struct AlarmEditorView: View {
             oneTimeDate: date,
             isEnabled: true,
             adjustmentStepMinutes: 10,
-            overrides: existingAlarm?.overrides ?? [:],
+            overrides: resolvedRepeatRule == .never ? [:] : (existingAlarm?.overrides ?? [:]),
             sound: selectedSound,
             loudness: selectedLoudness,
             snoozeDurationMinutes: snoozeDurationMinutes,
@@ -510,14 +515,6 @@ struct AlarmEditorView: View {
                 repeatRule = .custom(customDays)
             }
         )
-    }
-
-    private func resolvedOneTimeDate(time: AlarmTime) -> Date {
-        var components = Calendar.autoupdatingCurrent.dateComponents([.year, .month, .day], from: oneTimeDate)
-        components.hour = time.hour
-        components.minute = time.minute
-        components.second = time.second
-        return Calendar.autoupdatingCurrent.date(from: components) ?? oneTimeDate
     }
 
     private func getNextRandomSound(for playlist: Playlist) -> UUID? {

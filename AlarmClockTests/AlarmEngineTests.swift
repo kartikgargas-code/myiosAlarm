@@ -12,6 +12,16 @@ final class AlarmEngineTests: XCTestCase {
         now = date(2026, 9, 21, 6, 0)
     }
 
+    func testOneTimeClockUsesNextOccurrenceAfterPreviousFire() {
+        let calculator = AlarmScheduleCalculator(calendar: calendar)
+        let morning = AlarmTime(hour: 7, minute: 0)
+        let today = date(2026, 9, 21, 7, 0)
+        let tomorrow = date(2026, 9, 22, 7, 0)
+        XCTAssertEqual(calculator.nextOneTimeDate(at: morning, after: today.addingTimeInterval(-1)), today)
+        XCTAssertEqual(calculator.nextOneTimeDate(at: morning, after: today), tomorrow)
+        XCTAssertEqual(calculator.nextOneTimeDate(at: morning, after: today.addingTimeInterval(1)), tomorrow)
+    }
+
     func testDailyPlusTenAdjustsOnlyNextOccurrence() throws {
         var engine = engineWithDailyAlarm()
         let id = try XCTUnwrap(engine.alarms.first?.id)

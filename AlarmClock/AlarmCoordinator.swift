@@ -167,6 +167,10 @@ final class AlarmCoordinator {
         let beforeCount = idsBefore.count
         let beforeIds = idsBefore.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         await commit({ try $0.upsert(alarm, now: self.now()) }, reason: "save")
+        if lastError == nil, let saved = engine.alarm(id: alarm.id), saved.repeatRule == .never,
+           saved.isEnabled, let next = saved.oneTimeDate {
+            SmartWakeDebugLog.log("ALARM SAVE id=\(saved.id) oneTime=yes next=\(next.ISO8601Format()) enabled=yes")
+        }
         let idsAfter = engine.snapshot.alarms.map { $0.id }
         let afterCount = idsAfter.count
         let afterIds = idsAfter.map { $0.uuidString.prefix(8) }.joined(separator: ", ")

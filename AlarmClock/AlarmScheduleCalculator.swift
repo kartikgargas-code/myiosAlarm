@@ -12,6 +12,11 @@ public struct AlarmScheduleCalculator {
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }
 
+    func nextOneTimeDate(at time: AlarmTime, after now: Date) -> Date? {
+        let clock = DateComponents(hour: time.hour, minute: time.minute, second: time.second)
+        return calendar.nextDate(after: now, matching: clock, matchingPolicy: .nextTimePreservingSmallerComponents)
+    }
+
     public func nextBaseOccurrence(for alarm: AlarmRecord, after date: Date) -> Date? {
         guard alarm.isEnabled else { return nil }
 
