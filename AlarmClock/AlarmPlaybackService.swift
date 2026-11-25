@@ -8,7 +8,6 @@ import AlarmClockShared
 import UIKit
 import AudioToolbox
 import WidgetKit
-@preconcurrency import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
 /// Integrates with system Now Playing and remote command center for lock screen control.
@@ -83,11 +82,6 @@ final class AlarmPlaybackService: NSObject {
     // relabelled, so the artist line carries the button mapping instead.
     static let nowPlayingHintText = "\u{1D5E6}\u{1D601}\u{1D5FC}\u{1D5FD}\u{1F6D1} \u{1D5E3}\u{1D5EE}\u{1D602}\u{1D600}\u{1D5F2}\u{23EF}\u{FE0F} \u{1F634}\u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}"
     private var nowPlayingHintLoggedKey: String?
-
-    // Ringing notification (Stop / Snooze from the notification itself)
-    static let ringingCategoryID = "ALARM_RINGING"
-    private var notifiedOccurrenceKey: String?
-    private var ringingNotificationIdentifier: String?
 
     private override init() {
         super.init()
@@ -440,115 +434,8 @@ final class AlarmPlaybackService: NSObject {
         }
     }
     
-    /// Setup local notification with Stop and Snooze actions for background
-    func setupStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
-        let center = UNUserNotificationCenter.current()
-        let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
-        
-        // Create stop action
-        let stopAction = UNNotificationAction(
-            identifier: "STOP_ALARM",
-            title: "Stop",
-            options: [] // No .foreground - runs in background
-        )
-        
-        // Create snooze action
-        let snoozeAction = UNNotificationAction(
-            identifier: "SNOOZE_ALARM",
-            title: "Snooze \(snoozeMinutes) min",
-            options: []
-        )
-        
-        // Create category with stop and snooze actions
-        let category = UNNotificationCategory(
-            identifier: "ALARM_RINGING",
-            actions: [stopAction, snoozeAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-        
-        center.setNotificationCategories([category])
-    }
-
-    func removeStopNotification(alarmID: UUID, occurrenceKey: String, reason: String = "stop") {
-        let identifier = "ALARM_RINGING_\(alarmID.uuidString)_\(occurrenceKey)"
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
-        SmartWakeDebugLog.log("NOTIFY ALARM removed reason=\(reason) id=\(identifier)")
-    }
-
-    /// Register the notification category that carries the Stop and Snooze buttons.
-    /// Idempotent: registering again just replaces the same category.
-    private func registerRingingNotificationCategory(snoozeMinutes: Int) {
-        let stopAction = UNNotificationAction(
-            identifier: "STOP_ALARM",
-            title: "Stop",
-            options: []
-        )
-        let snoozeAction = UNNotificationAction(
-            identifier: "SNOOZE_ALARM",
-            title: "Snooze \(snoozeMinutes) min",
-            options: []
-        )
-        let category = UNNotificationCategory(
-            identifier: Self.ringingCategoryID,
-            actions: [stopAction, snoozeAction],
-            intentIdentifiers: [],
-            options: [.customDismissAction]
-        )
-        UNUserNotificationCenter.current().setNotificationCategories([category])
-    }
-
-    /// Post the ringing notification once per alarm occurrence, at the same point the
-    /// lock-screen controls are published. Silent, default interruption level, and no
-    /// new permission is requested: without authorization it is skipped.
-    private func postAlarmRingingNotificationIfNeeded() {
-        guard let alarm = currentAlarm, let occurrence = currentOccurrence else { return }
-        let key = "\(alarm.id.uuidString)|\(occurrence.occurrenceKey)"
-        guard notifiedOccurrenceKey != key else { return }
-        notifiedOccurrenceKey = key
-
-        registerRingingNotificationCategory(snoozeMinutes: alarm.snoozeDurationMinutes ?? 10)
-
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                self.addRingingNotification(alarm: alarm, occurrence: occurrence)
-            default:
-                SmartWakeDebugLog.log("NOTIFY ALARM skipped reason=not-authorized status=\(settings.authorizationStatus.rawValue)")
-            }
-        }
-    }
-
-    private func addRingingNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
-        let identifier = "ALARM_RINGING_\(alarm.id.uuidString)_\(occurrence.occurrenceKey)"
-        ringingNotificationIdentifier = identifier
-
-        let content = UNMutableNotificationContent()
-        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
-        content.body = "Hold for Stop or Snooze"
-        content.sound = nil
-        content.categoryIdentifier = Self.ringingCategoryID
-        content.interruptionLevel = .active
-        content.userInfo = [
-            "alarmID": alarm.id.uuidString,
-            "occurrenceKey": occurrence.occurrenceKey
-        ]
-
-        let request = UNNotificationRequest(
-            identifier: identifier,
-            content: content,
-            trigger: nil
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                SmartWakeDebugLog.log("NOTIFY ALARM post FAILED id=\(identifier) error=\(error.localizedDescription)")
-            } else {
-                SmartWakeDebugLog.log("NOTIFY ALARM posted id=\(identifier)")
-            }
-        }
-    }
+    // Retained for the protected playlist takeover callers.
+    func setupStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {}
 
     /// True while this alarm is the one ringing.
     func isRinging(alarmID: UUID) -> Bool {
@@ -1262,35 +1149,6 @@ final class AlarmPlaybackService: NSObject {
                     SmartWakeDebugLog.log("SNOOZE: loop after restart running=\(SmartWakeService.shared.isRunning)")
                 }
                 
-                // Post local notification for snooze feedback
-                let content = UNMutableNotificationContent()
-                let formatter = DateFormatter()
-                formatter.setLocalizedDateFormatFromTemplate("j:mm a")
-                formatter.timeZone = TimeZone.current
-                content.title = "Snoozed \(snoozeMinutes) min at \(formatter.string(from: snoozeFireDate))"
-                content.body = ""
-                content.sound = nil // Silent notification
-                
-                let request = UNNotificationRequest(
-                    identifier: "SNOOZE-\(snoozeID.uuidString)",
-                    content: content,
-                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-                )
-                
-                UNUserNotificationCenter.current().add(request) { error in
-                    if let error = error {
-                        SmartWakeDebugLog.log("SNOOZE notification failed: \(error.localizedDescription)")
-                    } else {
-                        SmartWakeDebugLog.log("SNOOZE notification posted")
-                        // Auto-hide notification after ~1 minute (best effort)
-                        Task {
-                            try? await Task.sleep(nanoseconds: 60_000_000_000)
-                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["SNOOZE-\(snoozeID.uuidString)"])
-                            SmartWakeDebugLog.log("SNOOZE notification auto-hidden after 60s")
-                        }
-                    }
-                }
-                
                 // Update the widget snapshot so the lock-screen widget shows the
                 // snoozed ring time instead of the regular next alarm.
                 coordinator.publishSnoozeWidgetSnapshot(
@@ -1438,17 +1296,6 @@ final class AlarmPlaybackService: NSObject {
         stopVibration()
         silenceAfterTask?.cancel()
         silenceAfterTask = nil
-        
-        // Remove stop notification if we have alarm ID and occurrence key
-        if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
-            removeStopNotification(alarmID: alarmID, occurrenceKey: occurrenceKey, reason: reason)
-        } else if let identifier = ringingNotificationIdentifier {
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
-            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
-            SmartWakeDebugLog.log("NOTIFY ALARM removed reason=\(reason) id=\(identifier)")
-        }
-        notifiedOccurrenceKey = nil
-        ringingNotificationIdentifier = nil
         
         // Remove from armed occurrences set using composite key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {

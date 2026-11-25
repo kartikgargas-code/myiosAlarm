@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import UserNotifications
 import AlarmClockShared
 
 struct SoundPickerView: View {

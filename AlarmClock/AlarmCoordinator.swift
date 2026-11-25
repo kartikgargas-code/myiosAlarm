@@ -3,7 +3,6 @@ import ActivityKit
 import Foundation
 import Observation
 import WidgetKit
-import UserNotifications
 import os.log
 
 // AudioProcessingError is defined in AudioProcessingService.swift (same module)
@@ -49,8 +48,6 @@ final class AlarmCoordinator {
     /// Diagnostic: last WidgetCenter reload request timestamp
     private(set) var lastWidgetReloadRequest: Date? = nil
 
-    /// Feedback message for Control Center actions (shown as toast or notification)
-    var ccActionFeedback: String? = nil
 
     /// Sound file names referenced by the most recent successfully reconciled
     /// desired set (the armed alarms). The stitch-cache prune never deletes
@@ -672,27 +669,6 @@ final class AlarmCoordinator {
                 return
             }
             SmartWakeDebugLog.log("WIDGET ACTION APPLY: handed to commit (\(action.action))")
-            
-            // Generate feedback message and show it
-            let formatter = DateFormatter()
-            formatter.setLocalizedDateFormatFromTemplate("j:mm a")
-            formatter.timeZone = TimeZone.current
-            let nextTime = formatter.string(from: self.nextOccurrence?.effectiveDate ?? Date())
-            let actionText: String
-            switch action.action {
-            case PendingWidgetAction.skip:
-                actionText = "Next alarm skipped"
-            case PendingWidgetAction.adjustEarlier:
-                actionText = "Alarm moved -10 min"
-            case PendingWidgetAction.adjustLater:
-                actionText = "Alarm moved +10 min"
-            default:
-                actionText = "Alarm adjusted"
-            }
-            let feedback = "\(actionText) · next \(nextTime)"
-            
-            // CC FEEDBACK: extension banner is the sole CC feedback (app shows none)
-            SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification posted present; no CC FEEDBACK channel=toast")
             
             // Log alarm IDs after widget action apply
             let idsAfterWidget = engine.snapshot.alarms.map { $0.id }
@@ -1935,51 +1911,6 @@ final class AlarmCoordinator {
     /// Stop any history/preview playback started from Play History.
     func stopHistoryPlayback() {
         SoundPreviewService.shared.stop()
-    }
-    
-    /// Post a local notification for Control Center feedback (visible on Lock Screen)
-    /// Uses a FIXED identifier so each press replaces the previous notification.
-    /// Auto-removes after ~6 seconds and sweeps stale "cc-feedback-*" notifications.
-    private func postCCFeedbackNotification(_ text: String) async {
-        let content = UNMutableNotificationContent()
-        content.title = "Alarm Clock"
-        content.body = text
-        content.sound = nil // silent - we just want the banner
-        content.threadIdentifier = "cc-feedback"
-        
-        let fixedIdentifier = "cc-feedback"
-        let request = UNNotificationRequest(
-            identifier: fixedIdentifier,
-            content: content,
-            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-        )
-        
-        let center = UNUserNotificationCenter.current()
-        do {
-            // Remove any existing notification with the same fixed identifier
-            center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
-            
-            try await center.add(request)
-            SmartWakeDebugLog.log("CC FEEDBACK notification posted: \(text)")
-            SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=app id=\(fixedIdentifier)")
-            
-            // Auto-remove after ~6 seconds AND sweep any stale "cc-feedback-*" notifications
-            try? await Task.sleep(nanoseconds: 6_000_000_000)
-            center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
-            
-            // Sweep any stale "cc-feedback-*" notifications from older builds
-            let allDelivered = await center.deliveredNotifications()
-            let staleIds = allDelivered
-                .filter { $0.request.identifier.hasPrefix("cc-feedback-") }
-                .map { $0.request.identifier }
-            if !staleIds.isEmpty {
-                center.removeDeliveredNotifications(withIdentifiers: staleIds)
-                SmartWakeDebugLog.log("CC FEEDBACK notification swept stale: \(staleIds.count) items")
-            }
-            SmartWakeDebugLog.log("CC FEEDBACK notification auto-removed")
-        } catch {
-            SmartWakeDebugLog.log("CC FEEDBACK notification failed: \(error.localizedDescription)")
-        }
     }
     
     // MARK: - Stitch Retry Logic

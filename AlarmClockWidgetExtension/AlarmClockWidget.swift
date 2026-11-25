@@ -7,7 +7,6 @@ import AlarmClockShared
 import os.log
 import CoreFoundation
 import AlarmKit
-import UserNotifications
 
 // Keep the local function for backward compatibility, but delegate to BatterySource
 private func readBatteryLevel() -> Double? {
@@ -908,10 +907,6 @@ struct SkipNextAlarmIntent: AppIntent {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=skipNext")
         }
         
-        // Post local notification IMMEDIATELY from the extension at press time
-        // (if app is backgrounded, this provides instant feedback)
-        await postCCFeedbackFromExtension("Next alarm skipped", token: tok)
-        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=skipNext")
         
         return .result()
     }
@@ -982,9 +977,6 @@ struct AlarmMinus10Intent: AppIntent {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust-10")
         }
         
-        // Post local notification IMMEDIATELY from the extension at press time
-        await postCCFeedbackFromExtension("Alarm moved -10 min", token: tok)
-        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust-10")
         
         return .result()
     }
@@ -1055,9 +1047,6 @@ struct AlarmPlus10Intent: AppIntent {
             SmartWakeDebugLog.log("INTENT SNAPSHOT ERROR: \(error.localizedDescription) action=adjust+10")
         }
         
-        // Post local notification IMMEDIATELY from the extension at press time
-        await postCCFeedbackFromExtension("Alarm moved +10 min", token: tok)
-        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=adjust+10")
         
         return .result()
     }
@@ -1148,57 +1137,4 @@ private func postDarwinNotification(_ name: String) {
     let center = CFNotificationCenterGetDarwinNotifyCenter()
     let name = CFNotificationName(name as CFString)
     CFNotificationCenterPostNotification(center, name, nil, nil, true)
-}
-
-/// Post local notification from the extension for immediate CC feedback
-/// Uses a FIXED identifier so each press replaces the previous notification.
-/// Auto-removes after ~6 seconds and sweeps stale notifications.
-@MainActor
-private func postCCFeedbackFromExtension(_ text: String, token: String) async {
-    let content = UNMutableNotificationContent()
-    content.title = "myNextAlarm"
-    content.body = text
-    content.sound = nil
-    content.threadIdentifier = "cc-feedback-extension"
-    
-    let fixedIdentifier = "cc-feedback-extension"
-    SmartWakeDebugLog.log("CC POST begin tok=\(token) id=\(fixedIdentifier) t=\(text)")
-    let request = UNNotificationRequest(
-        identifier: fixedIdentifier,
-        content: content,
-        trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-    )
-    
-    let center = UNUserNotificationCenter.current()
-    do {
-        // Remove any existing notification with the same fixed identifier
-        center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
-        
-        try await center.add(request)
-        SmartWakeDebugLog.log("CC POST added tok=\(token)")
-        let p = await center.pendingNotificationRequests()
-        SmartWakeDebugLog.log("NOTIF DUMP pending n=\(p.count) ids=[\(p.map { $0.identifier }.joined(separator: ","))]")
-        let d = await center.deliveredNotifications()
-        SmartWakeDebugLog.log("NOTIF DUMP delivered n=\(d.count) ids=[\(d.map { $0.request.identifier }.joined(separator: ","))] dates=[\(d.map { String(Int($0.date.timeIntervalSince1970)) }.joined(separator: ","))]")
-        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification posted: \(text)")
-        SmartWakeDebugLog.log("NOTIFY SOURCE: postedBy=extension id=\(fixedIdentifier)")
-        
-        // Auto-remove after ~6 seconds AND sweep any stale "cc-feedback-extension-*" notifications
-        try? await Task.sleep(nanoseconds: 6_000_000_000)
-        center.removeDeliveredNotifications(withIdentifiers: [fixedIdentifier])
-        
-        // Sweep any stale "cc-feedback-extension-*" notifications
-        let allDelivered = await center.deliveredNotifications()
-        let staleIds = allDelivered
-            .filter { $0.request.identifier.hasPrefix("cc-feedback-extension-") }
-            .map { $0.request.identifier }
-        if !staleIds.isEmpty {
-            center.removeDeliveredNotifications(withIdentifiers: staleIds)
-            SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification swept stale: \(staleIds.count) items")
-        }
-        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification auto-removed")
-    } catch {
-        // Extension may not have notification permission - log and don't fail silently
-        SmartWakeDebugLog.log("CC FEEDBACK EXTENSION notification FAILED (may lack permission): \(error.localizedDescription)")
-    }
 }

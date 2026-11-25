@@ -4,7 +4,6 @@ import AlarmKit
 import AlarmClockShared
 import UniformTypeIdentifiers
 import os.log
-import UserNotifications
 
 struct ContentView: View {
     @State private var authorizationModel = AlarmProofOfConceptModel()
@@ -17,11 +16,6 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var smartWakeService = SmartWakeService.shared
     @State private var alarmPlaybackService = AlarmPlaybackService.shared
-    // Track foreground state for CC feedback gating
-    @State private var isAppInForeground = true
-    // Static property accessible from AlarmCoordinator
-    static var isAppInForegroundStatic: Bool = true
-    
     // HEARTBEAT timer - runs every 30 min while app is in background.
     // DispatchSourceTimer instead of Timer: a scheduledTimer lives on the main
     // run loop and can be paused/starved when the app is backgrounded, while a
@@ -31,22 +25,6 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingFullscreenClock = false
     
-    @AppStorage("notificationIntroductionShown") private var notificationIntroductionShown = false
-    @State private var showNotificationIntroduction = false
-
-    private var alarmIsRinging: Bool {
-        alarmPlaybackService.isPlaying || currentRingSongName != nil || smartWakeService.alertingSongName != nil
-    }
-
-    private var canIntroduceNotifications: Bool {
-        guard scenePhase == .active, !alarmIsRinging else { return false }
-        if AlarmManager.shared.authorizationState == .authorized {
-            guard let alarms = try? AlarmManager.shared.alarms else { return false }
-            return !alarms.contains { $0.state == .alerting }
-        }
-        return true
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -243,8 +221,6 @@ struct ContentView: View {
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
                     smartWakeService.appDidWake(reason: .sceneChange)
-                    isAppInForeground = true
-                    ContentView.isAppInForegroundStatic = true
                     // Cancel HEARTBEAT timer when returning to foreground
                     heartbeatTimer?.cancel()
                     heartbeatTimer = nil
@@ -252,23 +228,11 @@ struct ContentView: View {
                     // app was closed/backgrounded (app is the sole AlarmKit party).
                     Task {
                         await coordinator.applyPendingWidgetActions()
-                        
-                        // Purge CC feedback notifications from Notification Center on foreground
-                        let ids = ["cc-feedback-extension", "cc-feedback"]
-                        let center = UNUserNotificationCenter.current()
-                        let delivered = await center.deliveredNotifications()
-                        let hasMatching = delivered.contains { ids.contains($0.request.identifier) }
-                        if hasMatching {
-                            center.removeDeliveredNotifications(withIdentifiers: ids)
-                            SmartWakeDebugLog.log("CC FEEDBACK: cleared delivered cc-feedback notifications on foreground")
-                        }
                     }
                     // Refresh alarm list order and next-alarm snapshot on foreground
                     coordinator.publish()
                     checkForActiveRing()
                 } else if newPhase == .background {
-                    isAppInForeground = false
-                    ContentView.isAppInForegroundStatic = false
                     // Start HEARTBEAT timer when app goes to background (30 min interval)
                     heartbeatTimer?.cancel()
                     let heartbeat = DispatchSource.makeTimerSource(queue: .main)
@@ -297,8 +261,6 @@ struct ContentView: View {
                         }
                     }
                 } else if newPhase == .inactive {
-                    isAppInForeground = false
-                    ContentView.isAppInForegroundStatic = false
                     // Last foreground moment before lock/suspend — ensure Smart Wake is running
                     if smartWakeService.isSmartWakeEnabled {
                         Task {
@@ -312,42 +274,6 @@ struct ContentView: View {
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             await authorizationModel.requestLaunchAuthorizationIfNeeded()
-            guard !Task.isCancelled, !notificationIntroductionShown, canIntroduceNotifications else { return }
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            guard !Task.isCancelled, !notificationIntroductionShown,
-                  settings.authorizationStatus == .notDetermined, canIntroduceNotifications else { return }
-            showNotificationIntroduction = true
-        }
-        .onChange(of: alarmIsRinging) { _, ringing in
-            if ringing { showNotificationIntroduction = false }
-        }
-        .fullScreenCover(isPresented: $showNotificationIntroduction) {
-            VStack(spacing: 24) {
-                Text("Allow notifications so alarms and reminders can reach you")
-                    .font(.title2.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                Button {
-                    showNotificationIntroduction = false
-                    Task { @MainActor in
-                        let center = UNUserNotificationCenter.current()
-                        let settings = await center.notificationSettings()
-                        guard settings.authorizationStatus == .notDetermined, canIntroduceNotifications else { return }
-                        do {
-                            _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-                        } catch {
-                            SmartWakeDebugLog.log("NOTIFICATION auth error: \(error.localizedDescription)")
-                        }
-                    }
-                } label: {
-                    Text("Allow").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                Button("Not now") { showNotificationIntroduction = false }
-                    .font(.subheadline)
-            }
-            .padding(32)
-            .onAppear { notificationIntroductionShown = true }
         }
     }
     

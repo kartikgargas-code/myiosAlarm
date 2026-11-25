@@ -53,7 +53,7 @@ struct AlarmClockApp: App {
     }
 }
 
-/// App delegate to handle notification actions
+/// Handles orientation and any notification actions delivered by an earlier build.
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor private static var clockLandscapeAllowed = false
 
@@ -167,35 +167,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     occurrenceKey: "SNOOZE-\(occurrenceKey)"
                 )
                 SmartWakeDebugLog.log("SNOOZE (lock screen): widget snapshot updated")
-                
-                // Post snooze notification with auto-hide after ~1 minute
-                let content = UNMutableNotificationContent()
-                let formatter = DateFormatter()
-                formatter.setLocalizedDateFormatFromTemplate("j:mm a")
-                formatter.timeZone = TimeZone.current
-                content.title = "Snoozed \(snoozeMinutes) min at \(formatter.string(from: snoozeFireDate))"
-                content.body = ""
-                content.sound = nil // Silent notification
-                
-                let request = UNNotificationRequest(
-                    identifier: "SNOOZE-\(snoozeID.uuidString)",
-                    content: content,
-                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
-                )
-                
-                UNUserNotificationCenter.current().add(request) { error in
-                    if let error = error {
-                        SmartWakeDebugLog.log("SNOOZE (lock screen) notification failed: \(error.localizedDescription)")
-                    } else {
-                        SmartWakeDebugLog.log("SNOOZE (lock screen): notification posted")
-                        // Auto-hide notification after ~1 minute (best effort)
-                        Task {
-                            try? await Task.sleep(nanoseconds: 60_000_000_000)
-                            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["SNOOZE-\(snoozeID.uuidString)"])
-                            SmartWakeDebugLog.log("SNOOZE (lock screen) notification auto-hidden after 60s")
-                        }
-                    }
-                }
+
             } catch {
                 SmartWakeDebugLog.log("SNOOZE scheduling FAILED: \(error.localizedDescription)")
             }
