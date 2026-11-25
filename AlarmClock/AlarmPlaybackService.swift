@@ -468,51 +468,8 @@ final class AlarmPlaybackService: NSObject {
         )
         
         center.setNotificationCategories([category])
-        
-        // Permission is requested from the first-launch screen only.
-        center.getNotificationSettings { settings in
-            switch settings.authorizationStatus {
-            case .notDetermined:
-                SmartWakeDebugLog.log("STOP NOTIFICATION permission not requested")
-            case .authorized:
-                self.postStopNotification(alarm: alarm, occurrence: occurrence)
-            case .denied, .provisional, .ephemeral:
-                SmartWakeDebugLog.log("STOP NOTIFICATION denied")
-            @unknown default:
-                SmartWakeDebugLog.log("STOP NOTIFICATION unknown auth status")
-            }
-        }
     }
-    
-    private func postStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {
-        let content = UNMutableNotificationContent()
-        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
-        let trackName = currentTrackName != nil ? displayName(for: currentTrackName!) : "ringing"
-        content.body = "Alarm ringing - \(trackName)"
-        content.sound = nil // We handle audio ourselves
-        content.categoryIdentifier = "ALARM_RINGING"
-        content.interruptionLevel = .active // Not .timeSensitive
-        content.userInfo = [
-            "alarmID": alarm.id.uuidString,
-            "occurrenceKey": occurrence.occurrenceKey
-        ]
-        
-        let request = UNNotificationRequest(
-            identifier: "ALARM_RINGING_\(alarm.id.uuidString)_\(occurrence.occurrenceKey)",
-            content: content,
-            trigger: nil // Fire immediately
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                SmartWakeDebugLog.log("STOP NOTIFICATION post error: \(error.localizedDescription)")
-            } else {
-                SmartWakeDebugLog.log("STOP NOTIFICATION posted")
-            }
-        }
-    }
-    
-    /// Remove stop notification when playback stops
+
     func removeStopNotification(alarmID: UUID, occurrenceKey: String, reason: String = "stop") {
         let identifier = "ALARM_RINGING_\(alarmID.uuidString)_\(occurrenceKey)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
