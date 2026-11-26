@@ -3,6 +3,7 @@ import UIKit
 import AlarmKit
 import AlarmClockShared
 import UniformTypeIdentifiers
+import UserNotifications
 import os.log
 
 struct ContentView: View {
@@ -274,6 +275,42 @@ struct ContentView: View {
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             await authorizationModel.requestLaunchAuthorizationIfNeeded()
+            await Self.requestNotificationPermissionOnceIfNeeded()
+        }
+    }
+
+    // One notification-permission ask, on the first foreground, straight from the
+    // system dialog. Never asked again once granted or denied. This is separate
+    // from the AlarmKit authorization request above.
+    private static var didAskForNotificationPermission = false
+
+    @MainActor
+    private static func requestNotificationPermissionOnceIfNeeded() async {
+        guard !didAskForNotificationPermission else { return }
+        didAskForNotificationPermission = true
+        let center = UNUserNotificationCenter.current()
+        let before = await center.notificationSettings().authorizationStatus
+        guard before == .notDetermined else {
+            SmartWakeDebugLog.log("NOTIF AUTH state=\(notificationAuthLabel(before)) result=\(notificationAuthLabel(before))")
+            return
+        }
+        do {
+            _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            let after = await center.notificationSettings().authorizationStatus
+            SmartWakeDebugLog.log("NOTIF AUTH state=notDetermined result=\(notificationAuthLabel(after))")
+        } catch {
+            SmartWakeDebugLog.log("NOTIF AUTH state=notDetermined result=error error=\(error.localizedDescription)")
+        }
+    }
+
+    private static func notificationAuthLabel(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "notDetermined"
+        case .denied: return "denied"
+        case .authorized: return "authorized"
+        case .provisional: return "provisional"
+        case .ephemeral: return "ephemeral"
+        @unknown default: return "unknown"
         }
     }
     

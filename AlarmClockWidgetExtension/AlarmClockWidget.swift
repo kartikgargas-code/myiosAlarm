@@ -7,6 +7,7 @@ import AlarmClockShared
 import os.log
 import CoreFoundation
 import AlarmKit
+import UserNotifications
 
 // Keep the local function for backward compatibility, but delegate to BatterySource
 private func readBatteryLevel() -> Double? {
@@ -880,6 +881,9 @@ struct SkipNextAlarmIntent: AppIntent {
             // Call skipNextAlarm but always write snapshot + reload, even if guard fails
             let success = try await service.skipNextAlarm(alarmID: alarm.id)
             SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=skipNext success=\(success)")
+            if success {
+                await postActionConfirmation(action: "skip", text: "Next alarm skipped")
+            }
             
             // Force reload for both widget and control kinds
             if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
@@ -950,6 +954,9 @@ struct AlarmMinus10Intent: AppIntent {
             // Call adjustNextAlarm but always write snapshot + reload, even if guard fails
             let success = try await service.adjustNextAlarm(alarmID: alarm.id, minutes: -10)
             SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=adjust-10 success=\(success)")
+            if success {
+                await postActionConfirmation(action: "minus10", text: "Alarm moved -10 min")
+            }
             
             // Force reload for both widget and control kinds
             if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
@@ -1020,6 +1027,9 @@ struct AlarmPlus10Intent: AppIntent {
             // Call adjustNextAlarm but always write snapshot + reload, even if guard fails
             let success = try await service.adjustNextAlarm(alarmID: alarm.id, minutes: 10)
             SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=adjust+10 success=\(success)")
+            if success {
+                await postActionConfirmation(action: "plus10", text: "Alarm moved +10 min")
+            }
             
             // Force reload for both widget and control kinds
             if let widgetKind = Bundle.main.object(forInfoDictionaryKey: "AlarmClockWidgetKind") as? String {
@@ -1137,4 +1147,33 @@ private func postDarwinNotification(_ name: String) {
     let center = CFNotificationCenterGetDarwinNotifyCenter()
     let name = CFNotificationName(name as CFString)
     CFNotificationCenterPostNotification(center, name, nil, nil, true)
+}
+
+/// Post one silent confirmation banner for a successful Control Center action.
+/// The extension is the only owner of these confirmations, so the app never posts
+/// the same one again. A fixed identifier per action type replaces the previous
+/// banner of that type instead of stacking.
+@MainActor
+private func postActionConfirmation(action: String, text: String) async {
+    let identifier = "confirm-\(action)"
+    let content = UNMutableNotificationContent()
+    content.title = text
+    content.body = ""
+    content.sound = nil
+    content.interruptionLevel = .active
+
+    let request = UNNotificationRequest(
+        identifier: identifier,
+        content: content,
+        trigger: nil
+    )
+
+    let center = UNUserNotificationCenter.current()
+    center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    do {
+        try await center.add(request)
+        SmartWakeDebugLog.log("CONFIRM POSTED action=\(action) id=\(identifier)")
+    } catch {
+        SmartWakeDebugLog.log("CONFIRM FAILED action=\(action) id=\(identifier) error=\(error.localizedDescription)")
+    }
 }

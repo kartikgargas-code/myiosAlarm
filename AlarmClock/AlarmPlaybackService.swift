@@ -8,6 +8,7 @@ import AlarmClockShared
 import UIKit
 import AudioToolbox
 import WidgetKit
+@preconcurrency import UserNotifications
 
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
 /// Integrates with system Now Playing and remote command center for lock screen control.
@@ -436,6 +437,27 @@ final class AlarmPlaybackService: NSObject {
     
     // Retained for the protected playlist takeover callers.
     func setupStopNotification(alarm: AlarmRecord, occurrence: AlarmOccurrence) {}
+
+    // MARK: - Silent action confirmations
+
+    /// One silent confirmation banner per successful action. A fixed identifier per
+    /// action type means a repeat replaces the previous banner instead of stacking.
+    private func postActionConfirmation(action: String, text: String) {
+        let identifier = "confirm-\(action)"
+        let content = UNMutableNotificationContent()
+        content.title = text
+        content.body = ""
+        content.sound = nil
+        content.interruptionLevel = .active
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                SmartWakeDebugLog.log("CONFIRM FAILED action=\(action) id=\(identifier) error=\(error.localizedDescription)")
+            } else {
+                SmartWakeDebugLog.log("CONFIRM POSTED action=\(action) id=\(identifier)")
+            }
+        }
+    }
 
     /// True while this alarm is the one ringing.
     func isRinging(alarmID: UUID) -> Bool {
@@ -1155,6 +1177,15 @@ final class AlarmPlaybackService: NSObject {
                     alarm: alarm,
                     fireDate: snoozeFireDate,
                     occurrenceKey: "SNOOZE-\(occurrence.occurrenceKey)"
+                )
+
+                // One banner for this snooze, from the routine every snooze path uses.
+                let confirmFormatter = DateFormatter()
+                confirmFormatter.setLocalizedDateFormatFromTemplate("j:mm a")
+                confirmFormatter.timeZone = TimeZone.current
+                postActionConfirmation(
+                    action: "snooze",
+                    text: "Snoozed until \(confirmFormatter.string(from: snoozeFireDate))"
                 )
             } catch {
                 let nsError = error as NSError
