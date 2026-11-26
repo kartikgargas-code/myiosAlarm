@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write
 
+# Let only one run per branch run at a time. A newer push waits for the
+# run already in progress instead of cancelling it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-15
@@ -124,13 +130,18 @@ jobs:
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/test-output.log"
 
       - name: Report errors to commit comment
-        if: failure()
+        if: failure() || cancelled()
         run: |
           {
             echo "CI error report for run ${{ github.run_number }} (${{ github.sha }})"
             echo
-            grep -E "error:|error \}|Failing tests:|Test Case .* failed|Testing failed:" \
-              "$RUNNER_TEMP/test-output.log" 2>/dev/null | sort -u | head -60
+            LOG="$RUNNER_TEMP/test-output.log"
+            if [ -f "$LOG" ]; then
+              grep -E "error:|error \}|Failing tests:|Test Case .* failed|Testing failed:" \
+                "$LOG" | sort -u | head -60 || true
+            else
+              echo "Build cancelled before any step ran (runner problem)"
+            fi
           } > "$RUNNER_TEMP/error-report.txt"
           python3 - "$RUNNER_TEMP/error-report.txt" <<'PY'
           import json, sys, urllib.request
