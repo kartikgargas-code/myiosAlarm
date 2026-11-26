@@ -222,6 +222,9 @@ struct ContentView: View {
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 if newPhase == .active {
                     smartWakeService.appDidWake(reason: .sceneChange)
+                    Task { @MainActor in
+                        await AlarmPlaybackService.shared.removeStaleSnoozeConfirmation(via: "wake")
+                    }
                     // Cancel HEARTBEAT timer when returning to foreground
                     heartbeatTimer?.cancel()
                     heartbeatTimer = nil
@@ -252,6 +255,9 @@ struct ContentView: View {
                         let alarmCount = coordinator.alarms.filter { $0.isEnabled }.count
                         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
                         SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") playerIsPlaying=\(playerIsPlaying) sessionActive=\(sessionActive) alarms=\(alarmCount) build=\(build)")
+                        Task { @MainActor in
+                            await AlarmPlaybackService.shared.removeStaleSnoozeConfirmation(via: "wake")
+                        }
                     }
                     heartbeatTimer = heartbeat
                     heartbeat.resume()

@@ -960,6 +960,10 @@ final class SmartWakeService {
 
     func appDidWake(reason: SilentLoopWakeReason) {
         SmartWakeDebugLog.logWakeAfterGap(reasonGuess: reason.logGuess)
+        // A suspended app can outlive the snooze confirmation's timer.
+        Task { @MainActor in
+            await AlarmPlaybackService.shared.removeStaleSnoozeConfirmation(via: "wake")
+        }
         let alarmIsAlerting = (try? AlarmManager.shared.alarms.contains { $0.state == .alerting }) ?? true
         if (lastTickSawAlertingAlarm && !alarmIsAlerting)
             || (lastTickSawInAppPlayback && !AlarmPlaybackService.shared.isPlaying) {

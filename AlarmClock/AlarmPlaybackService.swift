@@ -97,6 +97,12 @@ final class AlarmPlaybackService: NSObject {
     private var snoozeChoiceNotifiedKey: String?
     private var snoozeChoiceNotificationID: String?
 
+    // The snooze confirmation has no built-in expiry. A timer removes it 60 s after
+    // posting, and every wake path removes one that outlived the timer.
+    private static let snoozeConfirmationID = "confirm-snooze"
+    private let snoozeConfirmationLifetime: TimeInterval = 60
+    private var snoozeConfirmationRemovalTask: Task<Void, Never>?
+
     private override init() {
         super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
@@ -470,6 +476,35 @@ final class AlarmPlaybackService: NSObject {
                 SmartWakeDebugLog.log("CONFIRM POSTED action=\(action) id=\(identifier)")
             }
         }
+
+        // Only the snooze confirmation expires. A repeat snooze replaces the banner and
+        // restarts the countdown; the Control Center confirmations are left alone.
+        if identifier == Self.snoozeConfirmationID {
+            scheduleSnoozeConfirmationRemoval()
+        }
+    }
+
+    /// Remove the delivered snooze confirmation 60 s after it is posted. A newer
+    /// snooze cancels this countdown by scheduling its own.
+    private func scheduleSnoozeConfirmationRemoval() {
+        snoozeConfirmationRemovalTask?.cancel()
+        SmartWakeDebugLog.log("CONFIRM SCHEDULED REMOVE action=snooze after=60s")
+        snoozeConfirmationRemovalTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.removeStaleSnoozeConfirmation(via: "timer")
+        }
+    }
+
+    /// Safety net for a suspended app: remove the snooze confirmation only once it is
+    /// older than 60 s, so an older countdown can never remove a newer confirmation.
+    func removeStaleSnoozeConfirmation(via source: String) async {
+        let identifier = Self.snoozeConfirmationID
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        guard let match = delivered.first(where: { $0.request.identifier == identifier }),
+              Date().timeIntervalSince(match.date) >= snoozeConfirmationLifetime else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+        SmartWakeDebugLog.log("CONFIRM REMOVED action=snooze via=\(source)")
     }
 
     /// Post the hold-to-choose snooze notice once per alarm occurrence, at the same
