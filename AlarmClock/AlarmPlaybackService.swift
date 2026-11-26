@@ -523,9 +523,41 @@ final class AlarmPlaybackService: NSObject {
         )
         snoozeChoiceNotificationID = identifier
 
+        // Recognisable at a glance: the alarm label, or the playlist when the label is
+        // empty, then the playlist and the ring time. The track title is left out - it
+        // goes stale as tracks advance.
+        let ringTimeFormatter = DateFormatter()
+        ringTimeFormatter.setLocalizedDateFormatFromTemplate("j:mm a")
+        ringTimeFormatter.timeZone = TimeZone.current
+        let ringTime = ringTimeFormatter.string(from: occurrence.effectiveDate)
+
+        var playlistName: String?
+        if let playlistID = currentPlaylistID,
+           let playlist = SoundLibrary.shared.playlists.first(where: { $0.id == playlistID }),
+           !playlist.name.isEmpty {
+            playlistName = playlist.name
+        }
+        let label = alarm.label.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let title: String
+        if !label.isEmpty {
+            title = label
+        } else if let name = playlistName {
+            title = name
+        } else {
+            title = "\(ringTime) alarm"
+        }
+        let subtitle: String? = playlistName.map {
+            $0 == title ? "\(ringTime) alarm" : "\($0) · \(ringTime)"
+        }
+        let body = "Hold to choose snooze length"
+
         let content = UNMutableNotificationContent()
-        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
-        content.body = "Hold to choose snooze length"
+        content.title = title
+        if let subtitle {
+            content.subtitle = subtitle
+        }
+        content.body = body
         content.sound = nil
         content.categoryIdentifier = AlarmNotificationIDs.snoozeChoiceCategory
         content.interruptionLevel = .passive
@@ -547,7 +579,7 @@ final class AlarmPlaybackService: NSObject {
                     if let error = error {
                         SmartWakeDebugLog.log("SNOOZE CHOICE post FAILED id=\(identifier) error=\(error.localizedDescription)")
                     } else {
-                        SmartWakeDebugLog.log("SNOOZE CHOICE posted id=\(identifier)")
+                        SmartWakeDebugLog.log("SNOOZE CHOICE posted id=\(identifier) title=\(title) subtitle=\(subtitle ?? "none") body=\(body)")
                     }
                 }
             default:
