@@ -74,7 +74,28 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        AppDelegate.registerNotificationCategories()
         return true
+    }
+
+    /// The hold-to-choose snooze notice carries three snooze choices. They run in the
+    /// background without unlocking and without opening the app. No custom dismiss
+    /// action, so swiping the notice away is inert.
+    private static func registerNotificationCategories() {
+        let choices = [5, 10, 15].map { minutes in
+            UNNotificationAction(
+                identifier: "SNOOZE_CHOICE_\(minutes)",
+                title: "Snooze \(minutes) min",
+                options: []
+            )
+        }
+        let category = UNNotificationCategory(
+            identifier: AlarmNotificationIDs.snoozeChoiceCategory,
+            actions: choices,
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
@@ -94,10 +115,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     )
                 }
             } else if actionId == "SNOOZE_ALARM" {
-                // Snooze action
+                // Snooze tapped on a notice from an earlier build: same shared routine
                 SmartWakeDebugLog.log("NOTIFY ALARM action=snooze alarm=\(alarmIDString)")
                 Task { @MainActor in
                     await snoozeAlarm(alarmID: alarmID, occurrenceKey: occurrenceKey)
+                }
+            } else if actionId.hasPrefix("SNOOZE_CHOICE_") {
+                // Hold-to-choose snooze: the chosen minutes apply to this ring only
+                let minutes = Int(actionId.replacingOccurrences(of: "SNOOZE_CHOICE_", with: "")) ?? 10
+                Task { @MainActor in
+                    AlarmPlaybackService.shared.snoozeRingingAlarmFromNotification(
+                        alarmID: alarmID,
+                        occurrenceKey: occurrenceKey,
+                        minutes: minutes
+                    )
                 }
             } else if actionId == UNNotificationDismissActionIdentifier {
                 // Swiping the notification away must never silence the alarm
@@ -110,68 +141,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     @MainActor
     private func snoozeAlarm(alarmID: UUID, occurrenceKey: String) async {
-        // Snooze only the alarm that is actually ringing
-        guard AlarmPlaybackService.shared.isRinging(alarmID: alarmID) else {
-            SmartWakeDebugLog.log("NOTIFY ALARM snooze ignored reason=not-ringing alarm=\(alarmID.uuidString.prefix(8))")
-            return
-        }
-
-        // Stop current playback
-        AlarmPlaybackService.shared.stop(reason: "snooze")
-        
-        // Find the alarm and schedule snooze
-        if let coordinator = AlarmCoordinator.sharedInstance,
-           let alarm = coordinator.alarms.first(where: { $0.id == alarmID }) {
-            let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
-            let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
-            
-            do {
-                // Schedule one-shot AlarmKit alarm using existing path (precomposed floor WAV)
-                let snoozeID = UUID()
-                let snoozeConfig = AlarmManager.AlarmConfiguration<ScheduledOccurrenceMetadata>(
-                    countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: 0),
-                    schedule: .fixed(snoozeFireDate),
-                    attributes: AlarmAttributes(
-                        presentation: AlarmPresentation(
-                            alert: AlarmPresentation.Alert(
-                                title: LocalizedStringResource(stringLiteral: alarm.label.isEmpty ? "Alarm" : alarm.label),
-                                stopButton: AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill"),
-                                secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
-                                secondaryButtonBehavior: .countdown
-                            ),
-                            countdown: AlarmPresentation.Countdown(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min")),
-                            paused: AlarmPresentation.Paused(title: LocalizedStringResource(stringLiteral: "Snoozed \(snoozeMinutes) min"), resumeButton: AlarmButton(text: "Resume", textColor: .white, systemImageName: "play.circle.fill"))
-                        ),
-                        metadata: ScheduledOccurrenceMetadata(
-                            alarmID: alarm.id,
-                            occurrenceKey: "SNOOZE-\(occurrenceKey)",
-                            baseDate: snoozeFireDate
-                        ),
-                        tintColor: .orange
-                    ),
-                    stopIntent: nil,
-                    secondaryIntent: nil,
-                    sound: (try? await coordinator.alarmKitSound(for: alarm.sound, loudness: alarm.loudness)) ?? .default
-                )
-                _ = try await AlarmManager.shared.schedule(id: snoozeID, configuration: snoozeConfig)
-                
-                // Register with coordinator for reconcile exclusion
-                coordinator.addEmergencyReRingID(snoozeID)
-                
-                SmartWakeDebugLog.log("SNOOZE scheduled id=\(snoozeID.uuidString) at \(snoozeFireDate)")
-                
-                // Update widget snapshot so Lock Screen/widget shows the snoozed ring time
-                coordinator.publishSnoozeWidgetSnapshot(
-                    alarm: alarm,
-                    fireDate: snoozeFireDate,
-                    occurrenceKey: "SNOOZE-\(occurrenceKey)"
-                )
-                SmartWakeDebugLog.log("SNOOZE (lock screen): widget snapshot updated")
-
-            } catch {
-                SmartWakeDebugLog.log("SNOOZE scheduling FAILED: \(error.localizedDescription)")
-            }
-        }
+        // Old handler kept for notifications posted by an earlier build. It no longer
+        // schedules anything itself: it hands the tap to the one shared snooze routine
+        // with the alarm's saved snooze length.
+        let savedMinutes = AlarmCoordinator.sharedInstance?
+            .alarms.first(where: { $0.id == alarmID })?
+            .snoozeDurationMinutes ?? 10
+        AlarmPlaybackService.shared.snoozeRingingAlarmFromNotification(
+            alarmID: alarmID,
+            occurrenceKey: occurrenceKey,
+            minutes: savedMinutes
+        )
     }
 }
 

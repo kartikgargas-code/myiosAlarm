@@ -10,6 +10,15 @@ import AudioToolbox
 import WidgetKit
 @preconcurrency import UserNotifications
 
+/// Notification identifiers shared by the app delegate and the playback service.
+enum AlarmNotificationIDs {
+    static let snoozeChoiceCategory = "ALARM_SNOOZE_CHOICE"
+
+    static func snoozeChoice(alarmID: UUID, occurrenceKey: String) -> String {
+        "ALARM_SNOOZE_CHOICE_\(alarmID.uuidString)_\(occurrenceKey)"
+    }
+}
+
 /// Alarm playback service for playing selected local playlist tracks at alarm fire time.
 /// Integrates with system Now Playing and remote command center for lock screen control.
 @MainActor
@@ -83,6 +92,10 @@ final class AlarmPlaybackService: NSObject {
     // relabelled, so the artist line carries the button mapping instead.
     static let nowPlayingHintText = "\u{1D5E6}\u{1D601}\u{1D5FC}\u{1D5FD}\u{1F6D1}    \u{1D5E3}\u{1D5EE}\u{1D602}\u{1D600}\u{1D5F2}\u{23EF}\u{FE0F}    \u{1F634}\u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}"
     private var nowPlayingHintLoggedKey: String?
+
+    // Hold-to-choose snooze notice (one per alarm occurrence)
+    private var snoozeChoiceNotifiedKey: String?
+    private var snoozeChoiceNotificationID: String?
 
     private override init() {
         super.init()
@@ -459,6 +472,55 @@ final class AlarmPlaybackService: NSObject {
         }
     }
 
+    /// Post the hold-to-choose snooze notice once per alarm occurrence, at the same
+    /// point the lock-screen controls are published. Silent: `.passive` never plays a
+    /// sound or lights the screen, and the three choices run without unlocking.
+    /// Without notification permission it is skipped.
+    private func postSnoozeChoiceNotificationIfNeeded() {
+        guard let alarm = currentAlarm, let occurrence = currentOccurrence else { return }
+        let key = "\(alarm.id.uuidString)|\(occurrence.occurrenceKey)"
+        guard snoozeChoiceNotifiedKey != key else { return }
+        snoozeChoiceNotifiedKey = key
+
+        let identifier = AlarmNotificationIDs.snoozeChoice(
+            alarmID: alarm.id,
+            occurrenceKey: occurrence.occurrenceKey
+        )
+        snoozeChoiceNotificationID = identifier
+
+        let content = UNMutableNotificationContent()
+        content.title = alarm.label.isEmpty ? "Alarm" : alarm.label
+        content.body = "Hold to choose snooze length"
+        content.sound = nil
+        content.categoryIdentifier = AlarmNotificationIDs.snoozeChoiceCategory
+        content.interruptionLevel = .passive
+        content.userInfo = [
+            "alarmID": alarm.id.uuidString,
+            "occurrenceKey": occurrence.occurrenceKey
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                UNUserNotificationCenter.current().add(request) { error in
+                    if let error = error {
+                        SmartWakeDebugLog.log("SNOOZE CHOICE post FAILED id=\(identifier) error=\(error.localizedDescription)")
+                    } else {
+                        SmartWakeDebugLog.log("SNOOZE CHOICE posted id=\(identifier)")
+                    }
+                }
+            default:
+                SmartWakeDebugLog.log("SNOOZE CHOICE skipped reason=not-authorized status=\(settings.authorizationStatus.rawValue)")
+            }
+        }
+    }
+
     /// True while this alarm is the one ringing.
     func isRinging(alarmID: UUID) -> Bool {
         isPlaying && currentAlarmID == alarmID
@@ -482,6 +544,23 @@ final class AlarmPlaybackService: NSObject {
         }
 
         stop(reason: "notification-stop")
+    }
+
+    /// Snooze from the hold-to-choose notice. A tap for an occurrence that has already
+    /// ended or was already snoozed does nothing.
+    func snoozeRingingAlarmFromNotification(alarmID: UUID, occurrenceKey: String, minutes: Int) {
+        let identifier = AlarmNotificationIDs.snoozeChoice(
+            alarmID: alarmID,
+            occurrenceKey: occurrenceKey
+        )
+        guard isPlaying,
+              currentAlarmID == alarmID,
+              currentOccurrence?.occurrenceKey == occurrenceKey else {
+            SmartWakeDebugLog.log("SNOOZE CHOICE action=\(minutes) id=\(identifier) result=stale")
+            return
+        }
+        SmartWakeDebugLog.log("SNOOZE CHOICE action=\(minutes) id=\(identifier) result=ok")
+        handleSnoozeCommand(minutes: minutes)
     }
 
     /// Play a track at the given index in selectedSoundIDs
@@ -580,6 +659,7 @@ final class AlarmPlaybackService: NSObject {
             
             // Setup remote command center
             setupRemoteCommands()
+            postSnoozeChoiceNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
@@ -683,6 +763,7 @@ final class AlarmPlaybackService: NSObject {
             publishNowPlayingInfo(for: ImportedSound(id: UUID(), name: "Default Alarm", fileName: "bright.wav", duration: nil, dateAdded: Date()), player: newPlayer, displayName: "Default Alarm")
             
             setupRemoteCommands()
+            postSnoozeChoiceNotificationIfNeeded()
             scheduleLockScreenDiagnosticsIfNeeded()
             
         } catch {
@@ -1010,8 +1091,10 @@ final class AlarmPlaybackService: NSObject {
         }
     }
     
-        /// Handle SNOOZE command from lock screen (next track)
-    private func handleSnoozeCommand() {
+        /// Handle a snooze from any source: the lock-screen Next button, or one of the
+        /// choices in the hold-to-choose notice. `minutes` overrides the alarm's saved
+        /// snooze length for this ring only; nil keeps the saved length.
+    private func handleSnoozeCommand(minutes: Int? = nil) {
         // Snapshot backup ID locally BEFORE async cancel — prevents double-cancel on duplicate deliveries
         let backupID = pendingBackupAlarmID
         pendingBackupAlarmID = nil
@@ -1032,7 +1115,7 @@ final class AlarmPlaybackService: NSObject {
             return
         }
         
-        let snoozeMinutes = alarm.snoozeDurationMinutes ?? 10
+        let snoozeMinutes = minutes ?? alarm.snoozeDurationMinutes ?? 10
         let snoozeFireDate = Date().addingTimeInterval(TimeInterval(snoozeMinutes * 60))
         let snoozeDelayedBackupDate = snoozeFireDate.addingTimeInterval(TimeInterval(AlarmCoordinator.backupDelaySeconds))
 
@@ -1328,6 +1411,14 @@ final class AlarmPlaybackService: NSObject {
         silenceAfterTask?.cancel()
         silenceAfterTask = nil
         
+        // Remove the hold-to-choose snooze notice when the alarm stops or snoozes
+        if let identifier = snoozeChoiceNotificationID {
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+        }
+        snoozeChoiceNotifiedKey = nil
+        snoozeChoiceNotificationID = nil
+
         // Remove from armed occurrences set using composite key
         if let alarmID = currentAlarmID, let occurrenceKey = currentOccurrence?.occurrenceKey {
             let armingKey = "\(alarmID.uuidString.prefix(8))|\(occurrenceKey)"
