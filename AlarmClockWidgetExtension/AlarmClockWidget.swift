@@ -1173,7 +1173,25 @@ private func postActionConfirmation(action: String, text: String) async {
     do {
         try await center.add(request)
         SmartWakeDebugLog.log("CONFIRM POSTED action=\(action) id=\(identifier)")
+        scheduleControlCenterConfirmationRemoval(action: action, identifier: identifier)
     } catch {
         SmartWakeDebugLog.log("CONFIRM FAILED action=\(action) id=\(identifier) error=\(error.localizedDescription)")
+    }
+}
+
+/// Remove a Control Center confirmation 5 s after it is posted. Runs in its own task,
+/// so the button's action never waits for it. The extension can be suspended before
+/// the 5 s pass, so the app's wake paths run the same check as a safety net.
+@MainActor
+private func scheduleControlCenterConfirmationRemoval(action: String, identifier: String) {
+    SmartWakeDebugLog.log("CONFIRM SCHEDULED REMOVE action=\(action) after=5s")
+    Task {
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        let center = UNUserNotificationCenter.current()
+        let delivered = await center.deliveredNotifications()
+        guard let match = delivered.first(where: { $0.request.identifier == identifier }),
+              Date().timeIntervalSince(match.date) >= 5 else { return }
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+        SmartWakeDebugLog.log("CONFIRM REMOVED action=\(action) via=timer")
     }
 }

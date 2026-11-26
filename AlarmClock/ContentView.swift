@@ -224,6 +224,7 @@ struct ContentView: View {
                     smartWakeService.appDidWake(reason: .sceneChange)
                     Task { @MainActor in
                         await AlarmPlaybackService.shared.removeStaleSnoozeConfirmation(via: "wake")
+                        await AlarmPlaybackService.shared.removeStaleControlCenterConfirmations(via: "wake")
                     }
                     // Cancel HEARTBEAT timer when returning to foreground
                     heartbeatTimer?.cancel()
@@ -257,6 +258,7 @@ struct ContentView: View {
                         SmartWakeDebugLog.log("HEARTBEAT battery=\(batteryPercent)% charging=\(charging ? "yes" : "no") lowPower=\(lowPower ? "yes" : "no") silentLoop=\(loopRunning ? "running" : "dead") playerIsPlaying=\(playerIsPlaying) sessionActive=\(sessionActive) alarms=\(alarmCount) build=\(build)")
                         Task { @MainActor in
                             await AlarmPlaybackService.shared.removeStaleSnoozeConfirmation(via: "wake")
+                            await AlarmPlaybackService.shared.removeStaleControlCenterConfirmations(via: "wake")
                         }
                     }
                     heartbeatTimer = heartbeat

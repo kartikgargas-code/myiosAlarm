@@ -103,6 +103,12 @@ final class AlarmPlaybackService: NSObject {
     private let snoozeConfirmationLifetime: TimeInterval = 60
     private var snoozeConfirmationRemovalTask: Task<Void, Never>?
 
+    // The Control Center confirmations (posted by the widget extension) have no
+    // built-in expiry either. The extension starts a 5 s removal; these safety nets
+    // catch one whose extension was suspended before its timer fired.
+    private static let controlCenterConfirmationActions = ["skip", "minus10", "plus10"]
+    private let controlCenterConfirmationLifetime: TimeInterval = 5
+
     private override init() {
         super.init()
         os_log(.info, log: log, "AlarmPlaybackService initialized")
@@ -505,6 +511,22 @@ final class AlarmPlaybackService: NSObject {
               Date().timeIntervalSince(match.date) >= snoozeConfirmationLifetime else { return }
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
         SmartWakeDebugLog.log("CONFIRM REMOVED action=snooze via=\(source)")
+    }
+
+    /// Safety net for the Control Center confirmations. The extension starts a 5 s
+    /// removal, but it can be suspended before that fires, so every wake path removes
+    /// one that is already older than 5 s. A banner from a newer press is younger than
+    /// that, so an older countdown can never remove it.
+    func removeStaleControlCenterConfirmations(via source: String) async {
+        let now = Date()
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        for action in Self.controlCenterConfirmationActions {
+            let identifier = "confirm-\(action)"
+            guard let match = delivered.first(where: { $0.request.identifier == identifier }),
+                  now.timeIntervalSince(match.date) >= controlCenterConfirmationLifetime else { continue }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+            SmartWakeDebugLog.log("CONFIRM REMOVED action=\(action) via=\(source)")
+        }
     }
 
     /// Post the hold-to-choose snooze notice once per alarm occurrence, at the same
