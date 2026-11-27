@@ -298,6 +298,17 @@ final class AlarmCoordinator {
     }
 
     func skipNext(id: UUID) async {
+        // A pending snooze is not part of the engine's schedule. If one is waiting
+        // for this alarm, Skip cancels that ring and leaves the regular schedule
+        // untouched instead of skipping the next regular occurrence.
+        if AlarmPlaybackService.shared.hasPendingSnooze(for: id) {
+            SmartWakeDebugLog.log("SKIP target=snooze alarm=\(id.uuidString.prefix(8))")
+            let result = await AlarmPlaybackService.shared.cancelPendingSnoozeForSkip(alarmID: id)
+            SmartWakeDebugLog.log("SNOOZE CANCELLED by skip alarm=\(id.uuidString.prefix(8)) backup=\(result.backup)")
+            publish()
+            return
+        }
+        SmartWakeDebugLog.log("SKIP target=regular alarm=\(id.uuidString.prefix(8))")
         await commit({ try $0.skipNext(id: id, now: self.now()) }, reason: "skipNext")
     }
 
@@ -1016,6 +1027,11 @@ final class AlarmCoordinator {
     func addEmergencyReRingID(_ id: UUID) {
         emergencyReRingIDs.insert(id)
     }
+
+    /// Remove one emergency re-ring ID once its snooze has been cancelled.
+    func removeEmergencyReRingID(_ id: UUID) {
+        emergencyReRingIDs.remove(id)
+    }
     
     /// Clear all emergency re-ring IDs (e.g., after they've fired)
     func clearEmergencyReRingIDs() {
@@ -1356,7 +1372,7 @@ final class AlarmCoordinator {
             effectiveDate: fireDate,
             isAdjusted: false
         )
-        nextAlarmSnapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence)
+        nextAlarmSnapshot = NextAlarmSnapshot(alarm: alarm, occurrence: occurrence, isSnooze: true)
         writeNextAlarmSnapshotToAppGroup()
         SmartWakeDebugLog.log("SNOOZE: widget snapshot updated to snoozed ring time \(fireDate)")
     }

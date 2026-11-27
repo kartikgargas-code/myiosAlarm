@@ -30,6 +30,9 @@ public struct NextAlarmSnapshot: Codable, Equatable {
     /// Whether the alarm is enabled
     public let isEnabled: Bool
 
+    /// Whether this snapshot is a pending snooze rather than the regular schedule
+    public let isSnooze: Bool?
+
     /// The alarm's sound configuration
     public let sound: AlarmSound
 
@@ -37,7 +40,7 @@ public struct NextAlarmSnapshot: Codable, Equatable {
     public let loudness: AlarmLoudness
 
     /// Creates a snapshot from an alarm record and its next occurrence
-    public init?(alarm: AlarmRecord, occurrence: AlarmOccurrence?) {
+    public init?(alarm: AlarmRecord, occurrence: AlarmOccurrence?, isSnooze: Bool = false) {
         guard let occurrence = occurrence else { return nil }
         self.alarmID = alarm.id
         self.label = alarm.label.isEmpty ? "Alarm" : alarm.label
@@ -47,6 +50,7 @@ public struct NextAlarmSnapshot: Codable, Equatable {
         self.isAdjusted = occurrence.isAdjusted
         self.isSkipped = false
         self.isEnabled = alarm.isEnabled
+        self.isSnooze = isSnooze
         self.sound = alarm.sound
         self.loudness = alarm.loudness
 

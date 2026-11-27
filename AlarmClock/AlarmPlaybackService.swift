@@ -50,6 +50,8 @@ final class AlarmPlaybackService: NSObject {
     // Remote command state
     private var pendingBackupAlarmID: UUID?
     private var pendingSnoozeAlarmID: UUID?
+    private var pendingSnoozeAlarmRecordID: UUID?
+    private var snoozePlaylistTask: Task<Void, Error>?
     private var remoteCommandTargetNames = Set<String>()
     private var lockScreenDiagnosticTask: Task<Void, Never>?
     private var lockScreenDiagnosticStartedAt: Date?
@@ -68,6 +70,36 @@ final class AlarmPlaybackService: NSObject {
     func consumeSnoozeForTakeover() {
         pendingSnoozeAlarmID = nil
         snoozeTakeoverContext = nil
+    }
+
+    /// Whether a snooze is waiting to ring for this alarm.
+    func hasPendingSnooze(for alarmID: UUID) -> Bool {
+        pendingSnoozeAlarmID != nil && pendingSnoozeAlarmRecordID == alarmID
+    }
+
+    /// Cancel a pending snooze because the user skipped it. Stops the exact-deadline
+    /// playlist restart and the delayed AlarmKit backup, then clears the stored state.
+    /// Returns whether a snooze was pending and whether the backup cancel succeeded.
+    func cancelPendingSnoozeForSkip(alarmID: UUID) async -> (cancelled: Bool, backup: String) {
+        guard pendingSnoozeAlarmID != nil, pendingSnoozeAlarmRecordID == alarmID else {
+            return (false, "none")
+        }
+        snoozePlaylistTask?.cancel()
+        snoozePlaylistTask = nil
+        var backup = "none"
+        if let backupID = pendingSnoozeAlarmID {
+            do {
+                try await AlarmManager.shared.cancel(id: backupID)
+                backup = "cancelled"
+            } catch {
+                backup = "failed"
+            }
+            AlarmCoordinator.sharedInstance?.removeEmergencyReRingID(backupID)
+        }
+        pendingSnoozeAlarmID = nil
+        pendingSnoozeAlarmRecordID = nil
+        snoozeTakeoverContext = nil
+        return (true, backup)
     }
     // 1-second dedupe gates for remote commands
     private var lastStopCommandTime: Date?
@@ -1274,6 +1306,7 @@ final class AlarmPlaybackService: NSObject {
                 // Register with coordinator for reconcile exclusion
                 coordinator.addEmergencyReRingID(snoozeID)
                 pendingSnoozeAlarmID = snoozeID
+                pendingSnoozeAlarmRecordID = alarm.id
                 
                 SmartWakeDebugLog.log("SNOOZE: scheduled DELAYED backup alarm id=\(snoozeID.uuidString) at \(snoozeDelayedBackupDate) (true snooze: \(snoozeFireDate)) for \(snoozeMinutes) min")
                 
@@ -1288,7 +1321,7 @@ final class AlarmPlaybackService: NSObject {
                 // We schedule a local task to fire at the true snooze time
                 let delay = snoozeFireDate.timeIntervalSinceNow
                 if delay > 0, let pid = playlistID {
-                    Task { @MainActor in
+                    snoozePlaylistTask = Task { @MainActor in
                         try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                         // Start playlist at true snooze time
                         let occ = AlarmOccurrence(

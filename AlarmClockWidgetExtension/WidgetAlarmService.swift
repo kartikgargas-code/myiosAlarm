@@ -30,6 +30,19 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
         return try persistence.load()
     }
 
+    /// Read the shared next-alarm snapshot so Skip can tell a pending snooze from
+    /// the regular schedule.
+    public func loadNextAlarmSnapshot() -> NextAlarmSnapshot? {
+        guard let appGroupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) else { return nil }
+        let url = appGroupURL.appendingPathComponent("nextAlarmSnapshot.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(NextAlarmSnapshot.self, from: data)
+    }
+
     /// Queue a pending action for the app to apply. The widget never rewrites
     /// alarms.json — the app is the sole writer of it and the only party with
     /// working AlarmKit authorization.
@@ -128,6 +141,12 @@ public struct WidgetAlarmService: LiveActivityAlarmService {
     
     /// Skip next occurrence
     public func skipNextAlarm(alarmID: UUID) async throws -> Bool {
+        // A pending snooze is handled by the app, which owns the snooze alarm. Do not
+        // skip the regular occurrence in that case; the queued action cancels the snooze.
+        if let pending = loadNextAlarmSnapshot(), pending.isSnooze == true, pending.alarmID == alarmID {
+            SmartWakeDebugLog.log("SKIP target=snooze alarm=\(alarmID.uuidString.prefix(8)) extension=deferred")
+            return true
+        }
         var snapshot = try loadSnapshot()
         var engine = AlarmEngine(snapshot: snapshot)
         

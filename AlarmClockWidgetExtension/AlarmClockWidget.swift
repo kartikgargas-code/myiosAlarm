@@ -855,12 +855,17 @@ struct SkipNextAlarmIntent: AppIntent {
         SmartWakeDebugLog.log("CC INVOKE action=skipNext tok=\(tok) bundle=\(Bundle.main.bundleIdentifier) pid=\(ProcessInfo.processInfo.processIdentifier)")
         SmartWakeDebugLog.log("INTENT STEP: queued action=skipNext")
         
+        let service = WidgetAlarmService()
+        // Capture before the queued action wakes the app, which may clear the marker.
+        let pendingSnoozeAlarmID = service.loadNextAlarmSnapshot().flatMap {
+            $0.isSnooze == true ? $0.alarmID : nil
+        }
+
         // First, queue the pending action for the app to apply AlarmKit scheduling
         try await queuePendingWidgetAction(PendingWidgetAction.skip, reason: "skipNext")
         SmartWakeDebugLog.log("INTENT STEP: snapshot-loaded action=skipNext")
         
         // Also update the widget snapshot locally so the Lock Screen updates immediately
-        let service = WidgetAlarmService()
         do {
             let snapshot = try service.loadSnapshot()
             let engine = AlarmEngine(snapshot: snapshot)
@@ -878,11 +883,18 @@ struct SkipNextAlarmIntent: AppIntent {
             }
             SmartWakeDebugLog.log("INTENT STEP: mutated action=skipNext")
             
-            // Call skipNextAlarm but always write snapshot + reload, even if guard fails
-            let success = try await service.skipNextAlarm(alarmID: alarm.id)
-            SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=skipNext success=\(success)")
-            if success {
-                await postActionConfirmation(action: "skip", text: "Next alarm skipped")
+            // A pending snooze is cancelled by the app; the confirmation says so.
+            let snoozePending = pendingSnoozeAlarmID == alarm.id
+            if snoozePending {
+                SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=skipNext success=true snoozePending=true")
+                await postActionConfirmation(action: "skip", text: "Snooze skipped")
+            } else {
+                // Call skipNextAlarm but always write snapshot + reload, even if guard fails
+                let success = try await service.skipNextAlarm(alarmID: alarm.id)
+                SmartWakeDebugLog.log("INTENT STEP: snapshot-written action=skipNext success=\(success) snoozePending=false")
+                if success {
+                    await postActionConfirmation(action: "skip", text: "Next alarm skipped")
+                }
             }
             
             // Force reload for both widget and control kinds
