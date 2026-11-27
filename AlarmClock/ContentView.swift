@@ -407,23 +407,26 @@ struct ContentView: View {
                 Divider()
                 
                 HStack {
+                    // A native menu ignores tint/foregroundStyle applied to its Label;
+                    // only a tint on the Button itself reaches the menu item's icon.
                     Button {
                         Task { await coordinator.adjustNext(id: alarm.id, minutes: 10) }
                     } label: {
                         Label("+10 min", systemImage: "plus")
-                            .tint(.green)
                     }
+                    .tint(.green)
                     Button {
                         Task { await coordinator.resetNext(id: alarm.id) }
                     } label: {
                         Label("Reset", systemImage: "arrow.counterclockwise")
                     }
+                    .tint(.white)
                     Button {
                         Task { await coordinator.adjustNext(id: alarm.id, minutes: -10) }
                     } label: {
                         Label("−10 min", systemImage: "minus")
-                            .tint(ThemeManager.shared.colors.accent)
                     }
+                    .tint(ThemeManager.shared.colors.accent)
                 }
                 
                 Divider()
