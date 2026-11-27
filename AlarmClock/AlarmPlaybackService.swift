@@ -90,13 +90,20 @@ final class AlarmPlaybackService: NSObject {
 
     // Lock-screen card hint. iOS draws the Previous / Next buttons and they cannot be
     // relabelled, so the artist line carries the button mapping instead.
-    static let hintGapSpaces = 4
+    static let hintWordEmojiSpaces = 1
+    static let hintGapSpaces = 5
     static let nowPlayingHintText =
-        "\u{1D5E6}\u{1D601}\u{1D5FC}\u{1D5FD}\u{1F6D1}" +
+        "\u{1D5E6}\u{1D601}\u{1D5FC}\u{1D5FD}" +
+        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        "\u{1F6D1}" +
         String(repeating: " ", count: AlarmPlaybackService.hintGapSpaces) +
-        "\u{1D5E3}\u{1D5EE}\u{1D602}\u{1D600}\u{1D5F2}\u{23EF}\u{FE0F}" +
+        "\u{1D5E3}\u{1D5EE}\u{1D602}\u{1D600}\u{1D5F2}" +
+        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        "\u{23EF}\u{FE0F}" +
         String(repeating: " ", count: AlarmPlaybackService.hintGapSpaces) +
-        "\u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}\u{1F634}"
+        "\u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}" +
+        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        "\u{1F634}"
     private var nowPlayingHintLoggedKey: String?
 
     // Hold-to-choose snooze notice (one per alarm occurrence)
@@ -882,7 +889,7 @@ final class AlarmPlaybackService: NSObject {
         let hintKey = "\(currentAlarmID?.uuidString ?? "none")|\(currentOccurrence?.occurrenceKey ?? "none")"
         if nowPlayingHintLoggedKey != hintKey {
             nowPlayingHintLoggedKey = hintKey
-            SmartWakeDebugLog.log("NOWPLAYING hint set line=artist text=\(Self.nowPlayingHintText) characters=\(Self.nowPlayingHintText.count) hintGapSpaces=\(Self.hintGapSpaces)")
+            SmartWakeDebugLog.log("NOWPLAYING hint set line=artist text=\(Self.nowPlayingHintText) characters=\(Self.nowPlayingHintText.count) hintGapSpaces=\(Self.hintGapSpaces) hintWordEmojiSpaces=\(Self.hintWordEmojiSpaces)")
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
