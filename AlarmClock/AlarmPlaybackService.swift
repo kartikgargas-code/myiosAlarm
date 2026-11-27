@@ -121,6 +121,7 @@ final class AlarmPlaybackService: NSObject {
     // catch one whose extension was suspended before its timer fired.
     private static let controlCenterConfirmationActions = ["skip", "minus10", "plus10"]
     private let controlCenterConfirmationLifetime: TimeInterval = 5
+    private var controlCenterConfirmationRemovalTasks: [String: Task<Void, Never>] = [:]
 
     private override init() {
         super.init()
@@ -540,6 +541,29 @@ final class AlarmPlaybackService: NSObject {
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
             SmartWakeDebugLog.log("CONFIRM REMOVED action=\(action) via=\(source)")
         }
+    }
+
+    /// Start the 5 s removal in the app when a Control Center action arrives while the
+    /// app is alive. The extension also tries; whichever fires first removes the banner,
+    /// and the age check keeps an older timer from removing a newer banner.
+    func scheduleControlCenterConfirmationRemoval(action: String) {
+        controlCenterConfirmationRemovalTasks[action]?.cancel()
+        SmartWakeDebugLog.log("CONFIRM SCHEDULED REMOVE action=\(action) after=5s via=app")
+        controlCenterConfirmationRemovalTasks[action] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.removeControlCenterConfirmationIfStale(action: action, via: "timer")
+        }
+    }
+
+    /// Remove one Control Center confirmation only once it is at least 5 s old.
+    func removeControlCenterConfirmationIfStale(action: String, via source: String) async {
+        let identifier = "confirm-\(action)"
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications()
+        guard let match = delivered.first(where: { $0.request.identifier == identifier }),
+              Date().timeIntervalSince(match.date) >= controlCenterConfirmationLifetime else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+        SmartWakeDebugLog.log("CONFIRM REMOVED action=\(action) via=\(source)")
     }
 
     /// Post the hold-to-choose snooze notice once per alarm occurrence, at the same

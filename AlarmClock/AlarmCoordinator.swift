@@ -657,16 +657,25 @@ final class AlarmCoordinator {
             // Consume first: a second Control Center press just overwrites the
             // file, so the latest request must not be clobbered by our delete.
             try FileManager.default.removeItem(at: fileURL)
+            let confirmationAction: String?
             switch action.action {
             case PendingWidgetAction.skip:
+                confirmationAction = "skip"
                 await skipNext(id: action.alarmID)
             case PendingWidgetAction.adjustEarlier:
+                confirmationAction = "minus10"
                 await adjustNext(id: action.alarmID, minutes: -10)
             case PendingWidgetAction.adjustLater:
+                confirmationAction = "plus10"
                 await adjustNext(id: action.alarmID, minutes: 10)
             default:
                 SmartWakeDebugLog.log("WIDGET ACTION APPLY: unknown action '\(action.action)' — dropped")
                 return
+            }
+            // The banner was posted by the extension. Start the app-side 5 s removal
+            // now; the extension's own timer may never fire once it is suspended.
+            if let confirmationAction {
+                AlarmPlaybackService.shared.scheduleControlCenterConfirmationRemoval(action: confirmationAction)
             }
             SmartWakeDebugLog.log("WIDGET ACTION APPLY: handed to commit (\(action.action))")
             

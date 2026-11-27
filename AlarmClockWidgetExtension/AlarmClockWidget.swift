@@ -1184,7 +1184,7 @@ private func postActionConfirmation(action: String, text: String) async {
 /// the 5 s pass, so the app's wake paths run the same check as a safety net.
 @MainActor
 private func scheduleControlCenterConfirmationRemoval(action: String, identifier: String) {
-    SmartWakeDebugLog.log("CONFIRM SCHEDULED REMOVE action=\(action) after=5s")
+    SmartWakeDebugLog.log("CONFIRM SCHEDULED REMOVE action=\(action) after=5s via=extension")
     Task {
         try? await Task.sleep(nanoseconds: 5_000_000_000)
         let center = UNUserNotificationCenter.current()
