@@ -562,7 +562,7 @@ final class AlarmPlaybackService: NSObject {
         // empty), with no subtitle. The three snooze lengths are offered in the body.
         let label = alarm.label.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = label
-        let body = "Hold to choose 𝗦𝗻𝗼𝗼𝘇𝗲 length"
+        let body = "Hold to \u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D5FC}\u{1D5FC}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}"
 
         let content = UNMutableNotificationContent()
         content.title = title
