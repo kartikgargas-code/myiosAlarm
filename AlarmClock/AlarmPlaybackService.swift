@@ -122,19 +122,23 @@ final class AlarmPlaybackService: NSObject {
 
     // Lock-screen card hint. iOS draws the Previous / Next buttons and they cannot be
     // relabelled, so the artist line carries the button mapping instead.
-    static let hintWordEmojiSpaces = 1
-    static let hintGapSpaces = 5
+    // Separators are named per word so the emoji gap can differ from the group gap.
+    // Total width matters: too many spaces clip the last emoji on the phone.
+    static let hintStopEmojiSpaces = 1
+    static let hintPauseEmojiSpaces = 0
+    static let hintSnoozeEmojiSpaces = 1
+    static let hintGapSpaces = 4
     static let nowPlayingHintText =
         "\u{1D5E6}\u{1D601}\u{1D5FC}\u{1D5FD}" +
-        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        String(repeating: " ", count: AlarmPlaybackService.hintStopEmojiSpaces) +
         "\u{1F6D1}" +
         String(repeating: " ", count: AlarmPlaybackService.hintGapSpaces) +
         "\u{1D5E3}\u{1D5EE}\u{1D602}\u{1D600}\u{1D5F2}" +
-        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        String(repeating: " ", count: AlarmPlaybackService.hintPauseEmojiSpaces) +
         "\u{23EF}\u{FE0F}" +
         String(repeating: " ", count: AlarmPlaybackService.hintGapSpaces) +
         "\u{1D5E6}\u{1D5FB}\u{1D5FC}\u{1D5FC}\u{1D607}\u{1D5F2}" +
-        String(repeating: " ", count: AlarmPlaybackService.hintWordEmojiSpaces) +
+        String(repeating: " ", count: AlarmPlaybackService.hintSnoozeEmojiSpaces) +
         "\u{1F634}"
     private var nowPlayingHintLoggedKey: String?
 
@@ -945,7 +949,7 @@ final class AlarmPlaybackService: NSObject {
         let hintKey = "\(currentAlarmID?.uuidString ?? "none")|\(currentOccurrence?.occurrenceKey ?? "none")"
         if nowPlayingHintLoggedKey != hintKey {
             nowPlayingHintLoggedKey = hintKey
-            SmartWakeDebugLog.log("NOWPLAYING hint set line=artist text=\(Self.nowPlayingHintText) characters=\(Self.nowPlayingHintText.count) hintGapSpaces=\(Self.hintGapSpaces) hintWordEmojiSpaces=\(Self.hintWordEmojiSpaces)")
+            SmartWakeDebugLog.log("NOWPLAYING hint set line=artist text=\(Self.nowPlayingHintText) characters=\(Self.nowPlayingHintText.count) spaces=\(Self.nowPlayingHintText.filter { $0 == " " }.count) hintStopEmojiSpaces=\(Self.hintStopEmojiSpaces) hintPauseEmojiSpaces=\(Self.hintPauseEmojiSpaces) hintSnoozeEmojiSpaces=\(Self.hintSnoozeEmojiSpaces) hintGapSpaces=\(Self.hintGapSpaces)")
         }
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
