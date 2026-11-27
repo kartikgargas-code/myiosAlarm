@@ -388,7 +388,7 @@ struct ContentView: View {
         }
         .listRowBackground(cardBackground)
         .contextMenu {
-            // Reordered: Skip Next/Undo Skip at TOP, then -10/Reset/+10, Duplicate, Custom Time, Delete
+            // Reordered: Skip Next/Undo Skip at TOP, then +10/Reset/-10, Duplicate, Custom Time, Delete
             if let occurrence {
                 // Skip Next / Undo Skip at very top
                 if let skipped = skippedOccurrence {
@@ -408,9 +408,10 @@ struct ContentView: View {
                 
                 HStack {
                     Button {
-                        Task { await coordinator.adjustNext(id: alarm.id, minutes: -10) }
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: 10) }
                     } label: {
-                        Label("−10 min", systemImage: "minus")
+                        Label("+10 min", systemImage: "plus")
+                            .tint(.green)
                     }
                     Button {
                         Task { await coordinator.resetNext(id: alarm.id) }
@@ -418,9 +419,10 @@ struct ContentView: View {
                         Label("Reset", systemImage: "arrow.counterclockwise")
                     }
                     Button {
-                        Task { await coordinator.adjustNext(id: alarm.id, minutes: 10) }
+                        Task { await coordinator.adjustNext(id: alarm.id, minutes: -10) }
                     } label: {
-                        Label("+10 min", systemImage: "plus")
+                        Label("−10 min", systemImage: "minus")
+                            .tint(ThemeManager.shared.colors.accent)
                     }
                 }
                 
